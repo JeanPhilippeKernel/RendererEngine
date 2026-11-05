@@ -104,7 +104,9 @@ namespace ZEngine::Cook
             EXPECT_EQ(allocator.Statistics().LiveByCategory, before.LiveByCategory);
             EXPECT_EQ(allocator.OutstandingAllocations(), 1u);
             for (size_t i = 0; i < 100; ++i)
+            {
                 EXPECT_EQ(static_cast<const uint8_t*>(original.Value())[i], 42);
+            }
         }
         allocator.Free(original.Value());
     }
@@ -173,7 +175,9 @@ namespace ZEngine::Cook
             Core::VFS::VFSResult<size_t> AllocationFootprint(size_t bytes, size_t, CookMemoryCategory) const noexcept override
             {
                 if (Error != Core::VFS::VFSError::OK)
+                {
                     return Core::VFS::VFSResult<size_t>::Fail(Error);
+                }
                 return Core::VFS::VFSResult<size_t>::Ok(Underreport ? bytes - 1 : bytes);
             }
             Core::VFS::VFSResult<void*> Allocate(size_t bytes, size_t alignment, CookMemoryCategory category) noexcept override

@@ -28,7 +28,9 @@ namespace ZEngine::Cook
             VFS::VFSResult<void*> Allocate(size_t bytes, size_t alignment, CookMemoryCategory category) noexcept override
             {
                 if (++Calls == FailAt)
+                {
                     return VFS::VFSResult<void*>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 return Parent->Allocate(bytes, alignment, category);
             }
             void Free(void* pointer) noexcept override
@@ -231,7 +233,9 @@ namespace ZEngine::Cook
             auto retained = storage.Scalar("retained across growth");
             ASSERT_TRUE(storage.Append(root, retained));
             for (uint32_t index = 0; index < 500; ++index)
+            {
                 ASSERT_TRUE(storage.Append(root, storage.UInt(index)));
+            }
             EXPECT_EQ(retained.Scalar(), "retained across growth");
             EXPECT_EQ(root.size(), 501u);
             EXPECT_EQ(root[500].Scalar(), "499");
@@ -264,7 +268,9 @@ namespace ZEngine::Cook
             auto       root     = storage.Make(ECS::SceneYAML::NodeType::Sequence);
             Allocator.FailAt    = refuse_growth ? Allocator.Calls + 1 : 0;
             for (uint32_t index = 0; index < 1000 && storage.Good(); ++index)
+            {
                 static_cast<void>(storage.Append(root, storage.UInt(index)));
+            }
             EXPECT_FALSE(storage.Good());
             EXPECT_EQ(storage.Failure(), refuse_growth ? ECS::SceneDiagnosticCode::AllocationFailed : ECS::SceneDiagnosticCode::LimitExceeded);
             EXPECT_EQ(route.Error(), refuse_growth ? VFS::VFSError::SizeLimitExceeded : VFS::VFSError::OK);
@@ -333,7 +339,9 @@ namespace ZEngine::Cook
                 EXPECT_EQ(route.Error(), VFS::VFSError::SizeLimitExceeded);
             }
             if (initialized)
+            {
                 yaml_document_delete(&document);
+            }
             EXPECT_EQ(Scratch.OutstandingAllocations(), 0u);
         }
     }
@@ -371,7 +379,9 @@ namespace ZEngine::Cook
         const auto emit = [] {
             yaml_emitter_t emitter = {};
             if (!yaml_emitter_initialize(&emitter))
+            {
                 return false;
+            }
             struct Lease
             {
                 yaml_emitter_t& Emitter;

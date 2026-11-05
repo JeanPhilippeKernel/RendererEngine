@@ -31,7 +31,9 @@ namespace
     {
         yaml_parser_t parser = {};
         if (!yaml_parser_initialize(&parser))
+        {
             return false;
+        }
         constexpr unsigned char source[] = "root: [one, two, three]\n";
         yaml_parser_set_input_string(&parser, source, sizeof(source) - 1);
         bool complete = false;
@@ -42,7 +44,9 @@ namespace
             complete            = parsed && event.type == YAML_STREAM_END_EVENT;
             yaml_event_delete(&event);
             if (!parsed || complete)
+            {
                 break;
+            }
         }
         yaml_parser_delete(&parser);
         return complete;
@@ -52,12 +56,16 @@ namespace
 int main()
 {
     if (!Parse())
+    {
         return 1;
+    }
     DeniedRoute route = {};
     {
         ZEngine::Core::Serialization::YAMLAllocationScope scope(route);
         if (Parse() || !route.Calls || route.Frees)
+        {
             return 2;
+        }
     }
     return Parse() ? 0 : 3;
 }

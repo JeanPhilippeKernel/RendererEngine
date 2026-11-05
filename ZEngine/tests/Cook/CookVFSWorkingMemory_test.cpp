@@ -197,13 +197,17 @@ namespace ZEngine::Cook
                     .Succeeded());
             EXPECT_EQ(Budget.ReservedBytes(), (i + 1) * 11);
             if (i < 8)
+            {
                 EXPECT_EQ(Parent.Allocations, 0u);
+            }
         }
         EXPECT_EQ(Parent.Allocations, 3u);
         EXPECT_EQ(Parent.Frees, 2u);
         EXPECT_EQ(Allocator.OutstandingAllocations(), 1u);
         for (auto& reservation : reservations)
+        {
             reservation.Reset();
+        }
         EXPECT_EQ(Budget.ReservedBytes(), 0u);
         ASSERT_TRUE(Budget.Reset().Succeeded());
         EXPECT_EQ(Parent.Frees, Parent.Allocations);
@@ -245,7 +249,9 @@ namespace ZEngine::Cook
                     .Succeeded());
         }
         for (auto& reservation : reservations)
+        {
             reservation.Reset();
+        }
     }
 
     TEST_F(CookVFSWorkingMemoryTest, ExistingDomainReferencesNeverNeedCompactionStorage)

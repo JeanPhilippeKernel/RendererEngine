@@ -55,15 +55,23 @@ namespace ZEngine::Cook
             {
                 ++Reads;
                 if (offset >= FailAt)
+                {
                     return VFS::VFSResult<size_t>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 if (OversizedRead)
+                {
                     return VFS::VFSResult<size_t>::Ok(bytes.size() + 1);
+                }
                 const auto available = std::min(Length, StopAt);
                 if (offset >= available)
+                {
                     return VFS::VFSResult<size_t>::Ok(0);
+                }
                 const auto count = static_cast<size_t>(std::min<uint64_t>(std::min(bytes.size(), MaxChunk), available - offset));
                 if (count)
+                {
                     EXPECT_EQ(Helpers::secure_memcpy(bytes.data(), bytes.size(), Bytes + offset, count), Helpers::MEMORY_OP_SUCCESS);
+                }
                 return VFS::VFSResult<size_t>::Ok(count);
             }
 
@@ -171,9 +179,13 @@ namespace ZEngine::Cook
             {
                 ++Faults->Writes;
                 if (Faults->WriteError != VFS::VFSError::OK)
+                {
                     return VFS::VFSResult<size_t>::Fail(Faults->WriteError);
+                }
                 if (Faults->OversizedWrite)
+                {
                     return VFS::VFSResult<size_t>::Ok(bytes.size() + 1);
+                }
                 return File->Write({bytes.data(), std::min(bytes.size(), Faults->MaxWriteChunk)}, offset);
             }
             VFS::VFSResult<uint64_t> Size() const override
@@ -212,10 +224,14 @@ namespace ZEngine::Cook
             VFS::VFSResult<VFS::IVFSFile*> Open(const VFS::VFSRelativePath& path, VFS::VFSOpenFlags flags) override
             {
                 if (File.File)
+                {
                     return VFS::VFSResult<VFS::IVFSFile*>::Fail(VFS::VFSError::OutOfMemory);
+                }
                 const auto opened = Inner->Open(path, flags);
                 if (opened.Failed())
+                {
                     return opened;
+                }
                 File.File   = opened.Value();
                 File.Faults = Faults;
                 File.Writer = VFS::HasFlag(flags, VFS::VFSOpenFlags::Write);
@@ -245,11 +261,17 @@ namespace ZEngine::Cook
             VFS::VFSResult<void> CloseChecked(VFS::IVFSFile* file) override
             {
                 if (!file || file != &File || !File.File)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+                }
                 if (File.Writer)
+                {
                     ++Faults->WriterCloses;
+                }
                 else
+                {
                     ++Faults->ReaderCloses;
+                }
                 const auto close = Inner->CloseChecked(File.File);
                 File.File        = nullptr;
                 return Faults->CloseError != VFS::VFSError::OK ? VFS::VFSResult<void>::Fail(Faults->CloseError) : close;
@@ -267,10 +289,14 @@ namespace ZEngine::Cook
             {
                 auto acquired = Inner->Acquire(path, access);
                 if (acquired.Failed())
+                {
                     return acquired;
+                }
                 auto root = Helpers::Scope<CaptureFaultRoot>(new (std::nothrow) CaptureFaultRoot());
                 if (!root)
+                {
                     return VFS::VFSResult<Helpers::Scope<VFS::IVFSRootOperations>>::Fail(VFS::VFSError::OutOfMemory);
+                }
                 root->Inner  = std::move(acquired.Value());
                 root->Faults = Faults;
                 return VFS::VFSResult<Helpers::Scope<VFS::IVFSRootOperations>>::Ok(std::move(root));
@@ -507,6 +533,7 @@ namespace ZEngine::Cook
         CookCaptureStore store            = {};
         ASSERT_TRUE(store.Initialize(context, {static_cast<uint8_t*>(Stream.Arena()->m_memory), 64}).Succeeded());
         for (auto error : {VFS::VFSError::SizeLimitExceeded, VFS::VFSError::OutOfMemory, VFS::VFSError::Unsupported})
+        {
             for (bool disk : {false, true})
             {
                 SCOPED_TRACE(disk);
@@ -523,6 +550,7 @@ namespace ZEngine::Cook
                 ExpectCapturedABC(output);
                 ExpectEmptyRun();
             }
+        }
     }
 
     TEST_F(CookCapturedFileTest, PrincipalSealHashBudgetSupportsExactReuseAndRejectsBeforeSourceIO)
@@ -708,13 +736,21 @@ namespace ZEngine::Cook
                 CaptureSource source = {};
                 source.MaxChunk      = 1;
                 if (fault == 0)
+                {
                     source.StopAt = 2;
+                }
                 if (fault == 1)
+                {
                     source.MaxChunk = 0;
+                }
                 if (fault == 2)
+                {
                     source.OversizedRead = true;
+                }
                 if (fault == 3)
+                {
                     source.FailAt = 1;
+                }
                 const auto result = disk ? Store.CaptureDisk(source, 3, &capture) : Store.CaptureMemory(source, 3, &capture);
                 EXPECT_EQ(result.Error(), fault == 3 ? VFS::VFSError::PermissionDenied : VFS::VFSError::IOError);
                 ExpectCapturedABC(capture);
@@ -734,14 +770,18 @@ namespace ZEngine::Cook
             {
                 CaptureSource source = {};
                 if (fault == 0)
+                {
                     source.Length = 4;
+                }
                 if (fault == 1)
                 {
                     source.ChangeSize  = true;
                     source.FinalLength = 2;
                 }
                 if (fault == 2)
+                {
                     source.FailAt = 3;
+                }
                 CookCapturedFile capture = {};
                 const auto       result  = disk ? Store.CaptureDisk(source, 3, &capture) : Store.CaptureMemory(source, 3, &capture);
                 EXPECT_EQ(result.Error(), fault == 2 ? VFS::VFSError::PermissionDenied : VFS::VFSError::Corrupted);
@@ -781,12 +821,16 @@ namespace ZEngine::Cook
         {
             Core::Containers::FixedArray<CookCapturedFile, 64> captures = {};
             for (auto& capture : captures)
+            {
                 ASSERT_TRUE(Store.CaptureDisk(Source, 3, &capture).Succeeded());
+            }
             EXPECT_EQ(Store.LiveBytes(), 192u);
             EXPECT_EQ(Store.OutstandingCaptures(), 64u);
             EXPECT_EQ(Allocator.Allocations, 1u);
             for (const auto& capture : captures)
+            {
                 ExpectCapturedABC(capture);
+            }
         }
         EXPECT_EQ(Store.OutstandingCaptures(), 0u);
         ExpectEmptyRun();
@@ -882,11 +926,17 @@ namespace ZEngine::Cook
             source.MaxChunk        = 1;
             VFS::VFSError expected = VFS::VFSError::Corrupted;
             if (fault == 0)
+            {
                 source.StatLength = source.SizeLength = 2;
+            }
             if (fault == 1)
+            {
                 source.Length = 4;
+            }
             if (fault == 2)
+            {
                 source.StopAt = 2;
+            }
             if (fault == 3)
             {
                 source.FailAt = 1;
@@ -960,15 +1010,23 @@ namespace ZEngine::Cook
             VFS::VFSResult<void>  Acquire(const CookCaptureContext&, CookInputLease* output, CookDiagnostics*) override
             {
                 if (!output || output->IsValid() || Leased)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::AlreadyExists);
+                }
                 const auto acquired = Owner->TryAcquireRead(&Read);
                 if (acquired.Failed())
+                {
                     return acquired;
+                }
                 const auto bound = BindLease(*this, output);
                 if (bound.Succeeded())
+                {
                     Leased = true;
+                }
                 else
+                {
                     Read.Reset();
+                }
                 return bound;
             }
             VFS::VFSResult<void> EnumerateCatalog(CookCatalogVisitorFn, void*, CookDiagnostics*) override
@@ -991,9 +1049,13 @@ namespace ZEngine::Cook
             {
                 const auto verified = Captured ? Store->VerifySource(*File, Size, Digest) : VFS::VFSResult<void>::Fail(VFS::VFSError::Corrupted);
                 if (verified.Succeeded())
+                {
                     Read.Reset();
+                }
                 else if (diagnostics)
+                {
                     diagnostics->Add({.Stage = CookStage::Capture, .Code = verified.Error() == VFS::VFSError::Corrupted ? CookDiagnosticCode::InputChanged : CookDiagnosticCode::IOFailure, .Underlying = verified.Error(), .Source = Path});
+                }
                 return verified;
             }
             void Release() noexcept override
@@ -1020,7 +1082,9 @@ namespace ZEngine::Cook
             EXPECT_EQ(owner.TryAcquireMutation(&writer).Error(), VFS::VFSError::AlreadyExists);
             const auto allocations = Allocator.Allocations;
             if (change_before_seal)
+            {
                 Source.Bytes[0] = 'z'; // Bypassing the owner is detected, not retried.
+            }
             EXPECT_EQ(lease.Seal(&diagnostics).Error(), change_before_seal ? VFS::VFSError::Corrupted : VFS::VFSError::OK);
             EXPECT_EQ(lease.State(), change_before_seal ? CookInputState::Failed : CookInputState::Sealed);
             if (change_before_seal)
@@ -1096,15 +1160,25 @@ namespace ZEngine::Cook
         {
             Faults = {};
             if (fault == 0)
+            {
                 Faults.WriteError = VFS::VFSError::PermissionDenied;
+            }
             if (fault == 1)
+            {
                 Faults.MaxWriteChunk = 0;
+            }
             if (fault == 2)
+            {
                 Faults.OversizedWrite = true;
+            }
             if (fault == 3)
+            {
                 Faults.FlushError = VFS::VFSError::IOError;
+            }
             if (fault == 4)
+            {
                 Faults.CloseError = VFS::VFSError::IOError;
+            }
             EXPECT_EQ(store.CaptureDisk(Source, 3, &capture).Error(), fault == 0 ? VFS::VFSError::PermissionDenied : VFS::VFSError::IOError);
             EXPECT_EQ(Faults.WriterCloses, 1u);
             EXPECT_EQ(Faults.Flushes, fault >= 3 ? 1u : 0u);
@@ -1204,7 +1278,9 @@ namespace ZEngine::Cook
         CaptureSource source = {};
         source.Length = source.StatLength = source.SizeLength = sizeof(source.Bytes);
         for (size_t i = 0; i < sizeof(source.Bytes); ++i)
+        {
             source.Bytes[i] = static_cast<uint8_t>(i);
+        }
         source.MaxChunk          = 7;
         CookCapturedFile capture = {};
         ASSERT_TRUE(Store.CaptureDisk(source, sizeof(source.Bytes), &capture).Succeeded());

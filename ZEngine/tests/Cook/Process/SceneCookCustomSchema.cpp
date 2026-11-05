@@ -31,7 +31,9 @@ namespace ZEngine::Cook::Tests
             const auto* texture = payload.Find<uuids::uuid>(TextureField);
             const auto* weight  = payload.Find<float>(WeightField);
             if (payload.Fields().size() != 2 || !texture || !weight)
+            {
                 return false;
+            }
             *value = {.Texture = *texture, .Weight = *weight};
             return Valid(*value);
         }
@@ -39,10 +41,14 @@ namespace ZEngine::Cook::Tests
         bool Write(const CookCustomComponent& value, ECS::SceneValueWriter* output)
         {
             if (!output || !output->Empty() || output->Remaining() < 2 || !Valid(value))
+            {
                 return false;
+            }
             auto candidate = *output;
             if (!candidate.Add(TextureField, value.Texture) || !candidate.Add(WeightField, value.Weight))
+            {
                 return false;
+            }
             *output = candidate;
             return true;
         }
@@ -60,7 +66,9 @@ namespace ZEngine::Cook::Tests
             {
                 CookCustomComponent value = {};
                 if (!Read(payload, &value))
+                {
                     return Reject(diagnostics);
+                }
                 scene.AddComponent<CookCustomComponent>(entity, value);
                 return true;
             }
@@ -69,11 +77,15 @@ namespace ZEngine::Cook::Tests
             {
                 CookCustomComponent value = {};
                 if (!output || !Read(payload, &value) || !output->Require(20))
+                {
                     return Reject(diagnostics);
+                }
                 auto       candidate = *output;
                 const auto bytes     = value.Texture.as_bytes();
                 if (!candidate.Bytes({reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}) || !candidate.Float(value.Weight))
+                {
                     return Reject(diagnostics);
+                }
                 *output = candidate;
                 return true;
             }
@@ -81,15 +93,21 @@ namespace ZEngine::Cook::Tests
             static bool Decode(void*, uint32_t version, ECS::SceneBinaryReader* input, ECS::SceneValueWriter* output, ECS::SceneDiagnostics* diagnostics)
             {
                 if (version != Version || !input)
+                {
                     return Reject(diagnostics);
+                }
                 auto                     candidate  = *input;
                 CookCustomComponent      value      = {};
                 std::span<const uint8_t> uuid_bytes = {};
                 if (!candidate.Bytes(16, uuid_bytes) || !candidate.Float(value.Weight) || candidate.Remaining())
+                {
                     return Reject(diagnostics);
+                }
                 value.Texture = uuids::uuid(uuid_bytes.begin(), uuid_bytes.end());
                 if (!Write(value, output))
+                {
                     return Reject(diagnostics);
+                }
                 *input = candidate;
                 return true;
             }
@@ -103,14 +121,18 @@ namespace ZEngine::Cook::Tests
             static bool DecodeYAML(void*, uint32_t version, const ECS::SceneYAML::Node& input, ECS::SceneValueWriter* output, ECS::SceneDiagnostics* diagnostics)
             {
                 if (version != Version || !output || !output->Empty() || output->Remaining() < 2)
+                {
                     return Reject(diagnostics);
+                }
                 const Core::Containers::FixedArray<ECS::SceneValueField, 2> shape = {
                     {{TextureField, uuids::uuid{}}, {WeightField, 0.f}}
                 };
                 auto                candidate = *output;
                 CookCustomComponent value     = {};
                 if (!ECS::DecodeSceneValueYAML(ECS::SceneValue({shape.data(), shape.size()}), input, &candidate, diagnostics) || !Read(candidate.Value(), &value))
+                {
                     return Reject(diagnostics);
+                }
                 *output = candidate;
                 return true;
             }
@@ -119,7 +141,9 @@ namespace ZEngine::Cook::Tests
             {
                 CookCustomComponent value = {};
                 if (!visitor || !Read(payload, &value))
+                {
                     return Reject(diagnostics);
+                }
                 return visitor(context, {ECS::SceneReferenceKind::Asset, value.Texture, TextureField, "texture"});
             }
 
@@ -154,7 +178,9 @@ namespace ZEngine::Cook::Tests
     bool MigrateCookCustomSchema(void*, const ECS::SceneYAML::Node& source, ECS::SceneYAML::Node* output, ECS::SceneDiagnostics*)
     {
         if (!output || !output->Owner())
+        {
             return false;
+        }
         // The v2 wire version is an explicit recook boundary; authored field
         // semantics are unchanged. Source migration uses the cook-routed owner.
         *output = output->Owner()->Clone(source);

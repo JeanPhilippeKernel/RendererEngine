@@ -28,9 +28,13 @@ namespace ZEngine::Cook
             {
                 const uint32_t middle = begin + (count - begin) / 2;
                 if (less(indices[middle]))
+                {
                     begin = middle + 1;
+                }
                 else
+                {
                     count = middle;
+                }
             }
             return begin;
         }
@@ -48,9 +52,13 @@ namespace ZEngine::Cook
         static_assert(std::is_trivially_destructible_v<CookAssetCatalogEntry>);
         static_assert(caps.MaxCatalogEntries <= (std::numeric_limits<size_t>::max() - (alignof(uint32_t) - 1)) / bytes_per_entry);
         if (m_state != State::Empty || maximum_entries > caps.MaxCatalogEntries)
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         if (capacity > maximum_entries)
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+        }
         if (capacity)
         {
             const size_t records_bytes    = static_cast<size_t>(capacity) * sizeof(CookAssetCatalogEntry);
@@ -58,9 +66,13 @@ namespace ZEngine::Cook
             const size_t allocation_bytes = index_offset + static_cast<size_t>(capacity) * 4 * sizeof(uint32_t);
             const auto   allocation       = allocator.Allocate(allocation_bytes, DEFAULT_ALIGNMENT, CookMemoryCategory::CatalogGraph);
             if (allocation.Failed())
+            {
                 return Core::VFS::VFSResult<void>::Fail(allocation.Error());
+            }
             if (!allocation.Value())
+            {
                 return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::OutOfMemory);
+            }
             if (reinterpret_cast<uintptr_t>(allocation.Value()) % DEFAULT_ALIGNMENT)
             {
                 allocator.Free(allocation.Value());
@@ -68,7 +80,9 @@ namespace ZEngine::Cook
             }
             m_records = static_cast<CookAssetCatalogEntry*>(allocation.Value());
             for (size_t i = 0; i < capacity; ++i)
+            {
                 new (m_records + i) CookAssetCatalogEntry{};
+            }
             m_by_identity = reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(allocation.Value()) + index_offset);
             m_by_uuid     = m_by_identity + capacity;
             m_by_artifact = m_by_uuid + capacity;
@@ -83,11 +97,17 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<void> CookAssetCatalog::Append(const CookAssetCatalogEntry& entry, CookDiagnostics* diagnostics)
     {
         if (m_state != State::Building)
+        {
             return CatalogFailure(diagnostics, CookDiagnosticCode::InvalidRequest, entry, "Catalog is not accepting records.");
+        }
         if (!IsCookAssetCatalogEntryValid(entry))
+        {
             return CatalogFailure(diagnostics, CookDiagnosticCode::InvalidMetadata, entry, "Catalog identity or logical artifact/metadata/source path is invalid.");
+        }
         if (m_count == m_capacity)
+        {
             return CatalogFailure(diagnostics, CookDiagnosticCode::BudgetExceeded, entry, "Catalog enumeration exceeded its bounded retained capacity.");
+        }
         m_records[m_count]     = entry;
         m_by_identity[m_count] = m_by_uuid[m_count] = m_by_artifact[m_count] = m_by_metadata[m_count] = m_count;
         ++m_count;
@@ -97,13 +117,17 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<void> CookAssetCatalog::Finalize(CookDiagnostics* diagnostics)
     {
         if (m_state != State::Building)
+        {
             return CatalogFailure(diagnostics, CookDiagnosticCode::InvalidRequest, {}, "Catalog cannot be finalized in its current state.");
+        }
         if (m_count > 1)
         {
             CookMemoryCharge fixed   = {};
             const auto       charged = m_allocator->TryCharge(sizeof(Detail::CookSortState<uint32_t>) + sizeof(fixed), CookMemoryCategory::CatalogGraph, &fixed);
             if (charged.Failed())
+            {
                 return charged; // Still building: no index or record was modified.
+            }
             Detail::CookSortState<uint32_t> sort = {};
             Core::Containers::HeapSort<uint32_t>({m_by_identity, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Identity < m_records[right].Identity; });
             Core::Containers::HeapSort<uint32_t>({m_by_uuid, m_count}, sort, [&](uint32_t left, uint32_t right) { return m_records[left].Identity.UUID < m_records[right].Identity.UUID; });
@@ -138,15 +162,21 @@ namespace ZEngine::Cook
                     return CatalogFailure(diagnostics, CookDiagnosticCode::IdentityConflict, artifact, "One input file is both an artifact and a sidecar.");
                 }
                 if (artifact.Artifact < metadata.Metadata)
+                {
                     ++artifact_index;
+                }
                 else
+                {
                     ++metadata_index;
+                }
             }
             for (uint32_t i = 0; i < m_count; ++i)
             {
                 const auto& entry = m_records[i];
                 if (!entry.EnvironmentSource.IsValid())
+                {
                     continue;
+                }
                 const auto artifact = FindIndex(m_by_artifact, m_count, [&](uint32_t record) { return m_records[record].Artifact < entry.EnvironmentSource; });
                 const auto metadata = FindIndex(m_by_metadata, m_count, [&](uint32_t record) { return m_records[record].Metadata < entry.EnvironmentSource; });
                 if ((artifact < m_count && m_records[m_by_artifact[artifact]].Artifact == entry.EnvironmentSource) || (metadata < m_count && m_records[m_by_metadata[metadata]].Metadata == entry.EnvironmentSource))
@@ -163,7 +193,9 @@ namespace ZEngine::Cook
     void CookAssetCatalog::Reset() noexcept
     {
         if (m_records)
+        {
             m_allocator->Free(m_records);
+        }
         m_allocator   = nullptr;
         m_records     = nullptr;
         m_by_identity = m_by_uuid = m_by_artifact = m_by_metadata = nullptr;
@@ -179,7 +211,9 @@ namespace ZEngine::Cook
     const CookAssetCatalogEntry* CookAssetCatalog::Find(const CookAssetIdentity& identity) const noexcept
     {
         if (!IsFinalized() || !identity.IsValid())
+        {
             return nullptr;
+        }
         const auto index = FindIndex(m_by_identity, m_count, [&](uint32_t record) { return m_records[record].Identity < identity; });
         return index < m_count && m_records[m_by_identity[index]].Identity == identity ? m_records + m_by_identity[index] : nullptr;
     }
@@ -187,7 +221,9 @@ namespace ZEngine::Cook
     const CookAssetCatalogEntry* CookAssetCatalog::FindArtifact(const Core::VFS::VFSRelativePath& path) const noexcept
     {
         if (!IsFinalized() || !IsCookLogicalPath(path))
+        {
             return nullptr;
+        }
         const auto index = FindIndex(m_by_artifact, m_count, [&](uint32_t record) { return m_records[record].Artifact < path; });
         return index < m_count && m_records[m_by_artifact[index]].Artifact == path ? m_records + m_by_artifact[index] : nullptr;
     }
@@ -195,12 +231,16 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<void> CookAssetCatalog::Enumerate(CookCatalogVisitorFn visitor, void* context) const
     {
         if (!IsFinalized() || !visitor)
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         for (size_t i = 0; i < m_count; ++i)
         {
             const auto visited = visitor(context, m_records[m_by_identity[i]]);
             if (visited.Failed())
+            {
                 return visited;
+            }
         }
         return Core::VFS::VFSResult<void>::Ok();
     }

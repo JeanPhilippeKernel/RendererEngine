@@ -112,10 +112,14 @@ namespace ZEngine::Tests
         {
             std::error_code error = {};
             if (!std::filesystem::create_directory(link, error))
+            {
                 return error ? static_cast<DWORD>(error.value()) : ERROR_ALREADY_EXISTS;
+            }
             const auto handle = CreateFileW(link.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
             if (handle == INVALID_HANDLE_VALUE)
+            {
                 return GetLastError();
+            }
             const auto native = std::filesystem::absolute(target, error).native();
             if (error)
             {
@@ -693,11 +697,17 @@ namespace ZEngine::Tests
             const auto written = opened.Value()->Write(NewContent, 0);
             EXPECT_TRUE(written.Succeeded());
             if (written.Succeeded())
+            {
                 EXPECT_EQ(written.Value(), sizeof(NewContent));
+            }
             if (rooted)
+            {
                 EXPECT_TRUE(Root.CloseChecked(opened.Value()).Succeeded());
+            }
             else
+            {
                 Disk.Close(opened.Value());
+            }
             const uint8_t expected[] = {1, 2, 3, 4, 5, 6, 7, 8};
             ExpectBytes(Root, path, expected);
         }
@@ -739,7 +749,9 @@ namespace ZEngine::Tests
             {
                 std::filesystem::rename(visible, hidden, thread_error);
                 if (!thread_error)
+                {
                     std::filesystem::rename(hidden, visible, thread_error);
+                }
                 if (thread_error)
                 {
                     rename_succeeded = false;
@@ -753,9 +765,13 @@ namespace ZEngine::Tests
             const auto opened = Root.Open(Relative("link/sentinel"), VFS::VFSOpenFlags::Write | VFS::VFSOpenFlags::Truncate);
             EXPECT_TRUE(opened.Failed());
             if (opened.Succeeded())
+            {
                 (void) Root.CloseChecked(opened.Value());
+            }
             else
+            {
                 EXPECT_TRUE(opened.Error() == VFS::VFSError::NotFound || opened.Error() == VFS::VFSError::PermissionDenied);
+            }
         }
         retarget.join();
         EXPECT_TRUE(rename_succeeded);
@@ -901,9 +917,13 @@ namespace ZEngine::Tests
             const auto open = Root.Open(Relative("link"), VFS::VFSOpenFlags::Write | VFS::VFSOpenFlags::Truncate);
             EXPECT_TRUE(open.Failed());
             if (open.Succeeded())
+            {
                 (void) Root.CloseChecked(open.Value());
+            }
             else
+            {
                 EXPECT_TRUE(open.Error() == VFS::VFSError::NotFound || open.Error() == VFS::VFSError::PermissionDenied);
+            }
         }
         retarget.join();
         EXPECT_TRUE(rename_succeeded);
@@ -943,7 +963,9 @@ namespace ZEngine::Tests
         ASSERT_TRUE(Context.AcquireScratchRoot(RootPath("/assets/output"), &other).Succeeded());
         EXPECT_EQ(other.CloseChecked(handles[0]).Error(), VFS::VFSError::InvalidPath);
         for (auto* handle : handles)
+        {
             EXPECT_TRUE(Root.CloseChecked(handle).Succeeded());
+        }
         EXPECT_EQ(Root.CloseChecked(handles[0]).Error(), VFS::VFSError::InvalidPath);
         const auto again = Root.Open(Relative("object"), VFS::VFSOpenFlags::Read);
         ASSERT_TRUE(again.Succeeded());
@@ -954,7 +976,9 @@ namespace ZEngine::Tests
     {
         Core::Containers::FixedArray<VFS::VFSScratchRootLease, 63> pins = {};
         for (auto& pin : pins)
+        {
             ASSERT_TRUE(Context.AcquireScratchRoot(RootPath("/assets/output"), &pin).Succeeded());
+        }
         VFS::VFSScratchRootLease overflow = {};
         EXPECT_EQ(Context.AcquireScratchRoot(RootPath("/assets/output"), &overflow).Error(), VFS::VFSError::SizeLimitExceeded);
         EXPECT_FALSE(overflow.IsValid());

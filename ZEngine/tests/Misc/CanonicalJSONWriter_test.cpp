@@ -21,11 +21,17 @@ namespace ZEngine::Core::Serialization
             {
                 auto& self = *static_cast<JSONSink*>(context);
                 if (++self.Calls == self.FailAt)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 if (bytes.size() > sizeof(self.Bytes) - self.Count)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 if (bytes.size())
+                {
                     Helpers::secure_memcpy(self.Bytes + self.Count, sizeof(self.Bytes) - self.Count, bytes.data(), bytes.size());
+                }
                 self.Count += bytes.size();
                 return VFS::VFSResult<void>::Ok();
             }
@@ -125,7 +131,9 @@ namespace ZEngine::Core::Serialization
             state             = state * 1664525u + 1013904223u;
             const float value = std::bit_cast<float>(state);
             if (!std::isfinite(value))
+            {
                 continue;
+            }
             JSONSink            sink = {};
             CanonicalJSONWriter writer(JSONSink::Write, &sink);
             ASSERT_TRUE(writer.Float32(value));
@@ -165,7 +173,9 @@ namespace ZEngine::Core::Serialization
     {
         Containers::FixedArray<uint8_t, 256> bytes = {};
         for (size_t i = 0; i < bytes.size(); ++i)
+        {
             bytes[i] = static_cast<uint8_t>(i);
+        }
         constexpr cstring hex = "0123456789abcdef";
         for (size_t count : {0u, 1u, 31u, 32u, 33u, 127u, 256u})
         {
@@ -204,7 +214,9 @@ namespace ZEngine::Core::Serialization
                 ++self.Calls;
                 Containers::FixedArray<uint8_t, 64> before = {};
                 if (bytes.size() > before.size())
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 Helpers::secure_memcpy(before.data(), before.size(), bytes.data(), bytes.size());
                 const uint8_t hex[] = {0xff};
                 switch (self.Operation)
@@ -264,7 +276,9 @@ namespace ZEngine::Core::Serialization
                 auto&               self = *static_cast<SiblingSink*>(context);
                 CanonicalJSONWriter sibling(JSONSink::Write, &self.Sibling);
                 if (!sibling.Float32(.5f))
+                {
                     return VFS::VFSResult<void>::Fail(sibling.Error());
+                }
                 return JSONSink::Write(&self.Primary, bytes);
             }
         };
@@ -283,15 +297,25 @@ namespace ZEngine::Core::Serialization
             JSONSink            sink = {};
             CanonicalJSONWriter writer(JSONSink::Write, &sink);
             if (invalid == 0)
+            {
                 EXPECT_FALSE(writer.String({"\xc0\x80", 2}));
+            }
             if (invalid == 1)
+            {
                 EXPECT_FALSE(writer.String({"\xed\xa0\x80", 3}));
+            }
             if (invalid == 2)
+            {
                 EXPECT_FALSE(writer.Float32(std::numeric_limits<float>::quiet_NaN()));
+            }
             if (invalid == 3)
+            {
                 EXPECT_FALSE(writer.Float32(std::numeric_limits<float>::infinity()));
+            }
             if (invalid == 4)
+            {
                 EXPECT_FALSE(writer.Float32(-std::numeric_limits<float>::infinity()));
+            }
             EXPECT_EQ(writer.Error(), VFS::VFSError::Corrupted);
             EXPECT_FALSE(writer.String("valid"));
             EXPECT_FALSE(writer.UInt64(1));

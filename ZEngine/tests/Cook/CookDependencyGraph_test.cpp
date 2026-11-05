@@ -58,7 +58,9 @@ namespace ZEngine::Cook
             VFS::VFSResult<void*> Allocate(size_t bytes, size_t alignment, CookMemoryCategory category) noexcept override
             {
                 if (!Calls)
+                {
                     FirstRequest = bytes;
+                }
                 return ++Calls == FailAt ? VFS::VFSResult<void*>::Fail(VFS::VFSError::OutOfMemory) : Parent->Allocate(bytes, alignment, category);
             }
             void Free(void* pointer) noexcept override
@@ -123,7 +125,9 @@ namespace ZEngine::Cook
         {
             std::vector<CookAssetIdentity> result = {};
             for (uint32_t index : nodes)
+            {
                 result.push_back(Graph.Node(index)->Identity);
+            }
             return result;
         }
     };
@@ -189,7 +193,9 @@ namespace ZEngine::Cook
             const auto result  = Graph.Finalize(nullptr);
             EXPECT_EQ(result.Succeeded(), available == fixed);
             if (result.Failed())
+            {
                 EXPECT_EQ(result.Error(), VFS::VFSError::SizeLimitExceeded);
+            }
             EXPECT_EQ(Allocator.ChargeCalls, charges + 1);
             EXPECT_EQ(Parent.Statistics().LiveBytes, before);
             EXPECT_EQ(Allocator.Calls, calls);
@@ -282,7 +288,9 @@ namespace ZEngine::Cook
         const auto     allocations = Allocator.Calls, charges = Allocator.ChargeCalls;
         CookDiagnostic diagnostic = {.Severity = CookSeverity::Warning, .Stage = CookStage::Cleanup, .Underlying = VFS::VFSError::IOError};
         for (auto& identity : diagnostic.Chain)
+        {
             identity = Identity(99);
+        }
         diagnostic.ChainCount     = 32;
         diagnostic.ChainTruncated = true;
         ASSERT_TRUE(diagnostic.SetMessage("old explanatory text"));
@@ -297,7 +305,9 @@ namespace ZEngine::Cook
         EXPECT_EQ(diagnostic.Chain[0], Identity(1));
         EXPECT_EQ(diagnostic.Chain[1], Identity(2));
         for (size_t i = 2; i < diagnostic.Chain.size(); ++i)
+        {
             EXPECT_EQ(diagnostic.Chain[i], CookAssetIdentity{});
+        }
         // Text may also alias a field that the new description overwrites.
         ASSERT_TRUE(Graph.Describe(Graph.Find(Identity(1)), CookDiagnosticCode::MissingDependency, diagnostic.FieldKey, &diagnostic).Succeeded());
         EXPECT_STREQ(diagnostic.Message, "mesh_uuid");
@@ -349,7 +359,9 @@ namespace ZEngine::Cook
         std::vector<CookAssetIdentity> canonical = {}, leaf_first = {};
         std::vector<uint32_t>          permutation(64);
         for (uint32_t i = 0; i < 64; ++i)
+        {
             permutation[i] = i + 1;
+        }
         std::mt19937 random(42);
         for (uint32_t run = 0; run < 16; ++run)
         {
@@ -358,7 +370,9 @@ namespace ZEngine::Cook
             const auto scene = Scene();
             std::shuffle(permutation.begin(), permutation.end(), random);
             for (uint32_t id : permutation)
+            {
                 Root(scene, Identity(id));
+            }
             ASSERT_TRUE(Graph.BeginDiscovery().Succeeded());
             std::shuffle(permutation.begin(), permutation.end(), random);
             for (uint32_t id : permutation)
@@ -366,9 +380,13 @@ namespace ZEngine::Cook
                 CookDependency edges[2] = {};
                 size_t         count    = 0;
                 if (id < 64)
+                {
                     edges[count++] = {Identity(id + 1), "a", {}};
+                }
                 if (id < 63)
+                {
                     edges[count++] = {Identity(id + 2), "b", {}};
+                }
                 Inspect(Identity(id), {edges, count});
             }
             ASSERT_TRUE(Graph.Finalize(nullptr).Succeeded());
@@ -523,7 +541,9 @@ namespace ZEngine::Cook
             ASSERT_TRUE(Graph.BeginDiscovery().Succeeded());
             const auto before = Allocator.Calls;
             if (failure)
+            {
                 Allocator.FailAt = before + failure;
+            }
             const auto assigned = Graph.SetInspection(0, 1, inspection);
             if (!failure)
             {
@@ -539,7 +559,9 @@ namespace ZEngine::Cook
             EXPECT_EQ(Graph.EdgeCount(), 0u);
             EXPECT_FALSE(Graph.Node(0)->Inspected);
             for (uint32_t i = 0; i < 12; ++i)
+            {
                 EXPECT_EQ(Graph.Find(Identity(i + 2)), CookGraphInvalidIndex);
+            }
             Allocator.FailAt = UINT32_MAX;
             ASSERT_TRUE(Graph.SetInspection(0, 1, inspection).Succeeded());
             EXPECT_EQ(Graph.NodeCount(), 13u);
@@ -661,7 +683,9 @@ namespace ZEngine::Cook
     {
         const auto scene = Scene();
         for (uint32_t i = 1; i <= 4; ++i)
+        {
             Root(scene, Identity(i), 100 + i);
+        }
         const auto* node       = Graph.Node(0);
         const auto* occurrence = Graph.Occurrence(0);
         const auto  expected   = *occurrence;
@@ -685,12 +709,16 @@ namespace ZEngine::Cook
             const auto scene = Scene();
             Root(scene, Identity(1));
             if (conflict)
+            {
                 Root(scene, Identity(1, CookAssetKind::Material));
+            }
             ASSERT_TRUE(Graph.BeginDiscovery().Succeeded());
             const CookDependency self = {Identity(1), "self", {}};
             Inspect(Identity(1), conflict ? Core::Containers::ArrayView<const CookDependency>{} : Core::Containers::ArrayView<const CookDependency>{&self, 1});
             if (conflict)
+            {
                 Inspect(Identity(1, CookAssetKind::Material));
+            }
             CookDiagnostics diagnostics = {};
             for (size_t i = 0; i < diagnostics.Entries.size(); ++i)
             {
@@ -763,18 +791,30 @@ namespace ZEngine::Cook
         std::mt19937          random(917);
         std::vector<uint32_t> rank(count), order(count);
         for (uint32_t i = 0; i < count; ++i)
+        {
             order[i] = i;
+        }
         std::shuffle(order.begin(), order.end(), random);
         for (uint32_t i = 0; i < count; ++i)
+        {
             rank[order[i]] = i;
+        }
         std::vector<std::vector<uint32_t>> children(count);
         for (uint32_t parent = 0; parent < count; ++parent)
+        {
             for (uint32_t child = 0; child < count; ++child)
+            {
                 if (rank[child] < rank[parent] && random() % 17 == 0)
+                {
                     children[parent].push_back(child);
+                }
+            }
+        }
         const auto first = Scene(1), second = Scene(2);
         for (uint32_t id : order)
+        {
             Root(id % 2 ? first : second, Identity(id + 1));
+        }
         ASSERT_TRUE(Graph.BeginDiscovery().Succeeded());
         std::shuffle(order.begin(), order.end(), random);
         for (uint32_t id : order)
@@ -800,11 +840,13 @@ namespace ZEngine::Cook
         {
             uint32_t ready = count;
             for (uint32_t id = 0; id < count; ++id)
+            {
                 if (!complete[id] && std::all_of(children[id].begin(), children[id].end(), [&](uint32_t child) { return complete[child]; }))
                 {
                     ready = id;
                     break; // Numeric IDs encode canonical UUID-byte order.
                 }
+            }
             ASSERT_LT(ready, count);
             complete[ready] = true;
             expected.push_back(Identity(ready + 1));
@@ -814,24 +856,36 @@ namespace ZEngine::Cook
         {
             std::vector<bool> reachable(count, false);
             for (uint32_t id = 0; id < count; ++id)
+            {
                 reachable[id] = (id % 2 ? first : second) == scene;
+            }
             bool changed = true;
             while (changed)
             {
                 changed = false;
                 for (uint32_t id = 0; id < count; ++id)
+                {
                     if (reachable[id])
+                    {
                         for (uint32_t child : children[id])
+                        {
                             if (!reachable[child])
                             {
                                 reachable[child] = true;
                                 changed          = true;
                             }
+                        }
+                    }
+                }
             }
             expected.clear();
             for (uint32_t id = 0; id < count; ++id)
+            {
                 if (reachable[id])
+                {
                     expected.push_back(Identity(id + 1));
+                }
+            }
             uint32_t                                    workspace[count * 2] = {};
             Core::Containers::ArrayView<const uint32_t> closure              = {};
             ASSERT_TRUE(Graph.SceneClosure(scene, workspace, &closure).Succeeded());

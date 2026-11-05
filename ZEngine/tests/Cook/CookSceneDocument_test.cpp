@@ -62,16 +62,26 @@ namespace ZEngine::Cook
             {
                 ++Reads;
                 if (Error != VFS::VFSError::OK)
+                {
                     return VFS::VFSResult<size_t>::Fail(Error);
+                }
                 if (Overreported)
+                {
                     return VFS::VFSResult<size_t>::Ok(output.size() + 1);
+                }
                 if (EarlyEOF)
+                {
                     return VFS::VFSResult<size_t>::Ok(0);
+                }
                 if (offset > Bytes.size())
+                {
                     return VFS::VFSResult<size_t>::Fail(VFS::VFSError::InvalidPath);
+                }
                 const auto count = std::min({output.size(), Bytes.size() - static_cast<size_t>(offset), MaxRead});
                 if (count)
+                {
                     Helpers::secure_memcpy(output.data(), output.size(), Bytes.data() + static_cast<size_t>(offset), count);
+                }
                 return VFS::VFSResult<size_t>::Ok(count);
             }
         };
@@ -86,9 +96,13 @@ namespace ZEngine::Cook
             {
                 ++Calls;
                 if (Error != VFS::VFSError::OK)
+                {
                     return VFS::VFSResult<void>::Fail(Error);
+                }
                 if (bytes.size() > Bytes.size() - Count)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 Helpers::secure_memcpy(Bytes.data() + Count, Bytes.size() - Count, bytes.data(), bytes.size());
                 Count += bytes.size();
                 return VFS::VFSResult<void>::Ok();
@@ -128,14 +142,20 @@ namespace ZEngine::Cook
             {
                 LastBytes = bytes;
                 if (++Calls == FailAt)
+                {
                     return VFS::VFSResult<void*>::Fail(Failure);
+                }
                 const auto result = Parent->Allocate(bytes, alignment, category);
                 if (result.Failed())
+                {
                     return result;
+                }
                 for (auto& block : Blocks)
                 {
                     if (block.Pointer)
+                    {
                         continue;
+                    }
                     block = {result.Value(), bytes, Calls};
                     if (bytes == DecodedBytes)
                     {
@@ -151,13 +171,19 @@ namespace ZEngine::Cook
             void Free(void* pointer) noexcept override
             {
                 if (!pointer)
+                {
                     return;
+                }
                 for (auto& block : Blocks)
                 {
                     if (block.Pointer != pointer)
+                    {
                         continue;
+                    }
                     if (block.Bytes == DecodedBytes)
+                    {
                         --LiveMigrationBlocks;
+                    }
                     block = {};
                     Parent->Free(pointer);
                     return;
@@ -270,7 +296,9 @@ namespace ZEngine::Cook
             auto root = storage.Destination();
             ASSERT_TRUE(ECS::ReadSceneYAML(Source, Limits, &root, &Diagnostics));
             if (document_upgrade)
+            {
                 ASSERT_TRUE(storage.Set(root["scene"], "schema_version", storage.UInt(1)));
+            }
             ASSERT_TRUE(storage.Set(root["scene"]["entities"][size_t(0)]["components"]["NameComponent"], "schema_version", storage.UInt(1)));
             ECS::SceneYAML::Emitter emitter(Limits.MaxFileBytes);
             emitter << root;
@@ -282,7 +310,9 @@ namespace ZEngine::Cook
             auto& storage = *output->Owner();
             auto  result  = storage.Clone(source);
             if (result["scene"].IsDefined() && !storage.Set(result["scene"], "schema_version", storage.UInt(2)))
+            {
                 return false;
+            }
             *output = result;
             return result.IsDefined();
         }
@@ -469,7 +499,9 @@ namespace ZEngine::Cook
         EXPECT_EQ(Capture(Paths).Error(), VFS::VFSError::SizeLimitExceeded);
         RunLimits.MaxScenes = 2;
         for (const auto invalid : {VFS::VFSPath{}, VFS::VFSPath::Root()})
+        {
             EXPECT_EQ(Capture({&invalid, 1}).Error(), VFS::VFSError::InvalidPath);
+        }
         EXPECT_EQ(Allocator.Calls, calls);
         EXPECT_EQ(Graph.SceneCount(), 0u);
         EXPECT_EQ(Captures.Count(), 0u);
@@ -657,7 +689,9 @@ namespace ZEngine::Cook
         EXPECT_EQ(replacement.Settings(), retained);
         EXPECT_EQ(Budget.OutstandingAllocations(), 1u);
         for (const auto& block : other.Blocks)
+        {
             EXPECT_EQ(block.Pointer, nullptr);
+        }
         Document   = std::move(replacement);
         auto* self = &Document;
         Document   = std::move(*self); // Deliberate self-move must preserve ownership.
@@ -781,8 +815,12 @@ namespace ZEngine::Cook
         Core::Containers::FixedArray<size_t, 64> tree_allocations = {};
         size_t                                   tree_count       = 0;
         for (const auto& block : Allocator.Blocks)
+        {
             if (block.Pointer)
+            {
                 tree_allocations[tree_count++] = block.Call;
+            }
+        }
         EXPECT_EQ(Document.EntityCount(), 201u);
         EXPECT_EQ(Document.Settings()->Name, Name);
         std::string emitted = {};
@@ -847,7 +885,9 @@ namespace ZEngine::Cook
         };
         ASSERT_TRUE(current.Register({.Key = schema->Key, .Version = 33, .RuntimeType = schema->RuntimeType, .Fields = schema->Fields, .FieldCount = schema->FieldCount, .Codecs = codecs, .References = schema->References}, &Diagnostics));
         for (uint32_t version = 1; version <= ECS::SceneMigrationRegistry::MaxSteps; ++version)
+        {
             ASSERT_TRUE(Migrations.RegisterComponentMigration("NameComponent", version, version + 1, nullptr, Upgrade, &Diagnostics));
+        }
         ASSERT_TRUE(ECS::SceneDocument::Parse(Source.data(), Source.size(), current, &Document, &Diagnostics, Limits, &Migrations, &Route));
         EXPECT_EQ(Allocator.MigrationAllocations, 2u);
         EXPECT_EQ(Allocator.PeakMigrationBlocks, 2u);
@@ -888,6 +928,7 @@ namespace ZEngine::Cook
         Allocator.FixedFailure                          = VFS::VFSError::Unsupported;
         const auto* retained                            = Original.Settings();
         for (bool encode : {false, true})
+        {
             for (uint32_t failure = 0; failure < 8; ++failure)
             {
                 SCOPED_TRACE(failure);
@@ -896,15 +937,25 @@ namespace ZEngine::Cook
                 auto       capture = CaptureSource();
                 auto       input   = SceneInput(capture, limits);
                 if (failure == 0)
+                {
                     input.Capture = nullptr;
+                }
                 if (failure == 1)
+                {
                     input.Limits = nullptr;
+                }
                 if (failure == 2)
+                {
                     input.Source = {};
+                }
                 if (failure == 3)
+                {
                     limits.MaxWorkingBytes = 0;
+                }
                 if (failure == 4)
+                {
                     capture.Bytes = {};
+                }
                 SceneSink       sink   = {};
                 CookSceneOutput output = {.Bytes = 99};
                 CookSceneCodec  codec(Allocator, failure == 7 ? uninitialized : Schemas);
@@ -917,6 +968,7 @@ namespace ZEngine::Cook
                 EXPECT_EQ(output.Bytes, 99u);
                 EXPECT_EQ(Original.Settings(), retained);
             }
+        }
         EXPECT_EQ(Parent.Allocations, 1u);
     }
 
@@ -926,6 +978,7 @@ namespace ZEngine::Cook
         const auto  retained = Budget.Statistics().LiveBytes;
         const auto* original = Original.Settings();
         for (auto error : {VFS::VFSError::SizeLimitExceeded, VFS::VFSError::OutOfMemory, VFS::VFSError::Unsupported})
+        {
             for (bool encode : {false, true})
             {
                 SCOPED_TRACE(encode);
@@ -956,6 +1009,7 @@ namespace ZEngine::Cook
                 EXPECT_EQ(diagnostics.Entries[0].Code, error == VFS::VFSError::Unsupported ? CookDiagnosticCode::UnsupportedBackend : error == VFS::VFSError::OutOfMemory ? CookDiagnosticCode::AllocationFailed : CookDiagnosticCode::BudgetExceeded);
                 EXPECT_GT(Allocator.FixedBytes, sizeof(Core::Hash::SHA256));
             }
+        }
         EXPECT_EQ(Parent.Allocations, 1u);
     }
 
@@ -1389,7 +1443,9 @@ namespace ZEngine::Cook
         const auto relative = [](cstring path) { return VFS::VFSRelativePath::Parse(path).Value(); };
         const auto write    = [&](cstring path, std::string_view bytes) { return backend.WriteFile(absolute(path), {reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()}); };
         for (cstring path : {"/scenes", "/assets", "/scratch", "/output"})
+        {
             ASSERT_TRUE(backend.CreateDir(absolute(path)).Succeeded());
+        }
         ASSERT_TRUE(write("/scenes/main.scene", Source).Succeeded());
         {
             Importers::AssetCodec::MaterialAssetDocument material       = {.UUID = material_uuid};

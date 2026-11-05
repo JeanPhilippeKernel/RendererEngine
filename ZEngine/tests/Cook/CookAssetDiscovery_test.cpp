@@ -84,7 +84,9 @@ namespace ZEngine::Cook
             ~DiscoveryCleanup()
             {
                 if (Owner)
+                {
                     Owner->Reset();
+                }
             }
         };
     } // namespace
@@ -112,7 +114,9 @@ namespace ZEngine::Cook
             Memory.Initialize(ZMega(2), {});
             ASSERT_TRUE(Backend.InitializeOwned(ZMega(8), 512).Succeeded());
             for (cstring path : {"/assets", "/scenes", "/scratch"})
+            {
                 ASSERT_TRUE(Backend.CreateDir(Absolute(path)).Succeeded());
+            }
             Context.Initialize(&Memory.MainArena);
             ASSERT_TRUE(Context.Mount(&Backend, VFS::VFSPath::Root(), 0).Succeeded());
             ASSERT_TRUE(Backing.Initialize(Parent, ZMega(4), CookMemoryCategory::CatalogGraph).Succeeded());
@@ -241,7 +245,9 @@ namespace ZEngine::Cook
         const auto             edges       = Graph.Dependencies(material_index);
         CookResolvedDependency resolved[2] = {};
         for (size_t i = 0; i < 2; ++i)
+        {
             resolved[i] = {.Slot = Graph.Slot(edges[i]), .Identity = Graph.Node(texture_index)->Identity, .Format = "image-tga", .ObjectPath = Relative("objects/0000000000000000000000000000000000000000000000000000000000000000.tga"), .ObjectSize = 21};
+        }
         DiscoverySink material         = {};
         const auto*   material_adapter = Adapters.Find(CookAssetKind::Material);
         ASSERT_TRUE(material_adapter->Encode(nullptr, input, resolved, CookTarget::DesktopVulkanLE64, material, Run, &Diagnostics).Succeeded());

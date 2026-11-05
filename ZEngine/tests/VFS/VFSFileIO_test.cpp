@@ -41,9 +41,13 @@ namespace ZEngine::Tests
                 LargestRequest = std::max(LargestRequest, bytes.size());
                 LastOffset     = offset;
                 if (FailWrite || Writes == FailWriteAt)
+                {
                     return VFS::VFSResult<size_t>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 if (OversizedWrite)
+                {
                     return VFS::VFSResult<size_t>::Ok(bytes.size() + 1);
+                }
                 return File->Write({bytes.data(), std::min(MaxChunk, bytes.size())}, offset);
             }
             VFS::VFSResult<uint64_t> Size() const override
@@ -96,18 +100,26 @@ namespace ZEngine::Tests
                 {
                     const auto created = VFSContext::Open(path, VFS::VFSOpenFlags::Write | VFS::VFSOpenFlags::Create | VFS::VFSOpenFlags::Exclusive);
                     if (created.Failed())
+                    {
                         return created;
+                    }
                     constexpr uint8_t sentinel[] = {9, 8, 7};
                     (void) created.Value()->Write({sentinel, sizeof(sentinel)}, 0);
                     VFSContext::Close(created.Value());
                 }
                 if (OpenError != VFS::VFSError::OK)
+                {
                     return VFS::VFSResult<VFS::IVFSFile*>::Fail(OpenError);
+                }
                 if (NullOpen)
+                {
                     return VFS::VFSResult<VFS::IVFSFile*>::Ok(nullptr);
+                }
                 const auto opened = VFSContext::Open(path, flags);
                 if (opened.Failed())
+                {
                     return opened;
+                }
                 File.File = opened.Value();
                 return VFS::VFSResult<VFS::IVFSFile*>::Ok(&File);
             }
@@ -489,10 +501,14 @@ namespace ZEngine::Tests
         PutOriginal();
         const auto replace = VFS::VFSOpenFlags::Read | VFS::VFSOpenFlags::AllowReplace;
         for (const auto flag : {VFS::VFSOpenFlags::Write, VFS::VFSOpenFlags::Create, VFS::VFSOpenFlags::Append, VFS::VFSOpenFlags::Truncate, VFS::VFSOpenFlags::Exclusive})
+        {
             EXPECT_EQ(Backend->Open(Destination, replace | flag).Error(), VFS::VFSError::Unsupported);
+        }
         EXPECT_EQ(Backend->Open(Destination, VFS::VFSOpenFlags::AllowReplace).Error(), VFS::VFSError::Unsupported);
         if (!GetParam())
+        {
             EXPECT_EQ(Backend->Open(Destination, replace).Error(), VFS::VFSError::Unsupported);
+        }
         ExpectBytes(Destination, {OldBytes, sizeof(OldBytes)});
     }
 
@@ -519,7 +535,9 @@ namespace ZEngine::Tests
     TEST_P(VFSFileIOTest, DiskReplaceCompatibleReaderRetainsOldBytesAcrossPublication)
     {
         if (!GetParam())
+        {
             GTEST_SKIP() << "Borrowed-memory mode intentionally does not support snapshots; owned-memory coverage is in VFSMemoryRootLeaseTest.";
+        }
         PutOriginal();
         const auto open = Backend->Open(Destination, VFS::VFSOpenFlags::Read | VFS::VFSOpenFlags::AllowReplace);
         ASSERT_TRUE(open.Succeeded());

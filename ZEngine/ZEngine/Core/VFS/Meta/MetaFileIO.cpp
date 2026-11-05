@@ -32,7 +32,9 @@ namespace ZEngine::Core::VFS
     VFSResult<VFSPath> MetaFileIO::MetaPathFor(const VFSPath& asset_path)
     {
         if (!asset_path.IsValid() || asset_path.IsRoot())
+        {
             return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+        }
         return VFSPath::Parse((std::string(asset_path.CStr()) + ".meta").c_str());
     }
 
@@ -40,10 +42,14 @@ namespace ZEngine::Core::VFS
     {
         auto meta_path = MetaPathFor(asset_path);
         if (meta_path.Failed())
+        {
             return VFSResult<MetaFileData>::Fail(meta_path.Error());
+        }
         auto open_result = ctx.Open(meta_path.Value(), VFSOpenFlags::Read);
         if (open_result.Failed())
+        {
             return VFSResult<MetaFileData>::Fail(open_result.Error());
+        }
 
         IVFSFile* file        = open_result.Value();
 
@@ -66,46 +72,70 @@ namespace ZEngine::Core::VFS
         ctx.Close(file);
 
         if (read_result.Failed())
+        {
             return VFSResult<MetaFileData>::Fail(read_result.Error());
+        }
         if (read_result.Value() != size)
+        {
             return VFSResult<MetaFileData>::Fail(VFSError::IOError);
+        }
 
         auto j = nlohmann::json::parse(buf.begin(), buf.end(), nullptr, /*allow_exceptions=*/false);
         if (j.is_discarded() || !j.is_object())
+        {
             return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
+        }
 
         MetaFileData out{};
 
         if (!j.contains("uuid") || !j["uuid"].is_string())
+        {
             return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
+        }
         const auto parsed = uuids::uuid::from_string(j["uuid"].get<std::string>());
         if (!parsed.has_value() || parsed->is_nil())
+        {
             return VFSResult<MetaFileData>::Fail(VFSError::Corrupted);
+        }
         out.AssetUUID = *parsed;
 
         if (j.contains("importer") && j["importer"].is_string())
+        {
             CopyStr(j["importer"].get<std::string>(), out.ImporterName, sizeof(out.ImporterName));
+        }
 
         if (j.contains("source_path") && j["source_path"].is_string())
+        {
             CopyStr(j["source_path"].get<std::string>(), out.SourcePath, sizeof(out.SourcePath));
+        }
 
         if (j.contains("source_hash") && j["source_hash"].is_number_unsigned())
+        {
             out.SourceHash = j["source_hash"].get<uint64_t>();
+        }
 
         if (j.contains("import_time_ns") && j["import_time_ns"].is_number_integer())
+        {
             out.LastImportTimeNs = j["import_time_ns"].get<int64_t>();
+        }
 
         if (j.contains("artifact_path") && j["artifact_path"].is_string())
+        {
             CopyStr(j["artifact_path"].get<std::string>(), out.ArtifactPath, sizeof(out.ArtifactPath));
+        }
 
         if (j.contains("settings") && j["settings"].is_array())
         {
             for (const auto& s : j["settings"])
             {
                 if (out.SettingsCount >= META_MAX_SETTINGS)
+                {
                     break;
+                }
                 if (!s.contains("key") || !s.contains("value") || !s["key"].is_string() || !s["value"].is_string())
+                {
                     continue;
+                }
                 auto& kv = out.Settings[out.SettingsCount++];
                 CopyStr(s["key"].get<std::string>(), kv.Key, sizeof(kv.Key));
                 CopyStr(s["value"].get<std::string>(), kv.Value, sizeof(kv.Value));
@@ -120,9 +150,13 @@ namespace ZEngine::Core::VFS
     {
         auto meta_path = MetaPathFor(asset_path);
         if (meta_path.Failed())
+        {
             return VFSResult<void>::Fail(meta_path.Error());
+        }
         if (data.AssetUUID.is_nil() || data.SettingsCount > META_MAX_SETTINGS)
+        {
             return VFSResult<void>::Fail(VFSError::Corrupted);
+        }
         nlohmann::json j;
         j["uuid"]           = uuids::to_string(data.AssetUUID);
         j["importer"]       = data.ImporterName;
@@ -142,7 +176,9 @@ namespace ZEngine::Core::VFS
 
         const std::string serialized = j.dump(4);
         if (serialized.size() > MaxFileSize)
+        {
             return VFSResult<void>::Fail(VFSError::SizeLimitExceeded);
+        }
         return WriteFileAtomically(ctx, meta_path.Value(), {reinterpret_cast<const uint8_t*>(serialized.data()), serialized.size()});
     }
 
@@ -169,12 +205,16 @@ namespace ZEngine::Core::VFS
             existing.Status           = ImportStatus::Stale;
             auto write                = Write(ctx, asset_path, existing);
             if (write.Failed())
+            {
                 return VFSResult<MetaFileData>::Fail(write.Error());
+            }
             return VFSResult<MetaFileData>::Ok(existing);
         }
 
         if (read_result.Error() != VFSError::NotFound && read_result.Error() != VFSError::Corrupted)
+        {
             return VFSResult<MetaFileData>::Fail(read_result.Error());
+        }
 
         // Resolve and persist identity under the same lock; scanners must not seed
         // sidecars separately or mint random identities for unreadable cooked assets.
@@ -183,7 +223,9 @@ namespace ZEngine::Core::VFS
         {
             auto embedded = ReadEmbeddedAssetUUID(ctx, asset_path);
             if (embedded.Failed())
+            {
                 return VFSResult<MetaFileData>::Fail(embedded.Error());
+            }
             fresh.AssetUUID = embedded.Value();
         }
         else
@@ -199,7 +241,9 @@ namespace ZEngine::Core::VFS
         fresh.Status           = ImportStatus::New;
         auto write             = Write(ctx, asset_path, fresh);
         if (write.Failed())
+        {
             return VFSResult<MetaFileData>::Fail(write.Error());
+        }
         return VFSResult<MetaFileData>::Ok(fresh);
     }
 
@@ -207,7 +251,9 @@ namespace ZEngine::Core::VFS
     {
         auto open_result = ctx.Open(asset_path, VFSOpenFlags::Read);
         if (open_result.Failed())
+        {
             return VFSResult<uint64_t>::Fail(open_result.Error());
+        }
 
         IVFSFile* file        = open_result.Value();
 
@@ -248,7 +294,9 @@ namespace ZEngine::Core::VFS
         }
         const auto closed = ctx.CloseChecked(file);
         if (closed.Failed())
+        {
             return VFSResult<uint64_t>::Fail(closed.Error());
+        }
         uint64_t   hash      = 0;
         const auto finalized = source_hash.Finalize(&hash);
         return finalized.Failed() ? VFSResult<uint64_t>::Fail(finalized.Error()) : VFSResult<uint64_t>::Ok(hash);

@@ -32,11 +32,17 @@ namespace ZEngine::Core::Memory
         [[nodiscard]] bool   TryAcquire(IWorkingMemoryBudget* budget, size_t bytes) noexcept
         {
             if (m_budget)
+            {
                 return false;
+            }
             if (!budget || !bytes)
+            {
                 return true;
+            }
             if (!budget->TryReserveWorkingBytes(bytes))
+            {
                 return false;
+            }
             m_budget = budget;
             m_bytes  = bytes;
             return true;
@@ -44,7 +50,9 @@ namespace ZEngine::Core::Memory
         void Release() noexcept
         {
             if (m_budget)
+            {
                 m_budget->ReleaseWorkingBytes(m_bytes);
+            }
             m_budget = nullptr;
             m_bytes  = 0;
         }

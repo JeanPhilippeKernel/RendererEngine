@@ -68,7 +68,9 @@ namespace
             EXPECT_EQ(output, expected.Value());
             EXPECT_EQ(output.ComponentCount(), expected.Value().ComponentCount());
             for (size_t i = output.Length(); i < VFS::VFS_MAX_PATH; ++i)
+            {
                 EXPECT_EQ(output.CStr()[i], '\0') << i;
+            }
         }
     }
 

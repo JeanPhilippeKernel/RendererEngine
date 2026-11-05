@@ -50,7 +50,9 @@ namespace ZEngine::Cook::Tests
         void Append(Core::Containers::ArrayView<const uint8_t> period, uint64_t bytes)
         {
             if (!bytes)
+            {
                 return;
+            }
             ASSERT_LT(SegmentCount, Segments.size());
             ASSERT_GT(period.size(), 0u);
             ASSERT_LE(period.size(), Segments[SegmentCount].Pattern.size());
@@ -73,10 +75,14 @@ namespace ZEngine::Cook::Tests
         {
             ++Reads;
             if (offset > EncodedBytes)
+            {
                 return VFS::VFSResult<size_t>::Fail(VFS::VFSError::Corrupted);
+            }
             const size_t count = static_cast<size_t>(std::min<uint64_t>(std::min(output.size(), Chunk), EncodedBytes - offset));
             if (offset <= FailOffset && FailOffset - offset < count)
+            {
                 return VFS::VFSResult<size_t>::Fail(VFS::VFSError::PermissionDenied);
+            }
             MaxReadEnd           = std::max(MaxReadEnd, offset + count);
             const uint64_t first = offset;
             uint64_t       base  = 0;
@@ -94,7 +100,9 @@ namespace ZEngine::Cook::Tests
                 auto*          bytes   = output.data() + done;
                 size_t         filled  = std::min(payload, segment.Period);
                 for (size_t j = 0; j < filled; ++j)
+                {
                     bytes[j] = segment.Pattern[(at + j) % segment.Period];
+                }
                 // Linear bytes copied, logarithmic nonoverlapping copies.
                 while (filled < payload)
                 {
@@ -107,11 +115,19 @@ namespace ZEngine::Cook::Tests
                 base   += segment.Bytes;
             }
             if (done != count)
+            {
                 return VFS::VFSResult<size_t>::Fail(VFS::VFSError::Corrupted);
+            }
             if (PatchOffset != UINT64_MAX)
+            {
                 for (size_t i = 0; i < Patch.size(); ++i)
+                {
                     if (PatchOffset <= UINT64_MAX - i && PatchOffset + i >= first && PatchOffset + i - first < count)
+                    {
                         output[static_cast<size_t>(PatchOffset + i - first)] = Patch[i];
+                    }
+                }
+            }
             return VFS::VFSResult<size_t>::Ok(count);
         }
         void HashContents()
@@ -141,10 +157,14 @@ namespace ZEngine::Cook::Tests
         {
             ++Calls;
             if (!Capture || bytes.size() > Buffer.size())
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+            }
             const auto read = Capture->Read(Bytes, {Buffer.data(), bytes.size()});
             if (read.Failed() || read.Value() != bytes.size() || !std::equal(bytes.begin(), bytes.end(), Buffer.begin()))
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::Corrupted);
+            }
             Bytes += bytes.size();
             return VFS::VFSResult<void>::Ok();
         }
@@ -186,12 +206,16 @@ namespace ZEngine::Cook::Tests
         count.Append(uint64_t(indices));
         capture.Append(count.View(), count.Count);
         if (index_offset)
+        {
             *index_offset = capture.Size();
+        }
         constexpr uint32_t index[] = {0, 1, 2};
         capture.Append({reinterpret_cast<const uint8_t*>(index), sizeof(index)}, index_bytes);
         Core::Maths::Mat4f matrix = {};
         for (size_t i = 0; i < 4; ++i)
+        {
             matrix.m_data[i][i] = 1.f;
+        }
         ResourceWireBytes tail = {};
         tail.Append(uint64_t{1});
         tail.Append(Importers::AssetSubMesh{.MaterialUUID = material, .VertexCount = vertices, .IndexCount = indices, .VertexUnitStreamSize = 32, .IndexUnitStreamSize = 4, .TotalByteSize = static_cast<uint32_t>(vertex_bytes + index_bytes)});

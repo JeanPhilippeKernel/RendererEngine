@@ -77,7 +77,9 @@ namespace ZEngine::Cook
                 EXPECT_EQ(result.Succeeded(), available == fixed);
                 EXPECT_EQ(output, available == fixed ? expected : before);
                 if (result.Failed())
+                {
                     EXPECT_EQ(result.Error(), Core::VFS::VFSError::SizeLimitExceeded);
+                }
                 EXPECT_EQ(budget.Statistics().LiveBytes, 0u);
             }
             EXPECT_EQ(budget.Allocations, 0u);
@@ -171,7 +173,9 @@ namespace ZEngine::Cook
             SCOPED_TRACE(pattern);
             Core::Containers::FixedArray<uint32_t, Core::VFS::META_MAX_SETTINGS> order = {};
             for (uint32_t i = 0; i < count; ++i)
+            {
                 order[i] = pattern == 1 ? count - 1 - i : pattern == 2 ? (i + count / 2) % count : pattern == 3 ? (i % 2 ? count - 1 - i / 2 : i / 2) : i;
+            }
             if (pattern == 4)
             {
                 uint32_t seed = 0x12345678;
@@ -184,7 +188,9 @@ namespace ZEngine::Cook
                 }
             }
             for (uint32_t i = 0; i < count; ++i)
+            {
                 metadata.Data.Settings[i] = OrderedMetadataSetting(order[i]);
+            }
             Tests::FixedStateAllocator budget = {};
             Digest256                  actual = {};
             ASSERT_TRUE(ComputeCookMetadataKey(budget, metadata, &actual).Succeeded());
@@ -208,7 +214,9 @@ namespace ZEngine::Cook
                 const auto result = ComputeCookMetadataKey(budget, metadata, &actual);
                 EXPECT_EQ(result.Succeeded(), available == fixed);
                 if (result.Failed())
+                {
                     EXPECT_EQ(result.Error(), Core::VFS::VFSError::SizeLimitExceeded);
+                }
                 EXPECT_EQ(actual, available == fixed ? expected : before);
                 EXPECT_EQ(budget.Bytes, fixed);
                 EXPECT_EQ(budget.Allocations, 0u);
@@ -231,11 +239,15 @@ namespace ZEngine::Cook
         do
         {
             for (uint32_t i = 0; i < order.size(); ++i)
+            {
                 metadata.Data.Settings[i] = OrderedMetadataSetting(order[i]);
+            }
             Digest256 actual = {};
             ASSERT_TRUE(ComputeCookMetadataKey(budget, metadata, &actual).Succeeded());
             if (!permutations)
+            {
                 expected = actual;
+            }
             EXPECT_EQ(actual, expected);
             EXPECT_EQ(budget.Statistics().LiveBytes, 0u);
             ++permutations;
@@ -258,7 +270,9 @@ namespace ZEngine::Cook
                 SCOPED_TRACE(first);
                 SCOPED_TRACE(second);
                 for (uint32_t i = 0; i < metadata.Data.SettingsCount; ++i)
+                {
                     metadata.Data.Settings[i] = OrderedMetadataSetting(metadata.Data.SettingsCount - 1 - i);
+                }
                 auto&       destination = metadata.Data.Settings[second];
                 const auto& source      = metadata.Data.Settings[first];
                 ASSERT_EQ(Helpers::secure_strcpy(destination.Key, sizeof(destination.Key), source.Key), Helpers::MEMORY_OP_SUCCESS);
@@ -324,19 +338,33 @@ namespace ZEngine::Cook
         {
             auto candidate = metadata;
             if (invalid == 0)
+            {
                 candidate.Fields = 0;
+            }
             if (invalid == 1)
+            {
                 candidate.Data.AssetUUID = {};
+            }
             if (invalid == 2)
+            {
                 candidate.Data.ImporterName[0] = '\0';
+            }
             if (invalid == 3)
+            {
                 candidate.Data.SettingsCount = Core::VFS::META_MAX_SETTINGS + 1;
+            }
             if (invalid == 4)
+            {
                 candidate.Data.Settings[1] = candidate.Data.Settings[0];
+            }
             if (invalid == 5)
+            {
                 Helpers::secure_memset(candidate.Data.ImporterName, 'x', sizeof(candidate.Data.ImporterName), sizeof(candidate.Data.ImporterName));
+            }
             if (invalid == 6)
+            {
                 Helpers::secure_memset(candidate.Data.Settings[0].Value, 'x', sizeof(candidate.Data.Settings[0].Value), sizeof(candidate.Data.Settings[0].Value));
+            }
             Digest256 output  = {};
             output.Bytes[0]   = 123;
             const auto before = output;

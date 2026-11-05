@@ -28,7 +28,9 @@ namespace ZEngine::Importers::AssetCodec
             const auto  offset = text.find(before);
             EXPECT_NE(offset, std::string::npos);
             if (offset != std::string::npos)
+            {
                 text.replace(offset, before.size(), after);
+            }
             return text;
         }
 
@@ -53,11 +55,17 @@ namespace ZEngine::Importers::AssetCodec
             {
                 auto& self = *static_cast<MaterialSink*>(context);
                 if (++self.Calls == self.FailAt)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 if (bytes.size() > sizeof(self.Bytes) - self.Count)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 if (bytes.size())
+                {
                     Helpers::secure_memcpy(self.Bytes + self.Count, sizeof(self.Bytes) - self.Count, bytes.data(), bytes.size());
+                }
                 self.Count += bytes.size();
                 return VFS::VFSResult<void>::Ok();
             }
@@ -143,7 +151,9 @@ namespace ZEngine::Importers::AssetCodec
         }
         constexpr cstring keys[] = {"albedo", "emissive", "normal", "opacity", "specular"};
         for (uint32_t i = 0; i < static_cast<uint32_t>(MaterialTextureSlot::Count); ++i)
+        {
             EXPECT_STREQ(MaterialTextureSlotKey(static_cast<MaterialTextureSlot>(i)), keys[i]);
+        }
         EXPECT_EQ(MaterialTextureSlotKey(MaterialTextureSlot::Count), nullptr);
         EXPECT_EQ(MaterialTextureSlotKey(static_cast<MaterialTextureSlot>(255)), nullptr);
     }
@@ -173,7 +183,9 @@ namespace ZEngine::Importers::AssetCodec
              ChangedMaterial("\"alpha_mode\":\"BLEND\",", ""),
              ChangedMaterial("\"alpha_cutoff\":0.5", "\"alpha_cutoff\":0.5,\"alpha_cutoff\":0.5"),
              })
+        {
             ExpectBadMaterial(text);
+        }
         ExpectBadMaterial(std::string(MaterialFixture) + "{}");
         ExpectBadMaterial(std::string(MaterialFixture) + "x");
         ExpectBadMaterial(ChangedMaterial("\"material_version\":1", "\"material_version\":2"), VFS::VFSError::Unsupported);
@@ -183,7 +195,9 @@ namespace ZEngine::Importers::AssetCodec
     TEST(MaterialAssetDocumentTest, UUIDsRequireCanonicalSpellingAndExpectedIdentityAgreement)
     {
         for (cstring invalid : {"00000000-0000-0000-0000-000000000000", "AAAAAAAA-0000-0000-0000-000000000001", "00000000000000000000000000000001", "00000000-0000-0000-0000-00000000000g"})
+        {
             ExpectBadMaterial(ChangedMaterial("00000000-0000-0000-0000-000000000001", invalid));
+        }
         MaterialAssetDocument output = {};
         const auto            wrong  = uuids::uuid::from_string("00000000-0000-0000-0000-000000000099").value();
         output.Factors[0]            = 123.f;
@@ -204,13 +218,17 @@ namespace ZEngine::Importers::AssetCodec
              ChangedMaterial(",\"specular\":{\"uuid\":\"00000000-0000-0000-0000-000000000000\",\"path\":\"\"}", ""),
              ChangedMaterial("\"textures\":{", "\"textures\":{\"albedo\":{\"uuid\":\"00000000-0000-0000-0000-000000000000\",\"path\":\"\"},"),
              })
+        {
             ExpectBadMaterial(text);
+        }
     }
 
     TEST(MaterialAssetDocumentTest, TexturePathsAreValidatedBeforeNormalizationAndPreserveUnicodeSpelling)
     {
         for (cstring path : {"/Assets/../tex.png", "/Assets//tex.png", "/Assets/./tex.png", "/Assets/tex.png/", "Assets/../tex.png", "C:\\tex.png", "/", "assets/tex\\name.png", "assets/tex\nname.png"})
+        {
             ExpectBadMaterial(ChangedMaterial("/Assets/tex.png", path));
+        }
         for (cstring path : {"assets/T\u00e9x.png", "/Assets/T\u00e9x.png", "objects/digest.png"})
         {
             const auto            text   = ChangedMaterial("/Assets/tex.png", path);
@@ -222,7 +240,9 @@ namespace ZEngine::Importers::AssetCodec
     TEST(MaterialAssetDocumentTest, NumericArraysRequireExactlyFourCheckedFiniteBinary32Values)
     {
         for (cstring values : {"[]", "[0,0,0]", "[0,0,0,0,0]", "[0,0,0,true]", "[0,0,0,null]", "[0,0,0,\"1\"]", "[0,0,0,1e999]", "[0,0,0,NaN]", "[0,0,0,3.402824e38]"})
+        {
             ExpectBadMaterial(ChangedMaterial("[0,0,0,0]", values));
+        }
         auto                  text   = ChangedMaterial("[0,0,0,0]", "[-0,1.40129846e-45,-3.402823466e38,1.000000059604644775390625]");
         MaterialAssetDocument output = {};
         ASSERT_TRUE(ReadMaterialAssetDocument(MaterialBytes(text), &output).Succeeded());
@@ -242,9 +262,13 @@ namespace ZEngine::Importers::AssetCodec
             EXPECT_STREQ(Rendering::Materials::AlphaModeName(output.AlphaMode), mode);
         }
         for (cstring mode : {"blend", "UNKNOWN", ""})
+        {
             ExpectBadMaterial(ChangedMaterial("BLEND", mode));
+        }
         for (cstring cutoff : {"-0.5", "1", "1e999"})
+        {
             ExpectBadMaterial(ChangedMaterial("\"alpha_cutoff\":0.5", std::string("\"alpha_cutoff\":") + cutoff));
+        }
         const auto            text   = ChangedMaterial("\"alpha_cutoff\":0.5", "\"alpha_cutoff\":0.5000000000001");
         MaterialAssetDocument output = {};
         EXPECT_TRUE(ReadMaterialAssetDocument(MaterialBytes(text), &output).Succeeded());
@@ -260,7 +284,9 @@ namespace ZEngine::Importers::AssetCodec
         EXPECT_STREQ(output.Source.Importer, "GltfImporter");
         EXPECT_EQ(output.Source.Index, UINT32_MAX);
         for (cstring source : {R"({"path":"a","importer":"I"})", R"({"path":"a","importer":"","index":0})", R"({"path":"a","importer":"I","index":4294967296})", R"({"path":"a","importer":"I","index":0.0})", R"({"path":"a","importer":"I","index":0,"other":0})", R"({"path":"a","path":"b","importer":"I","index":0})"})
+        {
             ExpectBadMaterial(ChangedMaterial("\"name\":\"Material\"", std::string("\"name\":\"Material\",\"source_material\":") + source));
+        }
     }
 
     TEST(MaterialAssetDocumentTest, UTF8AndDecodedFieldByteBoundsAreStrictAndNeverTruncate)
@@ -355,19 +381,33 @@ namespace ZEngine::Importers::AssetCodec
             auto         candidate = document;
             MaterialSink sink      = {};
             if (invalid == 0)
+            {
                 candidate.UUID = {};
+            }
             if (invalid == 1)
+            {
                 candidate.AlphaMode = static_cast<Rendering::Materials::AlphaMode>(255);
+            }
             if (invalid == 2)
+            {
                 candidate.Factors[2] = -1.f;
+            }
             if (invalid == 3)
+            {
                 candidate.AmbientColor[0] = std::numeric_limits<float>::quiet_NaN();
+            }
             if (invalid == 4)
+            {
                 Helpers::secure_memset(candidate.Name, 'x', sizeof(candidate.Name), sizeof(candidate.Name));
+            }
             if (invalid == 5)
+            {
                 Helpers::secure_memset(candidate.Textures[0].Path, 'x', sizeof(candidate.Textures[0].Path), sizeof(candidate.Textures[0].Path));
+            }
             if (invalid == 6)
+            {
                 candidate.Textures[0].UUID = {};
+            }
             EXPECT_EQ(WriteCanonicalMaterialSemanticProjection(candidate, MaterialSink::Write, &sink).Error(), VFS::VFSError::Corrupted);
             EXPECT_EQ(sink.Calls, 0u);
         }

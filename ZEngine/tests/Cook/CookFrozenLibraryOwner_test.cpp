@@ -58,7 +58,9 @@ namespace ZEngine::Cook::Tests
             Memory.Initialize(ZMega(2), {});
             ASSERT_TRUE(Backend.InitializeOwned(ZMega(1), 64).Succeeded());
             for (cstring path : {"/assets", "/scenes", "/scratch", "/output"})
+            {
                 ASSERT_TRUE(Backend.CreateDir(FrozenPath(path)).Succeeded());
+            }
             ASSERT_TRUE(Backend.WriteFile(FrozenPath("/assets/image.png"), FrozenBytes).Succeeded());
             Context.Initialize(&Memory.MainArena);
             ASSERT_TRUE(Context.Mount(&Backend, VFS::VFSPath::Root(), 0).Succeeded());
@@ -144,7 +146,9 @@ namespace ZEngine::Cook::Tests
             const auto result = owner.Initialize(allocator, roots);
             EXPECT_EQ(result.Succeeded(), available == payload + fixed);
             if (result.Failed())
+            {
                 EXPECT_EQ(result.Error(), VFS::VFSError::SizeLimitExceeded);
+            }
             else
             {
                 EXPECT_EQ(Allocator.Statistics().LiveBytes, payload);
@@ -230,7 +234,9 @@ namespace ZEngine::Cook::Tests
         EXPECT_EQ(native.AllocationCount(), 2u);
         const auto live = native.Statistics().LiveBytes;
         for (size_t repeat = 0; repeat < 128; ++repeat)
+        {
             EXPECT_EQ(owner.FixedWorkingBytes(sibling_run).Value(), sizeof(owner) + sizeof(owner_pool) + owner_mapping);
+        }
         EXPECT_EQ(native.AllocationCount(), 2u);
         EXPECT_EQ(native.Statistics().LiveBytes, live);
         ASSERT_TRUE(owner.Reset().Succeeded());
@@ -256,13 +262,17 @@ namespace ZEngine::Cook::Tests
             VFS::VFSResult<CookAllocatorMemoryRequirements> MemoryRequirements() const noexcept override
             {
                 if (!KnownState)
+                {
                     return VFS::VFSResult<CookAllocatorMemoryRequirements>::Fail(VFS::VFSError::Unsupported);
+                }
                 return VFS::VFSResult<CookAllocatorMemoryRequirements>::Ok({sizeof(*Parent) + sizeof(*this), 0, false});
             }
             VFS::VFSResult<size_t> AllocationFootprint(size_t bytes, size_t alignment, CookMemoryCategory category) const noexcept override
             {
                 if (!KnownBlocks)
+                {
                     return VFS::VFSResult<size_t>::Fail(VFS::VFSError::Unsupported);
+                }
                 return Underreport ? VFS::VFSResult<size_t>::Ok(bytes - 1) : Parent->AllocationFootprint(bytes, alignment, category);
             }
             VFS::VFSResult<void*> Allocate(size_t bytes, size_t alignment, CookMemoryCategory category) noexcept override

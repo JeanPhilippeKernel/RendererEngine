@@ -36,9 +36,13 @@ namespace ZEngine::Cook
             VFS::VFSResult<void> Write(Core::Containers::ArrayView<const uint8_t> bytes) override
             {
                 if (bytes.size() > sizeof(Bytes) - Count)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 if (bytes.size())
+                {
                     (void) Helpers::secure_memcpy(Bytes + Count, sizeof(Bytes) - Count, bytes.data(), bytes.size());
+                }
                 Count += bytes.size();
                 return VFS::VFSResult<void>::Ok();
             }
@@ -70,12 +74,18 @@ namespace ZEngine::Cook
             {
                 ++Calls;
                 if (Failure != VFS::VFSError::OK)
+                {
                     return VFS::VFSResult<void*>::Fail(Failure);
+                }
                 if (Null)
+                {
                     return VFS::VFSResult<void*>::Ok(nullptr);
+                }
                 auto result = Backing->Allocate(bytes + (Misalign ? 1 : 0), alignment, category);
                 if (result.Succeeded() && Misalign)
+                {
                     return VFS::VFSResult<void*>::Ok(static_cast<uint8_t*>(result.Value()) + 1);
+                }
                 return result;
             }
             void Free(void* pointer) noexcept override
@@ -177,7 +187,9 @@ namespace ZEngine::Cook
                 ASSERT_TRUE(Graph.AddRoot(0, ReuseIdentity(3), {}, "Test", "mesh").Succeeded());
                 ASSERT_TRUE(Graph.AddRoot(1, ReuseIdentity(4), {}, "Test", "environment").Succeeded());
                 if (variant.SharedTexture)
+                {
                     ASSERT_TRUE(Graph.AddRoot(0, ReuseIdentity(5), {}, "Test", "texture").Succeeded());
+                }
             }
             ASSERT_TRUE(Graph.BeginDiscovery().Succeeded());
             if (!variant.Empty)
@@ -192,7 +204,9 @@ namespace ZEngine::Cook
                 Inspect(1, "image-png", {}, variant.ChangedTexture);
                 Inspect(4, "zenvmap-v2-le64");
                 if (variant.SharedTexture)
+                {
                     Inspect(5, variant.Tga ? "image-tga" : "image-png");
+                }
             }
             ASSERT_TRUE(Graph.Finalize(nullptr).Succeeded());
         }
@@ -325,7 +339,9 @@ namespace ZEngine::Cook
     {
         Start();
         for (uint32_t id : {1u, 2u, 3u, 4u})
+        {
             ExpectAsset(id, CookReuseDecision::Ready);
+        }
         for (const auto error : {VFS::VFSError::Unsupported, VFS::VFSError::OutOfMemory, VFS::VFSError::SizeLimitExceeded})
         {
             const auto live        = Parent.Statistics().LiveBytes;
@@ -419,8 +435,12 @@ namespace ZEngine::Cook
     {
         auto ledger = nlohmann::json::parse(Original.Bytes, Original.Bytes + Original.Count);
         for (auto& asset : ledger["assets"])
+        {
             if (asset["kind"] == "material")
+            {
                 asset["dependencies"][0]["slot"] = "emissive";
+            }
+        }
         const auto text = ledger.dump();
         ASSERT_EQ(Previous.Read({reinterpret_cast<const uint8_t*>(text.data()), text.size()}, Recipe.Target, Limits, Allocator, nullptr).Value(), CookManifestReadStatus::Valid);
         Start();
@@ -437,8 +457,12 @@ namespace ZEngine::Cook
     {
         auto ledger = nlohmann::json::parse(Original.Bytes, Original.Bytes + Original.Count);
         for (auto& asset : ledger["assets"])
+        {
             if (asset["kind"] == "texture")
+            {
                 asset["input_key"] = ReuseDigest(0xee).Hex().data();
+            }
+        }
         const auto text = ledger.dump();
         ASSERT_EQ(Previous.Read({reinterpret_cast<const uint8_t*>(text.data()), text.size()}, Recipe.Target, Limits, Allocator, nullptr).Value(), CookManifestReadStatus::Valid);
         Start();
@@ -454,9 +478,13 @@ namespace ZEngine::Cook
         Start();
         FinishAssets();
         for (uint32_t i = 0; i < Graph.NodeCount(); ++i)
+        {
             EXPECT_TRUE(Reuse.WasAssetReused(i));
+        }
         for (uint32_t i = 0; i < 2; ++i)
+        {
             EXPECT_EQ(Reuse.PrepareScene(i, OriginalScenes[i].SourceDigest, nullptr).Value(), CookReuseDecision::Encode);
+        }
         EXPECT_EQ(Store.Opens, 4u);
     }
 

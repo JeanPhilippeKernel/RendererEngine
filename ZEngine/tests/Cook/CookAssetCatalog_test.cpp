@@ -98,7 +98,9 @@ namespace ZEngine::Cook
         const auto visit = [](void* context, const CookAssetCatalogEntry& entry) {
             auto& state = *static_cast<Enumeration*>(context);
             if (state.Count)
+            {
                 EXPECT_TRUE(state.Previous < entry.Identity);
+            }
             state.Previous = entry.Identity;
             ++state.Count;
             return Core::VFS::VFSResult<void>::Ok();
@@ -152,7 +154,9 @@ namespace ZEngine::Cook
             const auto result = catalog.Finalize(nullptr);
             EXPECT_EQ(result.Succeeded(), available == fixed);
             if (result.Failed())
+            {
                 EXPECT_EQ(result.Error(), Core::VFS::VFSError::SizeLimitExceeded);
+            }
             EXPECT_EQ(allocator.ChargeCalls, calls + 1);
             EXPECT_EQ(allocator.Statistics().LiveBytes, before);
             EXPECT_EQ(catalog.IsFinalized(), available == fixed);
@@ -179,7 +183,9 @@ namespace ZEngine::Cook
             EXPECT_EQ(catalog.Finalize(nullptr).Error(), Core::VFS::VFSError::InvalidPath);
             ASSERT_TRUE(catalog.Initialize(allocator, count, count).Succeeded());
             if (count)
+            {
                 ASSERT_TRUE(catalog.Append(CatalogEntry(1), nullptr).Succeeded());
+            }
             ASSERT_TRUE(catalog.Finalize(nullptr).Succeeded());
             EXPECT_EQ(allocator.ChargeCalls, 0u);
             EXPECT_EQ(allocator.Backing.Allocations, count);
@@ -199,18 +205,26 @@ namespace ZEngine::Cook
             ASSERT_TRUE(catalog.Initialize(allocator, 2, 2).Succeeded());
             auto first = CatalogEntry(1), second = CatalogEntry(2);
             if (conflict == 0)
+            {
                 second.Identity.UUID = first.Identity.UUID;
+            }
             if (conflict == 1)
             {
                 second.Identity.UUID = first.Identity.UUID;
                 second.Identity.Kind = CookAssetKind::Texture;
             }
             if (conflict == 2)
+            {
                 second.Artifact = first.Artifact;
+            }
             if (conflict == 3)
+            {
                 second.Metadata = first.Metadata;
+            }
             if (conflict == 4)
+            {
                 second.Artifact = first.Metadata;
+            }
             if (conflict == 5)
             {
                 second.Identity.Kind     = CookAssetKind::EnvironmentMap;
@@ -237,17 +251,29 @@ namespace ZEngine::Cook
         {
             auto entry = CatalogEntry(1);
             if (fault == 0)
+            {
                 entry.Identity.UUID = {};
+            }
             if (fault == 1)
+            {
                 entry.Artifact = {};
+            }
             if (fault == 2)
+            {
                 entry.Metadata = entry.Artifact;
+            }
             if (fault == 3)
+            {
                 entry.EnvironmentSource = Core::VFS::VFSRelativePath::Parse("assets/source.hdr").Value();
+            }
             if (fault == 4)
+            {
                 entry.Identity.Kind = CookAssetKind::EnvironmentMap;
+            }
             if (fault == 5)
+            {
                 entry.Metadata = Core::VFS::VFSRelativePath::Parse("outside").Value();
+            }
             EXPECT_EQ(catalog.Append(entry, nullptr).Error(), Core::VFS::VFSError::Corrupted);
             EXPECT_EQ(catalog.Count(), 0u);
         }

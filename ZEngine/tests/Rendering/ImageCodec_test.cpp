@@ -57,7 +57,9 @@ namespace ZEngine::Importers::ImageCodec
                     HeapAtWorking[WorkingCalls] = LiveBytes;
                 }
                 if (++WorkingCalls == RefuseWorkingAt)
+                {
                     return false;
+                }
                 FixedLive    += bytes;
                 FixedPeak     = std::max(FixedPeak, FixedLive);
                 CombinedPeak  = std::max(CombinedPeak, FixedLive + LiveBytes);
@@ -72,10 +74,14 @@ namespace ZEngine::Importers::ImageCodec
             void* Allocate(size_t bytes) noexcept override
             {
                 if (++Attempts >= RefuseAtAttempt || bytes > std::numeric_limits<size_t>::max() - sizeof(Header))
+                {
                     return nullptr;
+                }
                 void* raw = std::malloc(sizeof(Header) + bytes);
                 if (!raw)
+                {
                     return nullptr;
+                }
                 auto* header = new (raw) Header{this, bytes};
                 ++LiveBlocks;
                 LiveBytes    += sizeof(Header) + bytes;
@@ -87,16 +93,22 @@ namespace ZEngine::Importers::ImageCodec
             {
                 ++Reallocations;
                 if (!pointer)
+                {
                     return Allocate(new_bytes);
+                }
                 const auto* old = static_cast<Header*>(pointer) - 1;
                 EXPECT_EQ(old->Owner, this);
                 EXPECT_LE(old_bytes, old->Bytes);
                 void* replacement = Allocate(new_bytes);
                 if (!replacement)
+                {
                     return nullptr;
+                }
                 const auto count = std::min({old_bytes, old->Bytes, new_bytes});
                 if (count)
+                {
                     EXPECT_EQ(Helpers::secure_memcpy(replacement, new_bytes, pointer, count), Helpers::MEMORY_OP_SUCCESS);
+                }
                 Free(pointer);
                 return replacement;
             }
@@ -116,7 +128,9 @@ namespace ZEngine::Importers::ImageCodec
             int   width = 0, height = 0, channels = 0;
             auto* pixels = stbi_load_from_memory(Png, static_cast<int>(sizeof(Png)), &width, &height, &channels, STBI_rgb_alpha);
             if (!pixels)
+            {
                 return false;
+            }
             EXPECT_EQ(width, 1);
             EXPECT_EQ(height, 1);
             EXPECT_EQ(channels, 2);
@@ -157,12 +171,18 @@ namespace ZEngine::Importers::ImageCodec
                         auto& self = *static_cast<BorrowedImageSource*>(context);
                         ++self.Reads;
                         if (self.Error != Core::VFS::VFSError::OK)
+                        {
                             return Core::VFS::VFSResult<size_t>::Fail(self.Error);
+                        }
                         if (self.Overreport)
+                        {
                             return Core::VFS::VFSResult<size_t>::Ok(bytes.size() + 1);
+                        }
                         const size_t count = offset >= self.Bytes.size() ? 0 : std::min({bytes.size(), self.Bytes.size() - static_cast<size_t>(offset), self.Chunk});
                         if (count)
+                        {
                             Helpers::secure_memcpy(bytes.data(), bytes.size(), self.Bytes.data() + offset, count);
+                        }
                         return Core::VFS::VFSResult<size_t>::Ok(count);
                     },
                     Bytes.size()};
@@ -180,7 +200,9 @@ namespace ZEngine::Importers::ImageCodec
             {
                 const auto word = [&](size_t offset, uint32_t value, size_t bytes = 4) {
                     for (size_t i = 0; i < bytes; ++i)
+                    {
                         Header[offset + i] = static_cast<uint8_t>(value >> (8 * i));
+                    }
                 };
                 Header[0] = 'B';
                 Header[1] = 'M';
@@ -202,13 +224,19 @@ namespace ZEngine::Importers::ImageCodec
                         ++self.Reads;
                         self.LargestRequest = std::max(self.LargestRequest, output.size());
                         if (offset > Size)
+                        {
                             return Core::VFS::VFSResult<size_t>::Fail(Core::VFS::VFSError::Corrupted);
+                        }
                         const auto count = static_cast<size_t>(std::min<uint64_t>(output.size(), Size - offset));
                         if (offset <= self.FailOffset && self.FailOffset - offset < count)
+                        {
                             return Core::VFS::VFSResult<size_t>::Fail(Core::VFS::VFSError::PermissionDenied);
+                        }
                         constexpr uint8_t pixel[] = {11, 42, 93, 255};
                         for (size_t i = 0; i < count; ++i)
+                        {
                             output[i] = offset + i < self.Header.size() ? self.Header[static_cast<size_t>(offset) + i] : pixel[(offset + i - self.Header.size()) % sizeof(pixel)];
+                        }
                         return Core::VFS::VFSResult<size_t>::Ok(count);
                     },
                     Size};

@@ -122,7 +122,9 @@ TEST(AllocatorTest, RetainedStorageQueriesRejectUnknownBackingAndDoNotCommitOrAd
     const auto offset = root.m_current_offset;
     const auto pages  = root.m_committed_size;
     for (size_t repeat = 0; repeat < 128; ++repeat)
+    {
         ASSERT_TRUE(root.RetainedStorage(&retained));
+    }
     EXPECT_EQ(root.m_current_offset, offset);
     EXPECT_EQ(root.m_committed_size, pages);
     EXPECT_EQ(retained.CommittedBytes, pages);
@@ -268,14 +270,20 @@ namespace ZEngine::Core::Memory::Tests
         void*  Allocate(size_t bytes) noexcept override
         {
             if (++Calls == FailAt)
+            {
                 return nullptr;
+            }
             for (auto& block : Blocks)
             {
                 if (block.Pointer)
+                {
                     continue;
+                }
                 void* memory = ::operator new(bytes, std::align_val_t(DEFAULT_ALIGNMENT), std::nothrow);
                 if (!memory)
+                {
                     return nullptr;
+                }
                 block      = {memory, bytes};
                 LiveBytes += bytes;
                 return memory;
@@ -296,11 +304,15 @@ namespace ZEngine::Core::Memory::Tests
         void Free(void* pointer) noexcept override
         {
             if (!pointer)
+            {
                 return;
+            }
             for (auto& block : Blocks)
             {
                 if (block.Pointer != pointer)
+                {
                     continue;
+                }
                 LiveBytes -= block.Bytes;
                 block      = {};
                 ++Frees;
@@ -313,8 +325,12 @@ namespace ZEngine::Core::Memory::Tests
         {
             EXPECT_EQ(LiveBytes, 0u);
             for (auto& block : Blocks)
+            {
                 if (block.Pointer)
+                {
                     Free(block.Pointer);
+                }
+            }
         }
     };
 
@@ -353,7 +369,9 @@ namespace ZEngine::Core::Memory::Tests
         const auto offset = arena.m_current_offset;
         EXPECT_GT(bytes, 0u);
         for (size_t repeat = 0; repeat < 128; ++repeat)
+        {
             EXPECT_FALSE(arena.RetainedStorage(&snapshot));
+        }
         EXPECT_EQ(snapshot.Identity, &route);
         EXPECT_EQ(snapshot.CommittedBytes, 73u);
         EXPECT_EQ(route.Calls, calls);
@@ -386,7 +404,9 @@ namespace ZEngine::Core::Memory::Tests
         {
             EndTempArena(mark);
             for (const auto block : blocks)
+            {
                 EXPECT_EQ(arena.Allocate(160, 16), block);
+            }
             EXPECT_EQ(route.Calls, calls);
             EXPECT_EQ(route.LiveBytes, bytes);
             EXPECT_EQ(retained[0], 71);
@@ -439,14 +459,18 @@ namespace ZEngine::Core::Memory::Tests
         first[0] = 17;
         ASSERT_EQ(arena.TryResize(first, 16, 48), first);
         for (size_t index = 16; index < 48; ++index)
+        {
             EXPECT_EQ(first[index], 0u);
+        }
         auto* second = static_cast<uint8_t*>(arena.Allocate(100, 64));
         ASSERT_NE(second, nullptr);
         EXPECT_EQ(reinterpret_cast<uintptr_t>(second) % 64, 0u);
         second[0] = 29;
         EXPECT_EQ(arena.TryResize(second, 100, 80, 64), second);
         for (size_t index = 80; index < 100; ++index)
+        {
             EXPECT_EQ(second[index], 0u);
+        }
         auto* copy = static_cast<uint8_t*>(arena.TryResize(first, 48, 256));
         ASSERT_NE(copy, nullptr);
         EXPECT_EQ(copy[0], 17);
@@ -836,7 +860,9 @@ TEST(AllocatorTest, CheckedResizeFailurePreservesAllocationAndCursors)
     EXPECT_EQ(arena.TryResize(memory, 32, 64), memory);
     EXPECT_EQ(memory[0], 71);
     for (size_t i = 32; i < 64; ++i)
+    {
         EXPECT_EQ(memory[i], 0);
+    }
 }
 
 TEST(AllocatorTest, CheckedResizeRejectsInvalidRangesAndAlignments)
@@ -974,17 +1000,23 @@ namespace
     {
         FILE* file = fopen("/proc/self/statm", "r");
         if (!file)
+        {
             return 0;
+        }
 
         unsigned long pages = 0;
         const int     read  = fscanf(file, "%lu", &pages);
         fclose(file);
         if (read != 1)
+        {
             return 0;
+        }
 
         const long page_size = sysconf(_SC_PAGESIZE);
         if (page_size <= 0 || pages > std::numeric_limits<uint64_t>::max() / static_cast<uint64_t>(page_size))
+        {
             return 0;
+        }
         return static_cast<uint64_t>(pages) * static_cast<uint64_t>(page_size);
     }
 } // namespace
@@ -995,24 +1027,34 @@ TEST(MemoryManagerTest, LinuxConfiguredOwnersStartBelowRootAddressLimit)
     {
         const uint64_t current_address_space = CurrentLinuxAddressSpaceBytes();
         if (current_address_space == 0)
+        {
             GTEST_SKIP() << "unable to read /proc/self/statm";
+        }
 
         struct rlimit previous_limit = {};
         if (getrlimit(RLIMIT_AS, &previous_limit) != 0)
+        {
             GTEST_SKIP() << "RLIMIT_AS is unavailable";
+        }
 
         constexpr rlim_t headroom = static_cast<rlim_t>(ZMega(128));
         if (current_address_space > std::numeric_limits<rlim_t>::max() - headroom)
+        {
             GTEST_SKIP() << "current address space is too large for an RLIMIT_AS test";
+        }
 
         const rlim_t constrained_limit = static_cast<rlim_t>(current_address_space) + headroom;
         if (previous_limit.rlim_cur != RLIM_INFINITY && previous_limit.rlim_cur < constrained_limit)
+        {
             GTEST_SKIP() << "inherited RLIMIT_AS is already more restrictive";
+        }
 
         struct rlimit limit = previous_limit;
         limit.rlim_cur      = constrained_limit;
         if (setrlimit(RLIMIT_AS, &limit) != 0)
+        {
             GTEST_SKIP() << "unable to set constrained RLIMIT_AS";
+        }
 
         MemoryBudgetConfig config{};
         config.Bootstrap    = {"Bootstrap", ZMega(4)};
@@ -1036,7 +1078,9 @@ TEST(MemoryManagerTest, LinuxConfiguredOwnersStartBelowRootAddressLimit)
 
     std::vector<char*> child_environment;
     for (char** entry = environ; *entry; ++entry)
+    {
         child_environment.push_back(*entry);
+    }
 
     char child_marker[] = "ZENGINE_TEST_ADDRESS_LIMIT_CHILD=1";
     child_environment.push_back(child_marker);
@@ -1156,7 +1200,9 @@ TEST(AllocatorTest, PoolExhaustion)
     pool.Initialize(arena, sizeof(Foo) * chunk_count, sizeof(Foo));
 
     for (size_t i = 0; i < chunk_count; ++i)
+    {
         EXPECT_NE(pool.Allocate(), nullptr) << "expected valid slot at i=" << i;
+    }
 
     EXPECT_DEATH(pool.Allocate(), "");
     manager.Shutdown();
@@ -1193,7 +1239,9 @@ TEST(AllocatorTest, PoolClearResetsAllSlots)
     pool.Initialize(arena, sizeof(Foo) * chunk_count, sizeof(Foo));
 
     for (size_t i = 0; i < chunk_count; ++i)
+    {
         ASSERT_NE(pool.Allocate(), nullptr);
+    }
 
     pool.Clear();
 
@@ -1229,7 +1277,9 @@ TEST(AllocatorTest, ArenaAllocateNoZeroDoesNotZero)
     constexpr size_t sz    = 64;
     auto*            p1    = reinterpret_cast<uint8_t*>(arena->Allocate(sz));
     for (size_t i = 0; i < sz; ++i)
+    {
         p1[i] = 0xAB;
+    }
 
     arena->Clear();
 
@@ -1239,11 +1289,13 @@ TEST(AllocatorTest, ArenaAllocateNoZeroDoesNotZero)
 
     bool any_nonzero = false;
     for (size_t i = 0; i < sz; ++i)
+    {
         if (p2[i] != 0)
         {
             any_nonzero = true;
             break;
         }
+    }
     EXPECT_TRUE(any_nonzero) << "AllocateNoZero must not zero memory";
 
     manager.Shutdown();
@@ -1341,7 +1393,9 @@ TEST(AllocatorTest, PoolFreedChunkReturnedZeroed)
     auto* reused = reinterpret_cast<uint8_t*>(pool.Allocate());
     ASSERT_NE(reused, nullptr);
     for (size_t i = 0; i < sizeof(Foo); ++i)
+    {
         EXPECT_EQ(reused[i], 0u) << "byte " << i << " not zeroed after re-alloc";
+    }
 
     manager.Shutdown();
 }
@@ -1370,7 +1424,9 @@ TEST(AllocatorTest, PoolFreeListIntegrityAfterMultipleFreeCycles)
         ptrs[i]->a = static_cast<uint64_t>(i + 1);
     }
     for (int i = N - 1; i >= 0; --i)
+    {
         pool.Free(ptrs[i]);
+    }
 
     for (int i = 0; i < N; ++i)
     {
@@ -1454,7 +1510,9 @@ TEST(AllocatorTest, CheckedPoolPromotesByteAlignmentForFreeListPointers)
     ASSERT_TRUE(pool.TryInitialize(&arena, 64, 9, 1));
     EXPECT_EQ(pool.chunk_size % alignof(PoolFreeNode), 0u);
     while (pool.head)
+    {
         EXPECT_EQ(reinterpret_cast<uintptr_t>(pool.Allocate()) % alignof(PoolFreeNode), 0u);
+    }
     pool.Clear();
     EXPECT_NE(pool.head, nullptr);
 }

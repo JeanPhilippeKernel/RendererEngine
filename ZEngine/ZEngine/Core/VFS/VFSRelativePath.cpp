@@ -11,8 +11,12 @@ namespace ZEngine::Core::VFS
         {
             size_t length = 0;
             if (raw)
+            {
                 while (length < VFS_MAX_PATH && raw[length])
+                {
                     ++length;
+                }
+            }
             return length;
         }
     } // namespace
@@ -81,14 +85,20 @@ namespace ZEngine::Core::VFS
     VFSResult<void> VFSRelativePath::ParseInto(Containers::StringView raw, VFSRelativePath* output)
     {
         if (!output)
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         const auto validated = ValidateComponents(raw.data(), raw.size());
         if (validated.Failed())
+        {
             return VFSResult<void>::Fail(validated.Error());
+        }
         // Move first: raw may be output->View() or one of its suffixes. Clear
         // only afterwards, including the terminator and any old trailing text.
         if (Helpers::secure_memmove(output->m_buffer, sizeof(output->m_buffer), raw.data(), raw.size()) != Helpers::MEMORY_OP_SUCCESS)
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         std::fill(output->m_buffer + raw.size(), output->m_buffer + sizeof(output->m_buffer), '\0');
         output->m_length          = static_cast<uint16_t>(raw.size());
         output->m_component_count = validated.Value();

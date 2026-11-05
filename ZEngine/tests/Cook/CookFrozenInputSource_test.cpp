@@ -47,7 +47,9 @@ namespace ZEngine::Cook::Tests
             {
                 auto& self = *static_cast<InputCatalog*>(context);
                 if (self.Count == self.Entries.size())
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 self.Entries[self.Count++] = entry;
                 return VFS::VFSResult<void>::Ok();
             }
@@ -85,7 +87,9 @@ namespace ZEngine::Cook::Tests
             Memory.Initialize(ZMega(2), {});
             ASSERT_TRUE(Backend.InitializeOwned(ZMega(4), 128).Succeeded());
             for (cstring path : {"/assets", "/scenes", "/_cache/envmaps", "/scratch"})
+            {
                 ASSERT_TRUE(Backend.CreateDir(InputPath(path)).Succeeded());
+            }
             Write("/assets/a.png", "encoded-image");
             Write("/assets/a.png.meta", InputMetadata);
             Write("/scenes/main.yaml", "saved-scene");
@@ -253,7 +257,9 @@ namespace ZEngine::Cook::Tests
         EXPECT_EQ(catalog.Entries[1].Identity.Kind, CookAssetKind::Mesh);
         EXPECT_EQ(catalog.Entries[2].Identity.Kind, CookAssetKind::Texture);
         for (uint32_t i = 1; i < catalog.Count; ++i)
+        {
             EXPECT_TRUE(catalog.Entries[i - 1].Identity < catalog.Entries[i].Identity);
+        }
         const auto            after_acquire = Allocator.Allocations;
         CookAssetCatalogEntry entry         = {};
         ASSERT_TRUE(lease.FindAsset(InputIdentity(CookAssetKind::Texture), &entry, &Diagnostics).Succeeded());
@@ -586,7 +592,9 @@ namespace ZEngine::Cook::Tests
         {
             ASSERT_TRUE(Backend.Remove(InputPath("/assets/a.png.meta")).Succeeded());
             if (text[0])
+            {
                 Write("/assets/a.png.meta", text);
+            }
             {
                 CookFrozenInputSource source(Owner);
                 CookInputLease        lease = {};
@@ -625,11 +633,17 @@ namespace ZEngine::Cook::Tests
         {
             Limits = {.MaxWorkingBytes = ZKilo(256)};
             if (limit == 0)
+            {
                 Limits.MaxCatalogEntries = 0;
+            }
             else if (limit == 1)
+            {
                 Limits.MaxSidecarBytes = 1;
+            }
             else
+            {
                 Limits.MaxCapturedBytes = 1;
+            }
             CookFrozenInputSource source(Owner);
             CookInputLease        lease = {};
             Diagnostics.Clear();
@@ -816,7 +830,9 @@ namespace ZEngine::Cook::Tests
     {
         constexpr cstring paths[] = {"/scenes/main.yaml", "/scenes/main.yml", "/scenes/main.scene", "/scenes/main.zescene", "/scenes/main.ZESCENE"};
         for (cstring path : paths)
+        {
             Write(path, "saved-scene");
+        }
         Limits.SceneLimits.MaxFileBytes = 10;
         ASSERT_GT(Limits.MaxEncodedAssetBytes, 11u);
         for (cstring path : paths)

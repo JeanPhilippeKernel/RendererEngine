@@ -6,7 +6,9 @@ namespace ZEngine::Core::VFS
     VFSResult<VFSRootMemoryRequirements> VFSRootMemoryRequirements::WithMapping(VFSSharedMemoryDomain mapping) const noexcept
     {
         if (!StateBytes || Mapping.Identity || Mapping.Bytes || bool(Storage.Identity) != bool(Storage.Bytes) || !mapping.Identity || !mapping.Bytes || mapping.Identity == Storage.Identity)
+        {
             return VFSResult<VFSRootMemoryRequirements>::Fail(VFSError::Unsupported);
+        }
         auto result    = *this;
         result.Mapping = mapping;
         return VFSResult<VFSRootMemoryRequirements>::Ok(result);
@@ -34,10 +36,14 @@ namespace ZEngine::Core::VFS
     {
         const auto valid = [](const VFSSharedMemoryDomain& domain) { return bool(domain.Identity) == bool(domain.Bytes); };
         if (m_budget || (!requirements.StateBytes && !requirements.Storage.Bytes && !requirements.Mapping.Bytes) || !valid(requirements.Storage) || !valid(requirements.Mapping) || (requirements.Storage.Identity && requirements.Storage.Identity == requirements.Mapping.Identity))
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         const auto retained = budget.Retain(requirements);
         if (retained.Failed())
+        {
             return retained;
+        }
         m_budget       = &budget;
         m_requirements = requirements;
         return VFSResult<void>::Ok();
@@ -46,7 +52,9 @@ namespace ZEngine::Core::VFS
     void VFSWorkingMemoryReservation::Reset() noexcept
     {
         if (m_budget)
+        {
             m_budget->Release(m_requirements);
+        }
         m_budget       = nullptr;
         m_requirements = {};
     }

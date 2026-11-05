@@ -85,9 +85,13 @@ namespace ZEngine::Cook::Tests
             {
                 const auto parent = Parent->MemoryRequirements();
                 if (parent.Failed())
+                {
                     return parent;
+                }
                 if (parent.Value().StateBytes > UINT64_MAX - sizeof(*this))
+                {
                     return VFS::VFSResult<CookAllocatorMemoryRequirements>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 return VFS::VFSResult<CookAllocatorMemoryRequirements>::Ok({parent.Value().StateBytes + sizeof(*this), parent.Value().PoolBytes, parent.Value().IncludesAllocations});
             }
             const ICookAllocator* ParentAllocator() const noexcept override
@@ -220,7 +224,9 @@ namespace ZEngine::Cook::Tests
             Files.Initialize(&Memory.MainArena);
             ASSERT_TRUE(Files.Mount(Backend, VFS::VFSPath::Root(), 0).Succeeded());
             for (cstring path : {"/scenes", "/assets", "/scratch", "/output"})
+            {
                 ASSERT_TRUE(Files.CreateDir(Path(path)).Succeeded());
+            }
             // The slab occupies one retained block. Fixed parser working state
             // lives outside that slab and needs independent ledger headroom.
             ASSERT_TRUE(Parent.Ledger.Initialize(ZMega(8)).Succeeded());
@@ -277,7 +283,9 @@ namespace ZEngine::Cook::Tests
             const auto file = Files.Open(path, VFS::VFSOpenFlags::Read | VFS::VFSOpenFlags::AllowReplace);
             EXPECT_TRUE(file.Succeeded());
             if (file.Failed())
+            {
                 return {};
+            }
             const auto size = file.Value()->Size();
             EXPECT_TRUE(size.Succeeded());
             std::string bytes(static_cast<size_t>(size.Value()), '\0');
@@ -414,9 +422,13 @@ namespace ZEngine::Cook::Tests
         const auto original  = Result;
         const auto committed = Read(Result.ManifestPath);
         for (uint64_t peak : Result.PeakWorkingBytesByCategory)
+        {
             EXPECT_LE(peak, Result.PeakWorkingBytes);
+        }
         for (auto category : {CookMemoryCategory::Captures, CookMemoryCategory::Codecs, CookMemoryCategory::StagingManifest, CookMemoryCategory::DiagnosticsResult})
+        {
             EXPECT_GT(Result.PeakWorkingBytesByCategory[static_cast<size_t>(category)], 0u);
+        }
         const auto budget              = Context.Limits.MaxWorkingBytes;
         Context.Limits.MaxWorkingBytes = 1;
         EXPECT_EQ(Cook().Error(), VFS::VFSError::SizeLimitExceeded);
@@ -425,13 +437,17 @@ namespace ZEngine::Cook::Tests
         EXPECT_EQ(Read(Result.ManifestPath), committed);
         Context.Limits.MaxWorkingBytes = budget;
         for (auto& peak : Result.PeakWorkingBytesByCategory)
+        {
             peak = UINT64_MAX;
+        }
         ASSERT_TRUE(Cook().Succeeded());
         EXPECT_FALSE(Result.Published);
         EXPECT_EQ(Result.ManifestDigest, original.ManifestDigest);
         EXPECT_EQ(Read(Result.ManifestPath), committed);
         for (uint64_t peak : Result.PeakWorkingBytesByCategory)
+        {
             EXPECT_LE(peak, Result.PeakWorkingBytes);
+        }
         ExpectScratchEmpty();
     }
 
@@ -507,7 +523,9 @@ namespace ZEngine::Cook::Tests
             const auto target  = request.OutputRoot.Append(CookTargetKey(request.Target));
             EXPECT_EQ(target.Failed(), target_overflow);
             if (target.Succeeded())
+            {
                 EXPECT_TRUE(target.Value().Append(CookManifestName).Failed());
+            }
             EXPECT_EQ(SceneCooker::Cook(request, context, &Result, &Diagnostics).Error(), VFS::VFSError::InvalidPath);
             ASSERT_EQ(Diagnostics.Count, 1u);
             EXPECT_EQ(Diagnostics.Entries[0].Code, CookDiagnosticCode::InvalidPath);
@@ -517,7 +535,9 @@ namespace ZEngine::Cook::Tests
         {
             std::string raw = {};
             for (size_t i = 0; i < count; ++i)
+            {
                 raw += "/a";
+            }
             auto       request = Request;
             const auto root    = VFS::VFSPath::Parse(raw.c_str());
             ASSERT_TRUE(root.Succeeded());
@@ -544,7 +564,9 @@ namespace ZEngine::Cook::Tests
         longest.append(VFS::VFS_MAX_PATH - suffix_bytes - 2, 'a');
         std::string deepest = {};
         for (size_t i = 0; i < VFS::VFS_MAX_COMPONENTS - 3; ++i)
+        {
             deepest += "/a";
+        }
         for (cstring text : {"/", "/output/\xc3\xa9", longest.c_str(), deepest.c_str()})
         {
             auto       request = Request;
@@ -582,7 +604,9 @@ namespace ZEngine::Cook::Tests
             probe.Acquisitions             = 0;
             const auto result              = SceneCooker::Cook(Request, context, &Result, &Diagnostics);
             if (probe.Queries)
+            {
                 high = context.Limits.MaxWorkingBytes;
+            }
             else
             {
                 EXPECT_EQ(result.Error(), VFS::VFSError::SizeLimitExceeded);
@@ -627,7 +651,9 @@ namespace ZEngine::Cook::Tests
             probe.Acquisitions             = 0;
             const auto result              = SceneCooker::Cook(Request, context, &Result, &Diagnostics);
             if (probe.Acquisitions)
+            {
                 high = context.Limits.MaxWorkingBytes;
+            }
             else
             {
                 EXPECT_EQ(result.Error(), VFS::VFSError::SizeLimitExceeded);
@@ -1210,7 +1236,9 @@ namespace ZEngine::Cook::Tests
                 // at the caller-value seam, independently of platform sizeof.
                 const auto live = allocator.Statistics().LiveBytes;
                 if (live > Limit || LaterServices > Limit - live || CallerHeadroom > Limit - live - LaterServices)
+                {
                     return VFS::VFSResult<uint64_t>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 return VFS::VFSResult<uint64_t>::Ok(Limit - live - LaterServices - CallerHeadroom);
             }
             VFS::VFSResult<void> AcquireRoots(CookInputLease*, CookDiagnostics*) override
@@ -1344,7 +1372,9 @@ namespace ZEngine::Cook::Tests
                 EXPECT_EQ(output.Queries, 1u);
                 EXPECT_EQ(scratch.Queries, shared ? 0u : 1u);
                 if (!native && shared)
+                {
                     baseline = Result.ManifestDigest;
+                }
                 else
                 {
                     EXPECT_EQ(Result.ManifestDigest, baseline);
@@ -1456,7 +1486,9 @@ namespace ZEngine::Cook::Tests
             {
                 const auto native = Source->UncoveredFixedWorkingBytes(allocator, coverage);
                 if (native.Failed())
+                {
                     return native;
+                }
                 Before   = allocator.Statistics().LiveBytes;
                 Required = native.Value() + sizeof(*this);
                 return InspectOnly ? VFS::VFSResult<uint64_t>::Fail(VFS::VFSError::Unsupported) : VFS::VFSResult<uint64_t>::Ok(Required);
@@ -1523,7 +1555,9 @@ namespace ZEngine::Cook::Tests
             {
                 const auto live = allocator.Statistics().LiveBytes;
                 if (live > Limit || RegistryHeadroom > Limit - live)
+                {
                     return VFS::VFSResult<uint64_t>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 return VFS::VFSResult<uint64_t>::Ok(Limit - live - RegistryHeadroom);
             }
             VFS::VFSResult<void> AcquireRoots(CookInputLease*, CookDiagnostics*) override
@@ -1662,7 +1696,9 @@ namespace ZEngine::Cook::Tests
                 Identities[index] = uuids::uuid::from_string(uuid).value();
                 SceneUUID         = Identities[index];
                 if (!index)
+                {
                     Batch[index] = Sources[0];
+                }
                 else
                 {
                     const auto length = std::snprintf(path, sizeof(path), "/scenes/batch%03u.scene", index);
@@ -1812,9 +1848,13 @@ namespace ZEngine::Cook::Tests
         AddTexture();
         uint64_t captured = 0;
         for (uint32_t index = 0; index < count; ++index)
+        {
             captured += Read(Batch[index]).size();
+        }
         for (cstring path : {"/assets/material.zematerial", "/assets/material.zematerial.meta", "/assets/pixel.png", "/assets/pixel.png.meta"})
+        {
             captured += Read(Path(path)).size();
+        }
         Context.Limits.MaxCapturedBytes = captured;
         Request.OutputRoot              = outputs[0];
         ASSERT_TRUE(Cook().Succeeded());

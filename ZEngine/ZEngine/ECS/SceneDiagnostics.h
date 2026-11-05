@@ -45,7 +45,9 @@ namespace ZEngine::ECS
         void     Add(SceneDiagnosticSeverity severity, cstring message, SceneDiagnosticCode code = SceneDiagnosticCode::None)
         {
             if (auto* entry = Retain(severity, code))
+            {
                 Helpers::secure_strncpy(entry->Message, MAX_MESSAGE_LEN, message ? message : "", MAX_MESSAGE_LEN - 1);
+            }
         }
 
         // Write directly into retained caller storage without a temporary record
@@ -61,9 +63,13 @@ namespace ZEngine::ECS
             {
                 uint32_t length = 0;
                 while (message && length < MAX_MESSAGE_LEN - 1 && message[length])
+                {
                     ++length;
+                }
                 if (length)
+                {
                     Helpers::secure_memmove(entry->Message, MAX_MESSAGE_LEN, message, length);
+                }
                 Helpers::secure_memset(entry->Message + length, 0, MAX_MESSAGE_LEN - length, MAX_MESSAGE_LEN - length);
             }
             return entry;

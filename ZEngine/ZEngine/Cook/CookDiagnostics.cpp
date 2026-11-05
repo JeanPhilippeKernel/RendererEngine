@@ -18,16 +18,22 @@ namespace ZEngine::Cook
         void CopyText(char (&output)[Capacity], Core::Containers::StringView text, size_t count)
         {
             if (count)
+            {
                 Helpers::secure_memmove(output, sizeof(output), text.data(), count);
+            }
             output[count] = '\0';
             if (count + 1 < Capacity)
+            {
                 Helpers::secure_memset(output + count + 1, 0, Capacity - count - 1, Capacity - count - 1);
+            }
         }
 
         void IncrementSaturated(uint64_t& value)
         {
             if (value != std::numeric_limits<uint64_t>::max())
+            {
                 ++value;
+            }
         }
 
         CookSeverity NormalizedSeverity(CookDiagnosticCode code, CookSeverity severity)
@@ -39,7 +45,9 @@ namespace ZEngine::Cook
     bool CookDiagnostic::SetKeys(Core::Containers::StringView schema, Core::Containers::StringView field) noexcept
     {
         if (!ValidKey(schema) || !ValidKey(field))
+        {
             return false;
+        }
         // Save the schema before touching either output. CopyText handles field
         // overlap in place; the saved schema makes even crossed aliases safe.
         // One key buffer suffices, rather than snapshotting both outputs.
@@ -53,11 +61,15 @@ namespace ZEngine::Cook
     bool CookDiagnostic::SetMessage(Core::Containers::StringView message) noexcept
     {
         if (!Helpers::IsValidUTF8(message.data(), message.size()))
+        {
             return false;
+        }
         size_t count = std::min(message.size(), sizeof(Message) - 1);
         // Never cut a multibyte scalar when shortening explanatory text.
         while (count < message.size() && count && (static_cast<uint8_t>(message.data()[count]) & 0xc0u) == 0x80u)
+        {
             --count;
+        }
         CopyText(Message, message, count);
         return true;
     }
@@ -65,17 +77,29 @@ namespace ZEngine::Cook
     bool CookDiagnostic::SetChain(Core::Containers::ArrayView<const CookAssetIdentity> chain) noexcept
     {
         if (chain.size() && !chain.data())
+        {
             return false;
+        }
         for (const auto& identity : chain)
+        {
             if (!identity.IsValid())
+            {
                 return false;
+            }
+        }
         const auto count = std::min(chain.size(), Chain.size());
         for (size_t i = 0; i < count; ++i)
+        {
             Chain[i] = chain[i];
+        }
         if (chain.size() > Chain.size())
+        {
             Chain[Chain.size() - 1] = chain[chain.size() - 1];
+        }
         for (size_t i = count; i < Chain.size(); ++i)
+        {
             Chain[i] = {};
+        }
         ChainCount     = static_cast<uint32_t>(count);
         ChainTruncated = chain.size() > Chain.size();
         return true;
@@ -96,9 +120,13 @@ namespace ZEngine::Cook
     CookDiagnostic* CookDiagnostics::Retain(CookSeverity severity) noexcept
     {
         if (severity == CookSeverity::Error)
+        {
             IncrementSaturated(ErrorCount);
+        }
         if (Count < Entries.size())
+        {
             return &Entries[Count++];
+        }
         IncrementSaturated(DroppedEntries);
         return nullptr;
     }

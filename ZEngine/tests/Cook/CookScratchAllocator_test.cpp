@@ -53,9 +53,13 @@ namespace ZEngine::Cook
             }
             EXPECT_EQ(scratch.OutstandingAllocations(), allocations.size());
             for (size_t i = 0; i < allocations.size(); i += 2)
+            {
                 scratch.Free(allocations[i]);
+            }
             for (size_t i = 1; i < allocations.size(); i += 2)
+            {
                 scratch.Free(allocations[i]);
+            }
             EXPECT_EQ(scratch.OutstandingAllocations(), 0u);
         }
         EXPECT_EQ(parent.Allocations, 1u);
@@ -86,7 +90,9 @@ namespace ZEngine::Cook
         EXPECT_EQ(scratch.Allocate(1, 16, CookMemoryCategory::Count).Error(), Core::VFS::VFSError::InvalidPath);
         EXPECT_EQ(scratch.OutstandingAllocations(), 1u);
         for (size_t i = 0; i < 128; ++i)
+        {
             EXPECT_EQ(static_cast<const uint8_t*>(first.Value())[i], 42);
+        }
         scratch.Free(first.Value());
         const auto recovered = scratch.Allocate(ZKilo(16), 64, CookMemoryCategory::Codecs);
         ASSERT_TRUE(recovered.Succeeded());

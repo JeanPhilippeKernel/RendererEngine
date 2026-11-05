@@ -35,10 +35,14 @@ namespace ZEngine::Cook
             {
                 ++Reads;
                 if (Failure != VFS::VFSError::OK)
+                {
                     return VFS::VFSResult<size_t>::Fail(Failure);
+                }
                 const size_t size = offset >= Bytes.size() ? 0 : std::min({output.size(), Bytes.size() - static_cast<size_t>(offset), Chunk});
                 if (size)
+                {
                     Helpers::secure_memcpy(output.data(), output.size(), Bytes.data() + offset, size);
+                }
                 return VFS::VFSResult<size_t>::Ok(size);
             }
         };
@@ -53,7 +57,9 @@ namespace ZEngine::Cook
             VFS::VFSResult<void> Write(Core::Containers::ArrayView<const uint8_t> bytes) override
             {
                 if (++Calls == FailAt)
+                {
                     return VFS::VFSResult<void>::Fail(Failure);
+                }
                 Bytes.append(reinterpret_cast<cstring>(bytes.data()), bytes.size());
                 return VFS::VFSResult<void>::Ok();
             }
@@ -99,13 +105,17 @@ namespace ZEngine::Cook
             VFS::VFSResult<void>                          TryCharge(uint64_t bytes, CookMemoryCategory category, CookMemoryCharge* output) override
             {
                 if (FixedCalls < FixedRequests.size())
+                {
                     FixedRequests[FixedCalls] = {bytes, Parent->Statistics().LiveBytes};
+                }
                 return ++FixedCalls == FixedFailAt ? VFS::VFSResult<void>::Fail(FixedFailure) : Parent->TryCharge(bytes, category, output);
             }
             VFS::VFSResult<void*> Allocate(size_t bytes, size_t alignment, CookMemoryCategory category) noexcept override
             {
                 if (Calls < AllocationBytes.size())
+                {
                     AllocationBytes[Calls] = bytes;
+                }
                 return ++Calls == FailAt ? VFS::VFSResult<void*>::Fail(VFS::VFSError::OutOfMemory) : Parent->Allocate(bytes, alignment, category);
             }
             void Free(void* pointer) noexcept override
@@ -250,7 +260,9 @@ namespace ZEngine::Cook
         Codec::MaterialAssetDocument cooked = {};
         ASSERT_TRUE(Codec::ReadMaterialAssetDocument(AdapterBytes(sink.Bytes), &cooked, Input.Identity.UUID).Succeeded());
         for (const auto& texture : cooked.Textures)
+        {
             EXPECT_STREQ(texture.Path, resolved[0].ObjectPath.CStr());
+        }
     }
 
     TEST_F(CookMaterialAdapterTest, EncodingUsesResolvedPackagePathsAndOmitsNativeProvenance)
@@ -281,19 +293,33 @@ namespace ZEngine::Cook
         {
             Capture.Bytes = bytes;
             if (failure == 0)
+            {
                 ReplaceMaterialText(Capture.Bytes, "\"material_version\":1", "\"material_version\":2");
+            }
             if (failure == 1)
+            {
                 ReplaceMaterialText(Capture.Bytes, "\"name\":\"M\"", "\"name\":\"M\",\"unknown\":1");
+            }
             if (failure == 2)
+            {
                 ReplaceMaterialText(Capture.Bytes, "assets/tex.png", "assets/../tex.png");
+            }
             if (failure == 3)
+            {
                 Metadata.Data.AssetUUID = {};
+            }
             if (failure == 4)
+            {
                 Metadata.Data.SettingsCount = 1;
+            }
             if (failure == 5)
+            {
                 Metadata.Fields = 0;
+            }
             if (failure == 6)
+            {
                 Limits.MaxEdges = 0;
+            }
             Diagnostics.Clear();
             EXPECT_TRUE(Adapter.Inspect(nullptr, Input, Scratch, &inspection, &Diagnostics).Failed()) << failure;
             EXPECT_EQ(inspection.Dependencies().data(), prior);
@@ -331,7 +357,9 @@ namespace ZEngine::Cook
                 EXPECT_EQ(allocator.FixedCalls, phase);
                 EXPECT_EQ(allocator.Calls, phase == 1 ? 0u : 1u);
                 if (phase == 1)
+                {
                     EXPECT_EQ(Capture.Reads, 0u);
+                }
                 EXPECT_EQ(inspection.Dependencies().data(), prior);
                 EXPECT_EQ(inspection.LocalContentKey(), local_key);
                 EXPECT_EQ(inspection.MetadataKey(), metadata_key);
@@ -362,7 +390,9 @@ namespace ZEngine::Cook
             const uint64_t required = encode ? own : own + probe.FixedRequests[2].Bytes;
             EXPECT_EQ(probe.FixedRequests[1].LiveBefore, probe.FixedRequests[0].LiveBefore);
             if (!encode)
+            {
                 EXPECT_EQ(probe.FixedRequests[2].LiveBefore, probe.FixedRequests[1].LiveBefore + own);
+            }
             ASSERT_GT(required - 1, metadata);
             const auto local_key    = inspection.LocalContentKey();
             const auto metadata_key = inspection.MetadataKey();
@@ -389,7 +419,9 @@ namespace ZEngine::Cook
                     EXPECT_EQ(inspection.Dependencies().data(), prior);
                 }
                 else if (encode)
+                {
                     EXPECT_EQ(sink.Bytes, measured.Bytes);
+                }
                 EXPECT_EQ(inspection.LocalContentKey(), local_key);
                 EXPECT_EQ(inspection.MetadataKey(), metadata_key);
             }
@@ -447,19 +479,33 @@ namespace ZEngine::Cook
             Capture.Failure             = VFS::VFSError::OK;
             Capture.AdvertisedSize      = UINT64_MAX;
             if (failure == 0)
+            {
                 Limits.MaxMaterialBytes = Capture.Bytes.size() - 1;
+            }
             if (failure == 1)
+            {
                 Limits.MaxEncodedAssetBytes = Capture.Bytes.size() - 1;
+            }
             if (failure == 2)
+            {
                 Capture.AdvertisedSize = Capture.Bytes.size() + 1;
+            }
             if (failure == 3)
+            {
                 Capture.Failure = VFS::VFSError::PermissionDenied;
+            }
             if (failure == 4)
+            {
                 Capture.AdvertisedSize = 0;
+            }
             if (failure == 5)
+            {
                 Capture.AdvertisedSize = UINT64_MAX - 1;
+            }
             if (failure == 6)
+            {
                 Limits.MaxDecodedAssetBytes = sizeof(Codec::MaterialAssetDocument) - 1;
+            }
             CookAssetInspection inspection = {};
             EXPECT_TRUE(Adapter.Inspect(nullptr, Input, Scratch, &inspection, nullptr).Failed()) << failure;
             EXPECT_EQ(inspection.Format(), nullptr);
@@ -478,19 +524,33 @@ namespace ZEngine::Cook
             CookResolvedDependency children[] = {Resolved(), Resolved("normal")};
             size_t                 count      = failure == 0 ? 0 : failure == 1 ? 2 : 1;
             if (failure == 2)
+            {
                 children[0].Slot = "normal";
+            }
             if (failure == 3)
+            {
                 children[0].Identity.Kind = CookAssetKind::Material;
+            }
             if (failure == 4)
+            {
                 children[0].Identity.UUID = MaterialUUID();
+            }
             if (failure == 5)
+            {
                 children[0].Format = "zemesh-v1-le64";
+            }
             if (failure == 6)
+            {
                 children[0].ObjectDigest = {};
+            }
             if (failure == 7)
+            {
                 children[0].ObjectSize = 0;
+            }
             if (failure == 8)
+            {
                 children[0].ObjectPath = VFS::VFSRelativePath::Parse("assets/tex.png").Value();
+            }
             MaterialAdapterSink sink = {};
             EXPECT_TRUE(Adapter.Encode(nullptr, Input, {children, count}, CookTarget::DesktopVulkanLE64, sink, Scratch, nullptr).Failed()) << failure;
             EXPECT_EQ(sink.Calls, 0u);
@@ -499,7 +559,9 @@ namespace ZEngine::Cook
         SetTextureCount(5);
         Core::Containers::FixedArray<CookResolvedDependency, 5> children = {};
         for (size_t i = 0; i < children.size(); ++i)
+        {
             children[i] = Resolved(Codec::MaterialTextureSlotKey(static_cast<Codec::MaterialTextureSlot>(i)));
+        }
         std::swap(children[0], children[1]);
         MaterialAdapterSink sink = {};
         EXPECT_TRUE(Adapter.Encode(nullptr, Input, children, CookTarget::DesktopVulkanLE64, sink, Scratch, nullptr).Failed());
@@ -554,19 +616,33 @@ namespace ZEngine::Cook
         {
             Input = valid;
             if (failure == 0)
+            {
                 Input.Identity.Kind = CookAssetKind::Texture;
+            }
             if (failure == 1)
+            {
                 Input.Identity.UUID = {};
+            }
             if (failure == 2)
+            {
                 Input.Artifact = nullptr;
+            }
             if (failure == 3)
+            {
                 Input.Metadata = nullptr;
+            }
             if (failure == 4)
+            {
                 Input.Limits = nullptr;
+            }
             if (failure == 5)
+            {
                 Input.EnvironmentSource = &Capture;
+            }
             if (failure == 6)
+            {
                 Input.Source = {};
+            }
             CookAssetInspection inspection = {};
             EXPECT_EQ(Adapter.Inspect(nullptr, Input, Scratch, &inspection, nullptr).Error(), VFS::VFSError::InvalidPath);
         }

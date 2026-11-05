@@ -113,16 +113,20 @@ TEST(TLSFSlabTest, FootprintBoundsIncludeMinimumBlocksHeadersAndUnsplittableTail
         void* held = slab.TryAllocate(neighbor, 16);
         ASSERT_NE(held, nullptr);
         for (size_t alignment : {size_t(1), size_t(8), size_t(16), size_t(64), size_t(4096)})
+        {
             for (size_t bytes : {size_t(1), size_t(24), size_t(31), size_t(128), size_t(4097), size_t(58000)})
             {
                 const auto bound = TLSFSlab::AllocationFootprintBound(bytes, alignment);
                 EXPECT_GE(bound, bytes);
                 void* block = slab.TryAllocate(bytes, alignment);
                 if (!block)
+                {
                     continue;
+                }
                 EXPECT_LE(tlsf_block_size(block) + tlsf_alloc_overhead(), bound);
                 slab.Free(block);
             }
+        }
         slab.Free(held);
     }
     slab.Shutdown();
@@ -193,12 +197,16 @@ TEST(TLSFSlabTest, ReallocGrows)
     auto* p = reinterpret_cast<uint8_t*>(slab.Alloc(64));
     ASSERT_NE(p, nullptr);
     for (int i = 0; i < 64; ++i)
+    {
         p[i] = static_cast<uint8_t>(i);
+    }
 
     auto* p2 = reinterpret_cast<uint8_t*>(slab.Realloc(p, 256));
     ASSERT_NE(p2, nullptr);
     for (int i = 0; i < 64; ++i)
+    {
         EXPECT_EQ(p2[i], static_cast<uint8_t>(i)) << "Realloc must preserve existing data at byte " << i;
+    }
 
     slab.Shutdown();
 }
@@ -217,7 +225,9 @@ TEST(TLSFSlabTest, ManyAllocsAndFrees)
         ASSERT_NE(ptrs[i], nullptr) << "alloc " << i;
     }
     for (int i = N - 1; i >= 0; --i)
+    {
         slab.Free(ptrs[i]);
+    }
 
     void* big = slab.Alloc(ZKilo(512));
     EXPECT_NE(big, nullptr) << "after freeing all blocks TLSF must coalesce into one large free block";

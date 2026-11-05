@@ -15,7 +15,9 @@ namespace ZEngine::ECS
             ~ParserLease()
             {
                 if (Initialized)
+                {
                     yaml_parser_delete(&Parser);
+                }
             }
         };
 
@@ -43,12 +45,18 @@ namespace ZEngine::ECS
                     {
                         const auto& scalar = event.data.scalar;
                         if (scalar.anchor || scalar.tag)
+                        {
                             return false;
+                        }
                         if (scalar.length > m_limits.MaxScalarBytes)
+                        {
                             return Limit();
+                        }
                         const std::string_view value(reinterpret_cast<const char*>(scalar.value), scalar.length);
                         if (value.find('\0') != std::string_view::npos)
+                        {
                             return false;
+                        }
                         const bool is_null = scalar.style == YAML_PLAIN_SCALAR_STYLE && (value.empty() || value == "~" || value == "null" || value == "Null" || value == "NULL");
                         return Append(is_null ? m_storage.Make(SceneYAML::NodeType::Null) : m_storage.Scalar(value));
                     }
@@ -98,13 +106,19 @@ namespace ZEngine::ECS
             bool Append(const SceneYAML::Node& node)
             {
                 if (!m_storage.Good() || !node.IsDefined())
+                {
                     return false;
+                }
                 if (++m_nodes > m_limits.MaxNodes)
+                {
                     return Limit();
+                }
                 if (m_depth == 0)
                 {
                     if (m_has_root)
+                    {
                         return false;
+                    }
                     Root.reset(node);
                     m_has_root = true;
                     return true;
@@ -113,21 +127,29 @@ namespace ZEngine::ECS
                 if (parent.Node.IsSequence())
                 {
                     if (++parent.Items > m_limits.MaxCollectionItems)
+                    {
                         return Limit();
+                    }
                     return m_storage.Append(parent.Node, node);
                 }
                 else if (!parent.PendingKey.IsDefined())
                 {
                     if (!node.IsScalar())
+                    {
                         return false;
+                    }
                     if (++parent.Items > m_limits.MaxCollectionItems)
+                    {
                         return Limit();
+                    }
                     parent.PendingKey = node;
                 }
                 else
                 {
                     if (!m_storage.AppendField(parent.Node, parent.PendingKey, node))
+                    {
                         return false;
+                    }
                     parent.PendingKey = {};
                 }
                 return true;
@@ -136,12 +158,18 @@ namespace ZEngine::ECS
             bool Start(SceneYAML::NodeType::value type, bool flow)
             {
                 if (m_depth != 0 && m_stack[m_depth - 1].Node.IsMap() && !m_stack[m_depth - 1].PendingKey.IsDefined())
+                {
                     return false;
+                }
                 if (m_depth >= m_limits.MaxDepth)
+                {
                     return Limit();
+                }
                 const auto node = m_storage.Make(type, flow ? SceneYAML::EmitterStyle::Flow : SceneYAML::EmitterStyle::Block);
                 if (!Append(node))
+                {
                     return false;
+                }
                 m_stack[m_depth++] = {.Node = node};
                 return true;
             }
@@ -149,9 +177,13 @@ namespace ZEngine::ECS
             bool End(SceneYAML::NodeType::value type)
             {
                 if (m_depth == 0 || m_stack[m_depth - 1].Node.Type() != type || m_stack[m_depth - 1].PendingKey.IsDefined())
+                {
                     return false;
+                }
                 if (type == SceneYAML::NodeType::Map && !m_storage.UniqueKeys(m_stack[m_depth - 1].Node))
+                {
                     return false;
+                }
                 --m_depth;
                 return true;
             }
@@ -193,7 +225,9 @@ namespace ZEngine::ECS
             ~Transaction()
             {
                 if (!Keep)
+                {
                     Owner.Rollback(Checkpoint);
+                }
             }
         } transaction{storage, storage.Mark()};
         BoundedTree tree(storage, limits);
@@ -232,7 +266,9 @@ namespace ZEngine::ECS
                         stage = Stage::StreamEnd;
                     }
                     else
+                    {
                         valid = tree.Add(event.Event);
+                    }
                     break;
                 case Stage::StreamEnd:
                     if (type == YAML_STREAM_END_EVENT)

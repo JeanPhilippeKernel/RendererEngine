@@ -16,13 +16,17 @@ namespace ZEngine::Cook
             while (slow)
             {
                 if (depth == SIZE_MAX)
+                {
                     return Core::VFS::VFSResult<size_t>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+                }
                 ++depth;
                 slow = slow->ParentAllocator();
                 fast = fast ? fast->ParentAllocator() : nullptr;
                 fast = fast ? fast->ParentAllocator() : nullptr;
                 if (slow && slow == fast)
+                {
                     return Core::VFS::VFSResult<size_t>::Fail(Core::VFS::VFSError::Corrupted);
+                }
             }
             return Core::VFS::VFSResult<size_t>::Ok(depth);
         }
@@ -47,16 +51,26 @@ namespace ZEngine::Cook
         {
             const auto physical = allocator.MemoryRequirements();
             if (physical.Failed())
+            {
                 return Core::VFS::VFSResult<AllocatorProfiles>::Fail(physical.Error());
+            }
             if (!ValidRequirements(physical.Value()))
+            {
                 return Core::VFS::VFSResult<AllocatorProfiles>::Fail(Core::VFS::VFSError::Corrupted);
+            }
             if (!coverage)
+            {
                 return Core::VFS::VFSResult<AllocatorProfiles>::Ok({physical.Value(), physical.Value()});
+            }
             const auto uncovered = allocator.UncoveredMemoryRequirements(*coverage);
             if (uncovered.Failed())
+            {
                 return Core::VFS::VFSResult<AllocatorProfiles>::Fail(uncovered.Error());
+            }
             if (!ValidRequirements(uncovered.Value()) || uncovered.Value().StateBytes > physical.Value().StateBytes || uncovered.Value().PoolBytes != physical.Value().PoolBytes || uncovered.Value().IncludesAllocations != physical.Value().IncludesAllocations)
+            {
                 return Core::VFS::VFSResult<AllocatorProfiles>::Fail(Core::VFS::VFSError::Corrupted);
+            }
             return Core::VFS::VFSResult<AllocatorProfiles>::Ok({physical.Value(), uncovered.Value()});
         }
     } // namespace
@@ -83,22 +97,34 @@ namespace ZEngine::Cook
         // cycle check needs neither a visited array nor an arbitrary depth cap.
         const auto owner_depth = ChainDepth(allocator);
         if (owner_depth.Failed())
+        {
             return Core::VFS::VFSResult<uint64_t>::Fail(owner_depth.Error());
+        }
         const auto covered_depth = ChainDepth(covered);
         if (covered_depth.Failed())
+        {
             return Core::VFS::VFSResult<uint64_t>::Fail(covered_depth.Error());
+        }
         const auto owner = Requirements(allocator, coverage);
         if (owner.Failed())
+        {
             return Core::VFS::VFSResult<uint64_t>::Fail(owner.Error());
+        }
         const auto existing = Requirements(covered, coverage);
         if (existing.Failed())
+        {
             return Core::VFS::VFSResult<uint64_t>::Fail(existing.Error());
+        }
         const ICookAllocator* left  = &allocator;
         const ICookAllocator* right = &covered;
         for (size_t depth = covered_depth.Value(); depth < owner_depth.Value(); ++depth)
+        {
             left = left->ParentAllocator();
+        }
         for (size_t depth = owner_depth.Value(); depth < covered_depth.Value(); ++depth)
+        {
             right = right->ParentAllocator();
+        }
         while (left != right)
         {
             left  = left->ParentAllocator();
@@ -110,11 +136,15 @@ namespace ZEngine::Cook
         {
             const auto shared = Requirements(*left, coverage);
             if (shared.Failed())
+            {
                 return Core::VFS::VFSResult<uint64_t>::Fail(shared.Error());
+            }
             // Service discounts must not mask an inconsistent physical parent
             // aggregate. Validate both views before subtracting the shared state.
             if (!ContainsProfile(owner.Value().Physical, shared.Value().Physical) || !ContainsProfile(existing.Value().Physical, shared.Value().Physical) || !ContainsProfile(owner.Value().Uncovered, shared.Value().Uncovered) || !ContainsProfile(existing.Value().Uncovered, shared.Value().Uncovered))
+            {
                 return Core::VFS::VFSResult<uint64_t>::Fail(Core::VFS::VFSError::Corrupted);
+            }
             state -= shared.Value().Uncovered.StateBytes;
             pools -= shared.Value().Uncovered.PoolBytes;
         }
@@ -127,7 +157,9 @@ namespace ZEngine::Cook
     {
         const auto requirements = allocator.MemoryRequirements();
         if (requirements.Succeeded() && requirements.Value().IncludesAllocations)
+        {
             return std::min(maximum_working_bytes, requirements.Value().PoolBytes);
+        }
         const uint64_t live = allocator.Statistics().LiveBytes;
         return live < maximum_working_bytes ? maximum_working_bytes - live : 0;
     }
@@ -140,13 +172,19 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<void> CookWorkspace::Initialize(ICookAllocator& allocator, size_t bytes, CookMemoryCategory category)
     {
         if (m_allocator || !bytes || category >= CookMemoryCategory::Count)
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         const auto allocation = allocator.Allocate(bytes, DEFAULT_ALIGNMENT, category);
         if (allocation.Failed())
+        {
             return Core::VFS::VFSResult<void>::Fail(allocation.Error());
+        }
         auto* pointer = allocation.Value();
         if (!pointer)
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::OutOfMemory);
+        }
         if (reinterpret_cast<uintptr_t>(pointer) % DEFAULT_ALIGNMENT != 0 || !m_arena.InitializeBorrowed(pointer, bytes, "CookWorkspace"))
         {
             allocator.Free(pointer);
@@ -209,7 +247,9 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<void> CookMemoryLedger::Initialize(uint64_t max_working_bytes)
     {
         if (!max_working_bytes || max_working_bytes > std::numeric_limits<size_t>::max() || m_statistics.LiveBytes)
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         m_limit      = max_working_bytes;
         m_statistics = {};
         return Core::VFS::VFSResult<void>::Ok();
@@ -219,12 +259,18 @@ namespace ZEngine::Cook
     {
         const auto index = static_cast<size_t>(category);
         if (!IsInitialized() || !out_charge || out_charge->IsActive() || index >= m_statistics.LiveByCategory.size())
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         // Subtraction, not unchecked addition: UINT64_MAX inputs fail safely.
         if (retained_bytes > RemainingBytes())
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+        }
         if (retained_bytes == 0)
+        {
             return Core::VFS::VFSResult<void>::Ok();
+        }
         m_statistics.LiveBytes             += retained_bytes;
         m_statistics.PeakBytes              = std::max(m_statistics.PeakBytes, m_statistics.LiveBytes);
         m_statistics.LiveByCategory[index] += retained_bytes;
@@ -238,7 +284,9 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<void> CookMemoryLedger::Resize(CookMemoryCharge& charge, uint64_t bytes) noexcept
     {
         if (bytes > charge.m_bytes && bytes - charge.m_bytes > RemainingBytes())
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+        }
         const auto index                    = static_cast<size_t>(charge.m_category);
         m_statistics.LiveBytes             -= charge.m_bytes;
         m_statistics.LiveByCategory[index] -= charge.m_bytes;
@@ -248,7 +296,9 @@ namespace ZEngine::Cook
         m_statistics.PeakByCategory[index]  = std::max(m_statistics.PeakByCategory[index], m_statistics.LiveByCategory[index]);
         charge.m_bytes                      = bytes;
         if (!bytes)
+        {
             charge.m_ledger = nullptr;
+        }
         return Core::VFS::VFSResult<void>::Ok();
     }
 

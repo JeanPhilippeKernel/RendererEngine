@@ -94,7 +94,9 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] virtual VFSResult<void> CloseChecked(IVFSFile* file)
         {
             if (!file)
+            {
                 return VFSResult<void>::Ok();
+            }
             const auto result = file->Close();
             Close(file);
             return result;

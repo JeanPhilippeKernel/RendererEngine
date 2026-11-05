@@ -17,9 +17,13 @@ namespace ZEngine::Core::Serialization
             for (size_t i = 0; i < text.size(); ++i)
             {
                 if (text[i])
+                {
                     continue;
+                }
                 if (!Helpers::IsValidUTF8(text.data() + start, i - start))
+                {
                     return false;
+                }
                 start = i + 1;
             }
             return text.empty() || Helpers::IsValidUTF8(text.data() + start, text.size() - start);
@@ -31,7 +35,9 @@ namespace ZEngine::Core::Serialization
     bool CanonicalJSONWriter::Reject(VFS::VFSError error)
     {
         if (m_error == VFS::VFSError::OK)
+        {
             m_error = error;
+        }
         return false;
     }
 
@@ -43,11 +49,17 @@ namespace ZEngine::Core::Serialization
     bool CanonicalJSONWriter::Raw(Containers::StringView text)
     {
         if (!CanEmit())
+        {
             return false;
+        }
         if (text.size() && !text.data())
+        {
             return Reject(VFS::VFSError::InvalidPath);
+        }
         if (!text.size())
+        {
             return true;
+        }
         m_writing          = true;
         const auto written = m_write(m_context, {reinterpret_cast<const uint8_t*>(text.data()), text.size()});
         m_writing          = false;
@@ -57,21 +69,33 @@ namespace ZEngine::Core::Serialization
     bool CanonicalJSONWriter::String(Containers::StringView text)
     {
         if (!CanEmit())
+        {
             return false;
+        }
         if (text.size() && !text.data())
+        {
             return Reject(VFS::VFSError::InvalidPath);
+        }
         if (!ValidJSONString(text))
+        {
             return Reject(VFS::VFSError::Corrupted);
+        }
         if (!Raw("\""))
+        {
             return false;
+        }
         size_t start = 0;
         for (size_t i = 0; i < text.size(); ++i)
         {
             const auto byte = static_cast<uint8_t>(text[i]);
             if (byte >= 0x20 && byte != '"' && byte != '\\')
+            {
                 continue;
+            }
             if (!Raw({text.data() + start, i - start}))
+            {
                 return false;
+            }
             m_scratch[0] = '\\';
             if (byte < 0x20)
             {
@@ -81,13 +105,17 @@ namespace ZEngine::Core::Serialization
                 m_scratch[4]                = hex[byte >> 4];
                 m_scratch[5]                = hex[byte & 15];
                 if (!Raw({m_scratch.data(), 6}))
+                {
                     return false;
+                }
             }
             else
             {
                 m_scratch[1] = static_cast<char>(byte);
                 if (!Raw({m_scratch.data(), 2}))
+                {
                     return false;
+                }
             }
             start = i + 1;
         }
@@ -97,7 +125,9 @@ namespace ZEngine::Core::Serialization
     bool CanonicalJSONWriter::UInt64(uint64_t value)
     {
         if (!CanEmit())
+        {
             return false;
+        }
         const auto formatted = std::to_chars(m_scratch.data(), m_scratch.data() + m_scratch.size(), value);
         return formatted.ec == std::errc{} ? Raw({m_scratch.data(), static_cast<size_t>(formatted.ptr - m_scratch.data())}) : Reject(VFS::VFSError::Corrupted);
     }
@@ -105,26 +135,40 @@ namespace ZEngine::Core::Serialization
     bool CanonicalJSONWriter::Float32(float value)
     {
         if (!CanEmit())
+        {
             return false;
+        }
         if (!std::isfinite(value))
+        {
             return Reject(VFS::VFSError::Corrupted);
+        }
         if (value == 0.f)
+        {
             return Raw("0");
+        }
         auto*      bytes     = m_scratch.data();
         const auto formatted = std::to_chars(bytes, bytes + m_scratch.size(), value, std::chars_format::scientific, 8);
         if (formatted.ec != std::errc{})
+        {
             return Reject(VFS::VFSError::Corrupted);
+        }
         char* exponent = bytes;
         while (exponent != formatted.ptr && *exponent != 'e')
+        {
             ++exponent;
+        }
         if (exponent == formatted.ptr)
+        {
             return Reject(VFS::VFSError::Corrupted);
+        }
         ++exponent;
         const char* digits = exponent + (*exponent == '+' ? 1 : 0);
         int         power  = 0;
         const auto  parsed = std::from_chars(digits, formatted.ptr, power);
         if (parsed.ec != std::errc{} || parsed.ptr != formatted.ptr)
+        {
             return Reject(VFS::VFSError::Corrupted);
+        }
         const auto normalized = std::to_chars(exponent, bytes + m_scratch.size(), power);
         return normalized.ec == std::errc{} ? Raw({bytes, static_cast<size_t>(normalized.ptr - bytes)}) : Reject(VFS::VFSError::Corrupted);
     }
@@ -137,7 +181,9 @@ namespace ZEngine::Core::Serialization
     bool CanonicalJSONWriter::UUID(const uuids::uuid& uuid)
     {
         if (!CanEmit())
+        {
             return false;
+        }
         (void) uuids::to_string<char>(uuid, m_scratch.data());
         return String({m_scratch.data(), 36});
     }
@@ -145,11 +191,17 @@ namespace ZEngine::Core::Serialization
     bool CanonicalJSONWriter::HexString(Containers::ArrayView<const uint8_t> bytes)
     {
         if (!CanEmit())
+        {
             return false;
+        }
         if (bytes.size() && !bytes.data())
+        {
             return Reject(VFS::VFSError::InvalidPath);
+        }
         if (!Raw("\""))
+        {
             return false;
+        }
         constexpr cstring hex = "0123456789abcdef";
         for (size_t offset = 0; offset < bytes.size();)
         {
@@ -160,7 +212,9 @@ namespace ZEngine::Core::Serialization
                 m_scratch[2 * i + 1] = hex[bytes[offset + i] & 15];
             }
             if (!Raw({m_scratch.data(), count * 2}))
+            {
                 return false;
+            }
             offset += count;
         }
         return Raw("\"");

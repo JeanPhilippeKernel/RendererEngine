@@ -53,10 +53,14 @@ namespace ZEngine::Core::VFS::Detail
     [[nodiscard]] inline VFSResult<VFSFileIdentity> NativeIdentity(HANDLE handle)
     {
         if (!handle || handle == INVALID_HANDLE_VALUE)
+        {
             return VFSResult<VFSFileIdentity>::Fail(VFSError::IOError);
+        }
         FILE_ID_INFO value = {};
         if (!GetFileInformationByHandleEx(handle, FileIdInfo, &value, sizeof(value)))
+        {
             return VFSResult<VFSFileIdentity>::Fail(NativeWindowsError(GetLastError()));
+        }
         VFSFileIdentity identity = {.Volume = value.VolumeSerialNumber};
         static_assert(sizeof(value.FileId.Identifier) == sizeof(identity.ObjectLow) + sizeof(identity.ObjectHigh));
         (void) Helpers::secure_memcpy(&identity.ObjectLow, sizeof(identity.ObjectLow), value.FileId.Identifier, sizeof(identity.ObjectLow));
@@ -67,23 +71,35 @@ namespace ZEngine::Core::VFS::Detail
     [[nodiscard]] inline VFSResult<VFSFileStat> NativeStat(HANDLE handle)
     {
         if (!handle || handle == INVALID_HANDLE_VALUE)
+        {
             return VFSResult<VFSFileStat>::Fail(VFSError::IOError);
+        }
         FILE_BASIC_INFO    basic    = {};
         FILE_STANDARD_INFO standard = {};
         if (!GetFileInformationByHandleEx(handle, FileBasicInfo, &basic, sizeof(basic)) || !GetFileInformationByHandleEx(handle, FileStandardInfo, &standard, sizeof(standard)))
+        {
             return VFSResult<VFSFileStat>::Fail(NativeWindowsError(GetLastError()));
+        }
         if (basic.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+        {
             return VFSResult<VFSFileStat>::Fail(VFSError::PermissionDenied);
+        }
         if ((basic.FileAttributes & FILE_ATTRIBUTE_DEVICE) || GetFileType(handle) != FILE_TYPE_DISK)
+        {
             return VFSResult<VFSFileStat>::Fail(VFSError::NotAFile);
+        }
         if (standard.EndOfFile.QuadPart < 0 || basic.LastWriteTime.QuadPart < 0)
+        {
             return VFSResult<VFSFileStat>::Fail(VFSError::Corrupted);
+        }
         // FILETIME ticks are 100 ns since 1601; the shared VFS uses signed
         // nanoseconds since 1970. Refuse out-of-range times, never wrap them.
         constexpr int64_t epoch_ticks = 116444736000000000ll;
         const int64_t     ticks       = basic.LastWriteTime.QuadPart - epoch_ticks;
         if (ticks > std::numeric_limits<int64_t>::max() / 100 || ticks < std::numeric_limits<int64_t>::min() / 100)
+        {
             return VFSResult<VFSFileStat>::Fail(VFSError::Corrupted);
+        }
         return VFSResult<VFSFileStat>::Ok({
             .SizeBytes   = standard.Directory ? 0 : static_cast<uint64_t>(standard.EndOfFile.QuadPart),
             .MTimeNs     = ticks * 100,
@@ -100,9 +116,13 @@ namespace ZEngine::Core::VFS::Detail
     [[nodiscard]] inline VFSResult<VFSFileStat> NativeStat(const struct stat& value)
     {
         if (value.st_size < 0)
+        {
             return VFSResult<VFSFileStat>::Fail(VFSError::Corrupted);
+        }
         if (!S_ISREG(value.st_mode) && !S_ISDIR(value.st_mode))
+        {
             return VFSResult<VFSFileStat>::Fail(VFSError::NotAFile);
+        }
 #if defined(__APPLE__)
         const auto time = value.st_mtimespec;
 #else
@@ -110,10 +130,14 @@ namespace ZEngine::Core::VFS::Detail
 #endif
         constexpr int64_t second = 1'000'000'000;
         if (time.tv_sec > std::numeric_limits<int64_t>::max() / second || time.tv_sec < std::numeric_limits<int64_t>::min() / second || time.tv_nsec < 0 || time.tv_nsec >= second)
+        {
             return VFSResult<VFSFileStat>::Fail(VFSError::Corrupted);
+        }
         const auto seconds = static_cast<int64_t>(time.tv_sec) * second;
         if (seconds > std::numeric_limits<int64_t>::max() - time.tv_nsec)
+        {
             return VFSResult<VFSFileStat>::Fail(VFSError::Corrupted);
+        }
         return VFSResult<VFSFileStat>::Ok({.SizeBytes = S_ISDIR(value.st_mode) ? 0 : static_cast<uint64_t>(value.st_size), .MTimeNs = seconds + time.tv_nsec, .IsDirectory = S_ISDIR(value.st_mode), .IsReadOnly = (value.st_mode & S_IWUSR) == 0});
     }
 #endif

@@ -52,11 +52,17 @@ namespace ZEngine::Cook
                     MaxLiveBytes    = std::max(MaxLiveBytes, live);
                 }
                 if (++Calls == FailAt)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 if (bytes.size() > sizeof(Bytes) - Count)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 if (bytes.size())
+                {
                     Helpers::secure_memcpy(Bytes + Count, sizeof(Bytes) - Count, bytes.data(), bytes.size());
+                }
                 Count += bytes.size();
                 return VFS::VFSResult<void>::Ok();
             }
@@ -367,7 +373,9 @@ namespace ZEngine::Cook
         const auto live        = Allocator.Statistics().LiveBytes;
         const auto allocations = Allocator.Allocations;
         for (auto& word : Workspace)
+        {
             word = UINT32_MAX;
+        }
         for (const auto error : {VFS::VFSError::Unsupported, VFS::VFSError::OutOfMemory, VFS::VFSError::SizeLimitExceeded})
         {
             ManifestSink       sink   = {};
@@ -384,7 +392,9 @@ namespace ZEngine::Cook
             EXPECT_EQ(Allocator.Statistics().LiveBytes, live);
             EXPECT_EQ(Allocator.Allocations, allocations);
             for (const auto word : Workspace)
+            {
                 EXPECT_EQ(word, UINT32_MAX);
+            }
         }
     }
 

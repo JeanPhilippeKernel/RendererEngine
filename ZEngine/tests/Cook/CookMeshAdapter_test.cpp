@@ -43,16 +43,22 @@ namespace ZEngine::Cook
                 (void) hash.Update({reinterpret_cast<const uint8_t*>(Bytes.data()), Bytes.size()});
                 (void) hash.Finalize(&digest);
                 if (WrongDigest)
+                {
                     digest.Bytes[0] ^= 1;
+                }
                 return digest;
             }
             VFS::VFSResult<size_t> Read(uint64_t offset, Core::Containers::ArrayView<uint8_t> output) const override
             {
                 if (++Reads == FailAt)
+                {
                     return VFS::VFSResult<size_t>::Fail(ReadError);
+                }
                 const size_t count = offset >= Bytes.size() ? 0 : std::min({output.size(), Bytes.size() - static_cast<size_t>(offset), Chunk});
                 if (count)
+                {
                     Helpers::secure_memcpy(output.data(), output.size(), Bytes.data() + offset, count);
+                }
                 return VFS::VFSResult<size_t>::Ok(count);
             }
         };
@@ -67,7 +73,9 @@ namespace ZEngine::Cook
             VFS::VFSResult<void> Write(Core::Containers::ArrayView<const uint8_t> bytes) override
             {
                 if (++Calls == FailAt)
+                {
                     return VFS::VFSResult<void>::Fail(Error);
+                }
                 Bytes.append(reinterpret_cast<cstring>(bytes.data()), bytes.size());
                 return VFS::VFSResult<void>::Ok();
             }
@@ -85,7 +93,9 @@ namespace ZEngine::Cook
             VFS::VFSResult<void*> Allocate(size_t bytes, size_t alignment, CookMemoryCategory category) noexcept override
             {
                 if (!Calls)
+                {
                     FirstRequest = bytes;
+                }
                 return ++Calls == FailAt ? VFS::VFSResult<void*>::Fail(VFS::VFSError::OutOfMemory) : Parent->Allocate(bytes, alignment, category);
             }
             void Free(void* pointer) noexcept override
@@ -100,7 +110,9 @@ namespace ZEngine::Cook
             {
                 LargestCharge = std::max(LargestCharge, bytes);
                 if (RefuseChargeBytes && bytes == RefuseChargeBytes)
+                {
                     return VFS::VFSResult<void>::Fail(ChargeError);
+                }
                 return Parent->TryCharge(bytes, category, output);
             }
         };
@@ -295,7 +307,9 @@ namespace ZEngine::Cook
     {
         Bake(12);
         for (size_t index : {size_t(0), size_t(2), size_t(5), size_t(10)})
+        {
             Mesh.SubMeshes[index].MaterialUUID = {};
+        }
         SaveCapture();
         CookAssetInspection inspection = {};
         ASSERT_TRUE(Adapter.Inspect(nullptr, Input, Scratch, &inspection, nullptr).Succeeded());
@@ -304,18 +318,26 @@ namespace ZEngine::Cook
         EXPECT_EQ(inspection.Dependencies()[1].Slot, Core::Containers::StringView("submeshes/11/material"));
         std::vector<CookResolvedDependency> children = {};
         for (const auto& dependency : inspection.Dependencies())
+        {
             children.push_back(Resolved(dependency.Slot));
+        }
         MeshSink valid = {};
         ASSERT_TRUE(Adapter.Encode(nullptr, Input, children, CookTarget::DesktopVulkanLE64, valid, Scratch, nullptr).Succeeded());
         for (uint32_t malformed = 0; malformed < 3; ++malformed)
         {
             auto changed = children;
             if (malformed == 0)
+            {
                 std::swap(changed[0], changed[1]);
+            }
             if (malformed == 1)
+            {
                 changed[1] = changed[0];
+            }
             if (malformed == 2)
+            {
                 changed[0].Slot = "submeshes/0/material";
+            }
             MeshSink sink = {};
             EXPECT_TRUE(Adapter.Encode(nullptr, Input, changed, CookTarget::DesktopVulkanLE64, sink, Scratch, nullptr).Failed());
             EXPECT_EQ(sink.Calls, 0u);
@@ -345,9 +367,13 @@ namespace ZEngine::Cook
                 material       = i % 2 ? MeshUUID("00000000-0000-0000-0000-000000000002") : MeshUUID("00000000-0000-0000-0000-000000000003");
                 // Missing parents must not hide their non-nil decimal children.
                 if (sparse && (i % 3 == 0 || i == count / 2))
+                {
                     material = {};
+                }
                 if (!material.is_nil())
+                {
                     expected.emplace_back("submeshes/" + std::to_string(i) + "/material", CookAssetIdentity{CookAssetKind::Material, material});
+                }
             }
             SaveCapture();
             ASSERT_FALSE(HasFatalFailure());
@@ -443,7 +469,9 @@ namespace ZEngine::Cook
             ASSERT_EQ(Diagnostics.Count, 1u);
             EXPECT_EQ(Diagnostics.Entries[0].Stage, CookStage::Discover);
             if (error == VFS::VFSError::Unsupported)
+            {
                 EXPECT_EQ(Diagnostics.Entries[0].Code, CookDiagnosticCode::UnsupportedBackend);
+            }
             Diagnostics.Clear();
             MeshSink sink = {};
             EXPECT_EQ(Adapter.Encode(nullptr, Input, {&child, 1}, CookTarget::DesktopVulkanLE64, sink, allocator, &Diagnostics).Error(), error);
@@ -456,7 +484,9 @@ namespace ZEngine::Cook
             ASSERT_EQ(Diagnostics.Count, 1u);
             EXPECT_EQ(Diagnostics.Entries[0].Stage, CookStage::Encode);
             if (error == VFS::VFSError::Unsupported)
+            {
                 EXPECT_EQ(Diagnostics.Entries[0].Code, CookDiagnosticCode::UnsupportedBackend);
+            }
         }
     }
 
@@ -475,9 +505,13 @@ namespace ZEngine::Cook
             CookAssetInspection inspection = {};
             const auto          status     = Adapter.Inspect(nullptr, Input, allocator, &inspection, nullptr);
             if (!failure)
+            {
                 ASSERT_TRUE(status.Succeeded());
+            }
             else
+            {
                 EXPECT_EQ(status.Error(), failure == 1 ? VFS::VFSError::PermissionDenied : VFS::VFSError::OutOfMemory);
+            }
             EXPECT_EQ(allocator.LargestCharge, reader_bytes);
             EXPECT_EQ(Parent.Statistics().LiveBytes, idle);
             EXPECT_EQ(Scratch.OutstandingAllocations(), 0u);
@@ -525,29 +559,53 @@ namespace ZEngine::Cook
         {
             Capture.Bytes = original;
             if (malformed == 0)
+            {
                 SetBytes(4, uint32_t(ASSET_FILE_VERSION + 1));
+            }
             if (malformed == 1)
+            {
                 SetBytes(32, std::numeric_limits<float>::quiet_NaN());
+            }
             if (malformed == 2)
+            {
                 SetBytes(IndicesCount() + 8, uint32_t(3));
+            }
             if (malformed == 3)
+            {
                 SetBytes(NodesCount() + 8, int32_t(0));
+            }
             if (malformed == 4)
+            {
                 SetBytes(LocalsCount() + 8, std::numeric_limits<float>::infinity());
+            }
             if (malformed == 5)
+            {
                 SetBytes(NamesCount() + 4 + 8, uint8_t(0xc0));
+            }
             if (malformed == 6)
+            {
                 SetBytes(8, MeshUUID("00000000-0000-0000-0000-000000000099"));
+            }
             if (malformed == 7)
+            {
                 Capture.Bytes.push_back('x');
+            }
             if (malformed == 8)
+            {
                 SetBytes(24, UINT64_MAX);
+            }
             if (malformed == 9)
+            {
                 SetBytes(SubMeshesCount() + 8 + offsetof(Importers::AssetSubMesh, StreamOffset), uint32_t(1));
+            }
             if (malformed == 10)
+            {
                 SetBytes(SubMeshesCount() + 8 + offsetof(Importers::AssetSubMesh, IndexStreamOffset), uint32_t(1));
+            }
             if (malformed == 11)
+            {
                 SetBytes(SubMeshesCount() + 8 + offsetof(Importers::AssetSubMesh, TotalByteSize), uint32_t(0));
+            }
             Diagnostics.Clear();
             EXPECT_TRUE(Adapter.Inspect(nullptr, Input, Scratch, &inspection, &Diagnostics).Failed()) << malformed;
             EXPECT_EQ(inspection.Dependencies().data(), prior);
@@ -591,11 +649,17 @@ namespace ZEngine::Cook
         {
             Limits = {.MaxWorkingBytes = ZKilo(256)};
             if (policy == 0)
+            {
                 Limits.MaxEncodedAssetBytes = Capture.Bytes.size() - 1;
+            }
             if (policy == 1)
+            {
                 Limits.MaxDecodedAssetBytes = 1;
+            }
             if (policy == 2)
+            {
                 Limits.MaxEdges = 0;
+            }
             CookAssetInspection inspection = {};
             EXPECT_EQ(Adapter.Inspect(nullptr, Input, Scratch, &inspection, nullptr).Error(), VFS::VFSError::SizeLimitExceeded);
             EXPECT_EQ(inspection.Format(), nullptr);
@@ -610,29 +674,53 @@ namespace ZEngine::Cook
             CookResolvedDependency children[] = {Resolved(), Resolved()};
             size_t                 count      = malformed == 0 ? 0 : malformed == 1 ? 2 : 1;
             if (malformed == 2)
+            {
                 children[0].Slot = "submeshes/00/material";
+            }
             if (malformed == 3)
+            {
                 children[0].Slot = "submeshes/1/material";
+            }
             if (malformed == 4)
+            {
                 children[0].Slot = "submeshes/+0/material";
+            }
             if (malformed == 5)
+            {
                 children[0].Slot = "submeshes/4294967296/material";
+            }
             if (malformed == 6)
+            {
                 children[0].Slot = "submeshes/0/material/";
+            }
             if (malformed == 7)
+            {
                 children[0].Identity.UUID = {};
+            }
             if (malformed == 8)
+            {
                 children[0].Identity.UUID = MeshUUID();
+            }
             if (malformed == 9)
+            {
                 children[0].Identity.Kind = CookAssetKind::Texture;
+            }
             if (malformed == 10)
+            {
                 children[0].Format = "image-png";
+            }
             if (malformed == 11)
+            {
                 children[0].ObjectDigest = {};
+            }
             if (malformed == 12)
+            {
                 children[0].ObjectPath = VFS::VFSRelativePath::Parse("assets/material.zematerial").Value();
+            }
             if (malformed == 13)
+            {
                 children[0].ObjectSize = 0;
+            }
             MeshSink sink = {};
             EXPECT_TRUE(Adapter.Encode(nullptr, Input, {children, count}, CookTarget::DesktopVulkanLE64, sink, Scratch, nullptr).Failed()) << malformed;
             EXPECT_EQ(sink.Calls, 0u);
@@ -710,23 +798,41 @@ namespace ZEngine::Cook
             Input    = valid;
             Metadata = sidecar;
             if (invalid == 0)
+            {
                 Input.Identity.Kind = CookAssetKind::Texture;
+            }
             if (invalid == 1)
+            {
                 Input.Artifact = nullptr;
+            }
             if (invalid == 2)
+            {
                 Input.Metadata = nullptr;
+            }
             if (invalid == 3)
+            {
                 Input.Limits = nullptr;
+            }
             if (invalid == 4)
+            {
                 Input.Source = {};
+            }
             if (invalid == 5)
+            {
                 Input.EnvironmentSource = &Capture;
+            }
             if (invalid == 6)
+            {
                 Metadata.Data.SettingsCount = 1;
+            }
             if (invalid == 7)
+            {
                 Metadata.Data.AssetUUID = {};
+            }
             if (invalid == 8)
+            {
                 Metadata.Fields = 0;
+            }
             CookAssetInspection inspection = {};
             EXPECT_TRUE(Adapter.Inspect(nullptr, Input, Scratch, &inspection, nullptr).Failed()) << invalid;
             EXPECT_EQ(Scratch.OutstandingAllocations(), 0u);

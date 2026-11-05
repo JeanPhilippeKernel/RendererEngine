@@ -10,10 +10,14 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<void> CookScratchAllocator::Initialize(ICookAllocator& parent, size_t bytes, CookMemoryCategory backing_category)
     {
         if (m_parent || &parent == this)
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         const auto workspace = m_workspace.Initialize(parent, bytes, backing_category);
         if (workspace.Failed())
+        {
             return workspace;
+        }
         if (!m_slab.TryInit(m_workspace.Arena(), bytes))
         {
             m_workspace.Release();
@@ -38,10 +42,14 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<void*> CookScratchAllocator::Allocate(size_t bytes, size_t alignment, CookMemoryCategory category) noexcept
     {
         if (!m_parent || !bytes || !alignment || (alignment & (alignment - 1)) || category >= CookMemoryCategory::Count)
+        {
             return Core::VFS::VFSResult<void*>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         auto* pointer = m_slab.TryAllocate(bytes, alignment);
         if (!pointer)
+        {
             return Core::VFS::VFSResult<void*>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+        }
         ++m_outstanding;
         return Core::VFS::VFSResult<void*>::Ok(pointer);
     }
@@ -49,7 +57,9 @@ namespace ZEngine::Cook
     void CookScratchAllocator::Free(void* pointer) noexcept
     {
         if (!pointer)
+        {
             return;
+        }
         const auto* arena   = m_workspace.Arena();
         const auto  address = reinterpret_cast<uintptr_t>(pointer);
         ZENGINE_VALIDATE_ASSERT(arena && m_outstanding && address >= reinterpret_cast<uintptr_t>(m_slab.Backing) && address - reinterpret_cast<uintptr_t>(m_slab.Backing) < arena->m_total_size, "Foreign cook scratch allocation.");
@@ -65,7 +75,9 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<size_t> CookScratchAllocator::AllocationFootprint(size_t bytes, size_t alignment, CookMemoryCategory category) const noexcept
     {
         if (!m_parent || !bytes || !alignment || (alignment & (alignment - 1)) || category >= CookMemoryCategory::Count)
+        {
             return Core::VFS::VFSResult<size_t>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         const auto bound = Core::Memory::TLSFSlab::AllocationFootprintBound(bytes, alignment);
         return bound ? Core::VFS::VFSResult<size_t>::Ok(bound) : Core::VFS::VFSResult<size_t>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
     }
@@ -83,23 +95,35 @@ namespace ZEngine::Cook
     Core::VFS::VFSResult<CookAllocatorMemoryRequirements> CookScratchAllocator::Requirements(const ICookMemoryCoverage* coverage) const noexcept
     {
         if (!m_parent)
+        {
             return Core::VFS::VFSResult<CookAllocatorMemoryRequirements>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         const auto parent = coverage ? m_parent->UncoveredMemoryRequirements(*coverage) : m_parent->MemoryRequirements();
         if (parent.Failed())
+        {
             return parent;
+        }
         const uint64_t own_bytes = coverage && coverage->Contains(this, sizeof(*this)) ? 0 : sizeof(*this);
         if (parent.Value().StateBytes > UINT64_MAX - own_bytes)
+        {
             return Core::VFS::VFSResult<CookAllocatorMemoryRequirements>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+        }
         uint64_t bytes = parent.Value().PoolBytes;
         if (!parent.Value().IncludesAllocations)
         {
             const auto backing = m_parent->AllocationFootprint(m_backing_bytes, DEFAULT_ALIGNMENT, m_backing_category);
             if (backing.Failed())
+            {
                 return Core::VFS::VFSResult<CookAllocatorMemoryRequirements>::Fail(backing.Error());
+            }
             if (backing.Value() < m_backing_bytes)
+            {
                 return Core::VFS::VFSResult<CookAllocatorMemoryRequirements>::Fail(Core::VFS::VFSError::Corrupted);
+            }
             if (backing.Value() > UINT64_MAX - bytes)
+            {
                 return Core::VFS::VFSResult<CookAllocatorMemoryRequirements>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+            }
             bytes += backing.Value();
         }
         return Core::VFS::VFSResult<CookAllocatorMemoryRequirements>::Ok({parent.Value().StateBytes + own_bytes, bytes, true});

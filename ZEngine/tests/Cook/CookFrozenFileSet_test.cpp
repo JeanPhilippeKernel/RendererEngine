@@ -47,9 +47,13 @@ namespace ZEngine::Cook::Tests
             Memory.Initialize(ZMega(2), {});
             ASSERT_TRUE(Backend.InitializeOwned(ZMega(2), 128).Succeeded());
             for (cstring path : {"/assets/nested", "/scenes", "/scratch"})
+            {
                 ASSERT_TRUE(Backend.CreateDir(FileSetPath(path)).Succeeded());
+            }
             for (cstring path : {"/assets/a.png", "/assets/nested/b.zemesh", "/scenes/level.scene"})
+            {
                 ASSERT_TRUE(Backend.WriteFile(FileSetPath(path), FileSetOld).Succeeded());
+            }
             Context.Initialize(&Memory.MainArena);
             ASSERT_TRUE(Context.Mount(&Backend, VFS::VFSPath::Root(), 0).Succeeded());
             const CookFrozenRootRequest roots[] = {
@@ -88,7 +92,9 @@ namespace ZEngine::Cook::Tests
         Build();
         ASSERT_EQ(Files.Records().size(), 6u);
         for (size_t i = 1; i < Files.Records().size(); ++i)
+        {
             EXPECT_TRUE(Files.Records()[i - 1].Path < Files.Records()[i].Path);
+        }
         const auto* file = Files.Find(FileSetRelative("assets/nested/b.zemesh"));
         ASSERT_NE(file, nullptr);
         EXPECT_EQ(file->Stat.SizeBytes, sizeof(FileSetOld));
@@ -202,7 +208,9 @@ namespace ZEngine::Cook::Tests
                 ASSERT_NE(files.Find(FileSetRelative("assets/a.png")), nullptr);
                 const auto records = files.Records();
                 for (size_t i = 1; i < records.size(); ++i)
+                {
                     EXPECT_TRUE(records[i - 1].Path < records[i].Path);
+                }
             }
             files.Reset();
             EXPECT_EQ(Allocator.Statistics().LiveBytes, before);

@@ -22,15 +22,25 @@ namespace ZEngine::Cook::Detail
     [[nodiscard]] Core::VFS::VFSResult<void> ValidateManifestObjectSizes(uint32_t count, Core::Containers::ArrayView<uint32_t> workspace, CookSortState<uint32_t>& sort, const ObjectAt& object)
     {
         if (workspace.size() && !workspace.data())
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
         if (workspace.size() < count)
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+        }
         for (uint32_t i = 0; i < count; ++i)
+        {
             workspace[i] = i;
+        }
         HeapSort<uint32_t>({workspace.data(), count}, sort, [&](uint32_t left, uint32_t right) { return CookDependencySlotBefore(object(left).Path.View(), object(right).Path.View()); });
         for (uint32_t i = 1; i < count; ++i)
+        {
             if (object(workspace[i - 1]).Path == object(workspace[i]).Path && object(workspace[i - 1]).Size != object(workspace[i]).Size)
+            {
                 return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::Corrupted);
+            }
+        }
         return Core::VFS::VFSResult<void>::Ok();
     }
 } // namespace ZEngine::Cook::Detail

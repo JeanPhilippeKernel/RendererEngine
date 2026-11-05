@@ -146,6 +146,7 @@ TEST_F(SceneYAMLTest, CollectionDepthNodeAndScalarLimitsAreCheckedBeforePublicat
 TEST_F(SceneYAMLTest, TinyMapUniquenessNeedsNoScratchCapacityAndStillRejectsDuplicateText)
 {
     for (uint32_t count = 0; count <= 2; ++count)
+    {
         for (const bool duplicate : {false, true})
         {
             SCOPED_TRACE(count);
@@ -163,7 +164,9 @@ TEST_F(SceneYAMLTest, TinyMapUniquenessNeedsNoScratchCapacityAndStillRejectsDupl
             }
             const auto available = bounded.ByteCapacity() - bounded.BytesUsed();
             if (available)
+            {
                 ASSERT_NE(bounded.Allocator()->AllocateNoZero(available, 1), nullptr);
+            }
             const auto used = bounded.BytesUsed();
             ASSERT_EQ(used, bounded.ByteCapacity());
             const bool     unique = count < 2 || !duplicate;
@@ -179,13 +182,16 @@ TEST_F(SceneYAMLTest, TinyMapUniquenessNeedsNoScratchCapacityAndStillRejectsDupl
             EXPECT_EQ(bounded.Failure(), unique ? SceneDiagnosticCode::None : SceneDiagnosticCode::InvalidData);
             EXPECT_EQ(bounded.BytesUsed(), used);
         }
+    }
 }
 
 TEST_F(SceneYAMLTest, LargeMapUniquenessHonorsExactSortingBudgetWithoutChangingInsertionOrder)
 {
     constexpr size_t required = sizeof(ZEngine::Core::Containers::HeapSortState<uint32_t>) + sizeof(ZEngine::Core::Containers::Array<uint32_t>) + sizeof(ZEngine::Core::Memory::ArenaTemp) + sizeof(ZEngine::Core::Memory::WorkingMemoryCharge);
     for (const size_t count : {3u, 64u, 257u})
+    {
         for (const bool duplicate : {false, true})
+        {
             for (const size_t shortfall : {1u, 0u})
             {
                 SCOPED_TRACE(count);
@@ -225,6 +231,8 @@ TEST_F(SceneYAMLTest, LargeMapUniquenessHonorsExactSortingBudgetWithoutChangingI
                 }
                 EXPECT_EQ(index, count);
             }
+        }
+    }
 }
 
 TEST_F(SceneYAMLTest, RoutedMapSortingUsesItsActualOwnerInsteadOfAnUnrelatedScope)
@@ -239,7 +247,9 @@ TEST_F(SceneYAMLTest, RoutedMapSortingUsesItsActualOwnerInsteadOfAnUnrelatedScop
             ASSERT_TRUE(borrowed ? bounded.InitializeGrowingBorrowed(memory, sizeof(memory), sizeof(memory), owner) : bounded.Initialize(ZKilo(8), 64, 64, 64, &owner));
             auto map = bounded.Make(SceneYAML::NodeType::Map);
             for (const auto key : {"c", "a", "b"})
+            {
                 ASSERT_TRUE(bounded.Set(map, key, bounded.Scalar("value")));
+            }
             const auto attempts = owner.Attempts;
             {
                 ZEngine::Core::Serialization::YAMLAllocationScope scope(unrelated);
@@ -260,7 +270,9 @@ TEST_F(SceneYAMLTest, FailedMapScratchReservationDrainsTheSortingCharge)
 {
     auto map = Storage.Make(SceneYAML::NodeType::Map);
     for (const auto key : {"c", "a", "b"})
+    {
         ASSERT_TRUE(Storage.Set(map, key, Storage.Scalar("value")));
+    }
     const auto available = Storage.ByteCapacity() - Storage.BytesUsed();
     ASSERT_NE(Storage.Allocator()->AllocateNoZero(available, 1), nullptr);
     const auto     used  = Storage.BytesUsed();
@@ -309,7 +321,9 @@ TEST(SceneDiagnosticsTest, StructuredCategoriesSurviveEntryOverflowAndClearReset
 {
     SceneDiagnostics diagnostics = {};
     for (uint32_t i = 0; i < SceneDiagnostics::MAX_ENTRIES; ++i)
+    {
         diagnostics.Add(SceneDiagnosticSeverity::Info, "info");
+    }
     diagnostics.Error("limit", SceneDiagnosticCode::LimitExceeded);
     diagnostics.Error("allocation", SceneDiagnosticCode::AllocationFailed);
     EXPECT_EQ(diagnostics.Dropped, 2u);
@@ -453,9 +467,13 @@ TEST_F(SceneYAMLTest, CloneRejectsDuplicateKeysDepthAndMemoryOverflow)
         auto root = source.Make(SceneYAML::NodeType::Map);
         ASSERT_TRUE(source.Set(root, "value", source.Scalar("text")));
         if (mode == 0)
+        {
             root = {};
+        }
         if (mode == 1)
+        {
             ASSERT_TRUE(source.AppendField(root, source.Scalar("value"), source.UInt(7)));
+        }
         if (mode == 2)
         {
             const auto nested = source.Make(SceneYAML::NodeType::Map);
@@ -501,7 +519,9 @@ TEST_F(SceneYAMLTest, IterativeCloneUsesOneExactReservationAndRefusesBeforeMutat
         EXPECT_EQ(unrelated.Required, 0u);
         EXPECT_EQ(preserved.Scalar(), "preserved");
         if (!exact)
+        {
             EXPECT_EQ(destination.BytesUsed(), mark.Arena.CurrentOffset);
+        }
         else
         {
             for (uint32_t i = 0; i < 32; ++i)
@@ -537,7 +557,9 @@ TEST_F(SceneYAMLTest, IterativeClonePreservesDepthLeafAndExpandedNodeBoundaries)
     const auto repeated = Storage.Make(SceneYAML::NodeType::Sequence);
     const auto leaf     = Storage.Scalar("shared");
     for (uint32_t i = 0; i < 5; ++i)
+    {
         ASSERT_TRUE(Storage.Append(repeated, leaf));
+    }
     for (const uint32_t nodes : {5u, 6u})
     {
         SceneYAML::Storage destination = {};
@@ -546,7 +568,9 @@ TEST_F(SceneYAMLTest, IterativeClonePreservesDepthLeafAndExpandedNodeBoundaries)
         EXPECT_EQ(copy.IsDefined(), nodes == 6);
         EXPECT_EQ(destination.Failure(), nodes == 6 ? SceneDiagnosticCode::None : SceneDiagnosticCode::LimitExceeded);
         if (copy.IsDefined())
+        {
             EXPECT_EQ(copy.size(), 5u);
+        }
     }
 }
 
@@ -555,7 +579,9 @@ TEST_F(SceneYAMLTest, IterativeCloneKeepsSameOwnerIndicesStableAcrossWideRecordA
     const auto source = Storage.Make(SceneYAML::NodeType::Sequence);
     const auto leaf   = Storage.Scalar("shared source");
     for (uint32_t i = 0; i < 65536; ++i)
+    {
         ASSERT_TRUE(Storage.Append(source, leaf));
+    }
     const auto copy = Storage.Clone(source);
     ASSERT_TRUE(copy.IsSequence());
     EXPECT_EQ(copy.size(), 65536u);
@@ -683,7 +709,9 @@ TEST_F(SceneYAMLTest, CycleWalkExactBudgetPreservesReplacementOnRefusalAndUsesAc
         EXPECT_EQ(storage.Failure(), exact ? SceneDiagnosticCode::None : SceneDiagnosticCode::LimitExceeded);
         EXPECT_EQ(map["key"].IsSequence(), exact);
         if (!exact)
+        {
             EXPECT_EQ(map["key"].Scalar(), "preserved");
+        }
         EXPECT_EQ(storage.BytesUsed(), mark.Arena.CurrentOffset);
         EXPECT_EQ(route.Live, 0u);
         EXPECT_EQ(route.Attempts, attempts);
@@ -741,7 +769,9 @@ TEST_F(SceneYAMLTest, CycleWalkPreservesDepthAndExpandedNodeVisitBoundaries)
         const auto leaf        = storage.Make(SceneYAML::NodeType::Null);
         const auto destination = storage.Make(SceneYAML::NodeType::Sequence);
         for (uint32_t i = 0; i < leaves; ++i)
+        {
             ASSERT_TRUE(storage.Append(nested, leaf));
+        }
         EXPECT_EQ(storage.Append(destination, nested), leaves == 3);
         EXPECT_EQ(destination.size(), leaves == 3 ? 1u : 0u);
     }
@@ -759,7 +789,9 @@ TEST_F(SceneYAMLTest, WideCycleWalkFindsTheLastChildWithoutAllocatingOrChangingL
     const auto holder = storage.Make(SceneYAML::NodeType::Map);
     ASSERT_TRUE(storage.Set(holder, "key", leaf));
     for (uint32_t i = 0; i < 65535; ++i)
+    {
         ASSERT_TRUE(storage.Append(nested, leaf));
+    }
     ASSERT_TRUE(storage.Append(nested, last));
     const auto attempts = route.Attempts;
     const auto used     = storage.BytesUsed();

@@ -41,10 +41,14 @@ namespace ZEngine::Cook
         {
             const auto owner = m_owner->FixedWorkingBytes(covered, coverage);
             if (owner.Failed())
+            {
                 return owner;
+            }
             const uint64_t state = coverage && coverage->Contains(this, sizeof(*this)) ? 0 : sizeof(*this);
             if (owner.Value() > UINT64_MAX - state)
+            {
                 return Core::VFS::VFSResult<uint64_t>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+            }
             return Core::VFS::VFSResult<uint64_t>::Ok(state + owner.Value());
         }
 

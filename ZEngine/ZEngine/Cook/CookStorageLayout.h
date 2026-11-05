@@ -13,10 +13,14 @@ namespace ZEngine::Cook::Detail
         [[nodiscard]] bool Add(size_t count, size_t* offset) noexcept
         {
             if (!offset || m_bytes > SIZE_MAX - (alignof(T) - 1))
+            {
                 return false;
+            }
             const size_t aligned = (m_bytes + alignof(T) - 1) & ~(alignof(T) - 1);
             if (count > (SIZE_MAX - aligned) / sizeof(T))
+            {
                 return false;
+            }
             *offset = aligned;
             m_bytes = aligned + count * sizeof(T);
             return true;

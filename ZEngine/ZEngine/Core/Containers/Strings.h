@@ -57,11 +57,15 @@ namespace ZEngine::Core::Containers
         void append(const char* str)
         {
             if (!str)
+            {
                 return;
+            }
 
             size_type len = Helpers::secure_strlen(str);
             if (len == 0)
+            {
                 return;
+            }
 
             size_type new_size = m_size + len;
             if (new_size + 1 > m_capacity)
@@ -106,7 +110,9 @@ namespace ZEngine::Core::Containers
         bool operator==(const String& other) const
         {
             if (m_size != other.m_size)
+            {
                 return false;
+            }
             return Helpers::secure_strcmp(m_data, other.m_data) == 0;
         }
 
@@ -230,7 +236,9 @@ namespace ZEngine::Core::Containers
         bool operator==(const StringView& other) const
         {
             if (m_size != other.m_size || (m_size && (!m_data || !other.m_data)))
+            {
                 return false;
+            }
             return !m_size || Helpers::secure_memcmp(m_data, m_size, other.m_data, other.m_size, m_size) == 0;
         }
 

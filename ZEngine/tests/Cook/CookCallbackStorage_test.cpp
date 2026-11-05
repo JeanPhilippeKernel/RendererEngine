@@ -74,9 +74,13 @@ namespace ZEngine::Cook
                 ASSERT_NE(original, nullptr);
                 ECS::SceneComponentSchemaDesc entry = {.Key = original->Key, .Version = original->Version, .RuntimeType = original->RuntimeType, .Fields = original->Fields, .FieldCount = original->FieldCount, .Codecs = original->Codecs, .References = original->References};
                 if (key[0] == 'N')
+                {
                     entry.Codecs.Context = codec;
+                }
                 else
+                {
                     entry.References.Context = reference;
+                }
                 ASSERT_TRUE(registry.Register(entry, nullptr));
             }
         }

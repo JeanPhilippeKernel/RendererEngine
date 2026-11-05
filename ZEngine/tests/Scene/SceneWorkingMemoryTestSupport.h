@@ -30,14 +30,18 @@ namespace ZEngine::Tests
         {
             Required = bytes;
             if (WatchBytes && bytes == WatchBytes)
+            {
                 ++WatchCalls;
+            }
             if (RefuseBytes && bytes == RefuseBytes)
             {
                 ++Refusals;
                 return false;
             }
             if (Live > Limit || bytes > Limit - Live)
+            {
                 return false;
+            }
             Live += bytes;
             Peak  = std::max(Peak, Live);
             return true;
@@ -45,7 +49,9 @@ namespace ZEngine::Tests
         void ReleaseWorkingBytes(size_t bytes) noexcept override
         {
             if (WatchBytes && bytes == WatchBytes)
+            {
                 ++WatchReleases;
+            }
             EXPECT_LE(bytes, Live);
             Live -= bytes;
         }
@@ -54,13 +60,17 @@ namespace ZEngine::Tests
             ++Attempts;
             void* block = std::malloc(bytes);
             if (block)
+            {
                 ++Blocks;
+            }
             return block;
         }
         void* Reallocate(void* pointer, size_t, size_t bytes) noexcept override
         {
             if (!pointer)
+            {
                 return Allocate(bytes);
+            }
             ++Attempts;
             return std::realloc(pointer, bytes);
         }

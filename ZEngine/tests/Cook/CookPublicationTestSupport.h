@@ -65,7 +65,9 @@ namespace ZEngine::Cook::Tests
         {
             ++Faults->Reads;
             if ((!Faults->ReadStagingOnly || Staging) && Faults->Read != Core::VFS::VFSError::OK)
+            {
                 return Core::VFS::VFSResult<size_t>::Fail(Faults->Read);
+            }
             return Inner->Read(bytes.first(std::min(bytes.size(), Faults->MaxReadChunk)), offset);
         }
         Core::VFS::VFSResult<size_t> Write(Core::Containers::ArrayView<const uint8_t> bytes, uint64_t offset) override
@@ -79,7 +81,9 @@ namespace ZEngine::Cook::Tests
             ++Faults->Writes;
             Faults->WritesAfterCommit += Faults->Committed ? 1 : 0;
             if (Faults->Write != Core::VFS::VFSError::OK)
+            {
                 return Core::VFS::VFSResult<size_t>::Fail(Faults->Write);
+            }
             const size_t count = std::min(bytes.size(), Faults->MaxWriteChunk);
             if (Faults->CorruptWrites && count)
             {
@@ -124,10 +128,14 @@ namespace ZEngine::Cook::Tests
         static Core::VFS::VFSResult<Helpers::Scope<Core::VFS::IVFSRootOperations>> Wrap(Core::VFS::VFSResult<Helpers::Scope<Core::VFS::IVFSRootOperations>> acquired, PublicationFaults* faults, uint64_t provider_bytes)
         {
             if (acquired.Failed())
+            {
                 return acquired;
+            }
             auto root = Helpers::Scope<PublicationRoot>(new (std::nothrow) PublicationRoot());
             if (!root)
+            {
                 return Core::VFS::VFSResult<Helpers::Scope<Core::VFS::IVFSRootOperations>>::Fail(Core::VFS::VFSError::OutOfMemory);
+            }
             root->Inner         = std::move(acquired.Value());
             root->Faults        = faults;
             root->ProviderBytes = provider_bytes;
@@ -137,10 +145,14 @@ namespace ZEngine::Cook::Tests
         Core::VFS::VFSResult<Core::VFS::VFSRootMemoryRequirements> MemoryRequirements() const override
         {
             if (Faults->MemoryBounds != Core::VFS::VFSError::OK)
+            {
                 return Core::VFS::VFSResult<Core::VFS::VFSRootMemoryRequirements>::Fail(Faults->MemoryBounds);
+            }
             auto requirements = Inner->MemoryRequirements();
             if (requirements.Succeeded())
+            {
                 requirements.Value().StateBytes += sizeof(*this) + ProviderBytes;
+            }
             return requirements;
         }
 
@@ -172,14 +184,20 @@ namespace ZEngine::Cook::Tests
         Core::VFS::VFSResult<Core::VFS::IVFSFile*> Open(const Core::VFS::VFSRelativePath& path, Core::VFS::VFSOpenFlags flags) override
         {
             if (File.Inner)
+            {
                 return Core::VFS::VFSResult<Core::VFS::IVFSFile*>::Fail(Core::VFS::VFSError::OutOfMemory);
+            }
             const bool writer = Core::VFS::HasFlag(flags, Core::VFS::VFSOpenFlags::Write);
             const auto error  = writer ? Faults->OpenWriter : path.View() == CookManifestName ? Faults->OpenManifest : Core::VFS::VFSError::OK;
             if (error != Core::VFS::VFSError::OK)
+            {
                 return Core::VFS::VFSResult<Core::VFS::IVFSFile*>::Fail(error);
+            }
             const auto opened = Inner->Open(path, flags);
             if (opened.Failed())
+            {
                 return opened;
+            }
             File.Inner           = opened.Value();
             File.Faults          = Faults;
             File.Writer          = writer;
@@ -194,7 +212,9 @@ namespace ZEngine::Cook::Tests
                 EXPECT_FALSE(Core::VFS::HasFlag(flags, Core::VFS::VFSOpenFlags::Truncate));
             }
             else
+            {
                 ++Faults->ReaderOpens;
+            }
             return Core::VFS::VFSResult<Core::VFS::IVFSFile*>::Ok(&File);
         }
         Core::VFS::VFSResult<Core::VFS::VFSFileStat> Stat(const Core::VFS::VFSRelativePath& path) const override
@@ -209,9 +229,13 @@ namespace ZEngine::Cook::Tests
         {
             const bool lock = path.View() == CookWriterLockName;
             if (lock)
+            {
                 ++Faults->LockRemovals;
+            }
             else
+            {
                 ++Faults->TemporaryRemovals;
+            }
             const auto error = lock ? Faults->RemoveLock : Faults->RemoveTemporary;
             return error == Core::VFS::VFSError::OK ? Inner->Remove(path) : Core::VFS::VFSResult<void>::Fail(error);
         }
@@ -223,12 +247,18 @@ namespace ZEngine::Cook::Tests
                 ++Faults->ManifestRenames;
             }
             else
+            {
                 ++Faults->ObjectRenames;
+            }
             const auto error = replace ? Faults->RenameManifest : Faults->RenameObject;
             if (error != Core::VFS::VFSError::OK)
+            {
                 return Core::VFS::VFSResult<void>::Fail(error);
+            }
             if (replace && Faults->ManifestBoundary)
+            {
                 Faults->ManifestBoundary(false);
+            }
             const auto result = Inner->Rename(from, to, replace);
             if (!replace && result.Succeeded() && Faults->CorruptInstalled)
             {
@@ -247,7 +277,9 @@ namespace ZEngine::Cook::Tests
             {
                 Faults->Committed = true;
                 if (Faults->ManifestBoundary)
+                {
                     Faults->ManifestBoundary(true);
+                }
             }
             return result;
         }
@@ -259,9 +291,13 @@ namespace ZEngine::Cook::Tests
             File.Inner        = nullptr;
             --Faults->LiveFiles;
             if (File.Writer)
+            {
                 ++Faults->WriterCloses;
+            }
             else
+            {
                 ++Faults->ReaderCloses;
+            }
             const auto error = File.Writer ? Faults->CloseWriter : (!Faults->ReadStagingOnly || File.Staging) ? Faults->CloseReader : Core::VFS::VFSError::OK;
             return error == Core::VFS::VFSError::OK ? result : Core::VFS::VFSResult<void>::Fail(error);
         }
@@ -280,10 +316,14 @@ namespace ZEngine::Cook::Tests
         Core::VFS::VFSResult<Core::VFS::VFSRootMemoryRequirements> MemoryRequirements() const override
         {
             if (Faults->MemoryBounds != Core::VFS::VFSError::OK)
+            {
                 return Core::VFS::VFSResult<Core::VFS::VFSRootMemoryRequirements>::Fail(Faults->MemoryBounds);
+            }
             auto requirements = Inner->MemoryRequirements();
             if (requirements.Succeeded())
+            {
                 requirements.Value().StateBytes += sizeof(PublicationRoot) + sizeof(*this);
+            }
             return requirements;
         }
 

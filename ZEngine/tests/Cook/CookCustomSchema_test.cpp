@@ -89,7 +89,9 @@ namespace ZEngine::Cook::Tests
             for (uint32_t version : {1u, 2u})
             {
                 if (length == Wire.size() && version == 1)
+                {
                     continue;
+                }
                 SCOPED_TRACE(length);
                 SCOPED_TRACE(version);
                 Core::Containers::FixedArray<ECS::SceneValueField, 2> decoded = {};
@@ -109,15 +111,25 @@ namespace ZEngine::Cook::Tests
             SCOPED_TRACE(mode);
             auto fields = Fields;
             if (mode == 0)
+            {
                 fields[0].Value = uuids::uuid{};
+            }
             else if (mode == 1)
+            {
                 fields[1].Value = -.01f;
+            }
             else if (mode == 2)
+            {
                 fields[1].Value = 1.01f;
+            }
             else if (mode == 3)
+            {
                 fields[1].Value = std::numeric_limits<float>::quiet_NaN();
+            }
             else if (mode == 4)
+            {
                 fields[1].Key = "runtime_cache";
+            }
             Core::Containers::FixedArray<uint8_t, 20> bytes = {};
             std::fill(bytes.begin(), bytes.end(), 0xa5);
             const auto             before = bytes;
@@ -126,7 +138,9 @@ namespace ZEngine::Cook::Tests
             EXPECT_EQ(writer.Position(), 0u);
             EXPECT_EQ(bytes, before);
             if (mode == 5)
+            {
                 EXPECT_TRUE(writer.LimitExceeded());
+            }
         }
     }
 
@@ -136,7 +150,9 @@ namespace ZEngine::Cook::Tests
         {
             auto bytes = Wire;
             if (mode == 0)
+            {
                 std::fill(bytes.begin(), bytes.begin() + 16, 0);
+            }
             else if (mode == 1 || mode == 2)
             {
                 // -1.f / +infinity: both are forbidden semantic values.

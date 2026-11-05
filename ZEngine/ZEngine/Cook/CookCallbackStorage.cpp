@@ -19,7 +19,9 @@ namespace ZEngine::Cook
             void                        Check(const void* root) noexcept
             {
                 if (root && !Uncovered && (!Owner || !Owner->Contains(root)))
+                {
                     Uncovered = true;
+                }
             }
         };
 
@@ -27,7 +29,9 @@ namespace ZEngine::Cook
         {
             using Result = VFS::VFSResult<CookServiceMemoryRequirements>;
             if (!context.Schemas || !context.Schemas->IsInitialized() || !context.Adapters || !context.Adapters->IsInitialized() || (context.Migrations && !context.Migrations->IsInitialized()))
+            {
                 return Result::Fail(VFS::VFSError::InvalidPath);
+            }
             ContextCoverage coverage = {.Owner = context.Callbacks};
             context.Schemas->ForEachCanonical(
                 [](void* state, const ECS::SceneComponentSchema& schema) {
@@ -37,18 +41,28 @@ namespace ZEngine::Cook
                 },
                 &coverage);
             for (const auto& entry : context.Adapters->Entries())
+            {
                 coverage.Check(entry.Context);
+            }
             if (context.Migrations)
+            {
                 context.Migrations->ForEachContext([](void* state, const void* root) { static_cast<ContextCoverage*>(state)->Check(root); }, &coverage);
+            }
             if (coverage.Uncovered)
+            {
                 return Result::Fail(VFS::VFSError::Unsupported);
+            }
             if (!context.Callbacks)
+            {
                 return Result::Ok({});
+            }
             // Only the final native owner promises that its arena is the entire
             // graph. A custom StorageArena declaration is not that promise and
             // must never bypass the owner's complete MemoryRequirements query.
             if (services && typeid(*context.Callbacks) == typeid(CookArenaCallbackStorage))
+            {
                 return services->CallbackRequirements(context.Callbacks, sizeof(CookArenaCallbackStorage));
+            }
             return context.Callbacks->MemoryRequirements(context, covered);
         }
     } // namespace
@@ -81,7 +95,9 @@ namespace ZEngine::Cook
     {
         using Result = VFS::VFSResult<CookServiceMemoryRequirements>;
         if (!m_arena)
+        {
             return Result::Fail(VFS::VFSError::Unsupported);
+        }
         Detail::CookNativeServiceMemory memory      = {};
         const auto                      initialized = memory.Initialize(context, m_arena);
         return initialized.Succeeded() ? memory.CallbackRequirements(this, sizeof(*this)) : Result::Fail(initialized.Error());

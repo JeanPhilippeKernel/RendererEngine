@@ -43,7 +43,9 @@ namespace ZEngine::Core::VFS
         {
             size_t bytes = path.Length();
             while (bytes && path.CStr()[bytes - 1] != '/')
+            {
                 --bytes;
+            }
             return {path.CStr(), bytes};
         }
 
@@ -261,14 +263,18 @@ namespace ZEngine::Core::VFS
     VFSResult<void> CreatePrivateScratchDirectory(VFSScratchRootLease& root, VFSRelativePath* out)
     {
         if (!out || !root.IsValid())
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         for (uint32_t attempt = 0; attempt < 8; ++attempt)
         {
             char name[42] = {};
             TemporaryName(name);
             const auto path = VFSRelativePath::Parse(name);
             if (path.Failed())
+            {
                 return VFSResult<void>::Fail(path.Error());
+            }
             const auto created = root.CreateDirExclusive(path.Value());
             if (created.Succeeded())
             {
@@ -276,7 +282,9 @@ namespace ZEngine::Core::VFS
                 return VFSResult<void>::Ok();
             }
             if (created.Error() != VFSError::AlreadyExists)
+            {
                 return created;
+            }
         }
         return VFSResult<void>::Fail(VFSError::AlreadyExists);
     }
@@ -291,24 +299,32 @@ namespace ZEngine::Core::VFS
     VFSResult<void> VFSAtomicFileWriter<Context, Path>::Open(Context& ctx, const Path& sibling_of)
     {
         if (m_context || !ValidAtomicPath(sibling_of))
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         for (uint32_t attempt = 0; attempt < 8; ++attempt)
         {
             char name[42] = {};
             TemporaryName(name);
             const auto temporary = TemporarySibling(sibling_of, name);
             if (temporary.Failed())
+            {
                 return VFSResult<void>::Fail(temporary.Error());
+            }
             const auto open = ctx.Open(temporary.Value(), VFSOpenFlags::Write | VFSOpenFlags::Create | VFSOpenFlags::Exclusive);
             if (open.Failed())
             {
                 if (open.Error() == VFSError::AlreadyExists)
+                {
                     continue;
+                }
                 // No ownership was acquired: never delete this name on open failure.
                 return VFSResult<void>::Fail(open.Error());
             }
             if (!open.Value())
+            {
                 return VFSResult<void>::Fail(VFSError::IOError);
+            }
             m_context   = &ctx;
             m_file      = open.Value();
             m_temporary = temporary.Value();
@@ -324,25 +340,35 @@ namespace ZEngine::Core::VFS
     VFSResult<void> VFSAtomicFileWriter<Context, Path>::Write(Containers::ArrayView<const uint8_t> data)
     {
         if (m_error != VFSError::OK)
+        {
             return VFSResult<void>::Fail(m_error);
+        }
         if (m_state != State::Writing || !m_file)
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         const auto fail = [&](VFSError error) {
             m_error = error;
             m_state = State::Failed;
             return VFSResult<void>::Fail(error);
         };
         if (data.size() && !data.data())
+        {
             return fail(VFSError::IOError);
+        }
         if (data.size() > UINT64_MAX - m_bytes)
+        {
             return fail(VFSError::SizeLimitExceeded);
+        }
         size_t offset = 0;
         while (offset < data.size())
         {
             const auto count = std::min<size_t>(ZKilo(64), data.size() - offset);
             const auto write = m_file->Write({data.data() + offset, count}, m_bytes);
             if (write.Failed() || write.Value() == 0 || write.Value() > count)
+            {
                 return fail(write.Failed() ? write.Error() : VFSError::IOError);
+            }
             offset  += write.Value();
             m_bytes += write.Value();
         }
@@ -353,15 +379,23 @@ namespace ZEngine::Core::VFS
     VFSResult<void> VFSAtomicFileWriter<Context, Path>::Seal()
     {
         if (!m_file)
+        {
             return m_error != VFSError::OK ? VFSResult<void>::Fail(m_error) : m_state == State::Sealed ? VFSResult<void>::Ok() : VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         if (m_error == VFSError::OK)
+        {
             m_error = m_file->Flush().Error();
+        }
         const auto close = m_context->CloseChecked(m_file);
         m_file           = nullptr;
         if (close.Failed())
+        {
             m_cleanup_error = close.Error();
+        }
         if (m_error == VFSError::OK)
+        {
             m_error = close.Error();
+        }
         m_state = m_error == VFSError::OK ? State::Sealed : State::Failed;
         return m_error == VFSError::OK ? VFSResult<void>::Ok() : VFSResult<void>::Fail(m_error);
     }
@@ -370,14 +404,22 @@ namespace ZEngine::Core::VFS
     VFSResult<void> VFSAtomicFileWriter<Context, Path>::Commit(const Path& destination, AtomicWriteMode mode)
     {
         if (m_error != VFSError::OK)
+        {
             return VFSResult<void>::Fail(m_error);
+        }
         if (m_state != State::Sealed || !ValidAtomicPath(destination) || destination == m_temporary || AtomicDirectory(destination) != AtomicDirectory(m_temporary))
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         if (mode != AtomicWriteMode::Replace && mode != AtomicWriteMode::NoReplace)
+        {
             return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
         const auto rename = mode == AtomicWriteMode::NoReplace ? m_context->RenameNoReplace(m_temporary, destination) : m_context->Rename(m_temporary, destination);
         if (rename.Succeeded())
+        {
             m_state = State::Committed;
+        }
         return rename;
     }
 
@@ -385,19 +427,25 @@ namespace ZEngine::Core::VFS
     VFSResult<void> VFSAtomicFileWriter<Context, Path>::Reset() noexcept
     {
         if (!m_context)
+        {
             return m_cleanup_error == VFSError::OK ? VFSResult<void>::Ok() : VFSResult<void>::Fail(m_cleanup_error);
+        }
         VFSError error = m_cleanup_error;
         if (m_file)
         {
             const auto close = m_context->CloseChecked(m_file);
             if (error == VFSError::OK)
+            {
                 error = close.Error();
+            }
         }
         if (m_state != State::Committed)
         {
             const auto removed = m_context->Remove(m_temporary);
             if (error == VFSError::OK)
+            {
                 error = removed.Error();
+            }
         }
         m_context       = nullptr;
         m_file          = nullptr;
@@ -416,20 +464,32 @@ namespace ZEngine::Core::VFS
     static VFSResult<void> WriteFileAtomicallyImpl(Context& ctx, const Path& path, Containers::ArrayView<const uint8_t> data, AtomicWriteMode mode)
     {
         if (!ValidAtomicPath(path))
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         if (mode != AtomicWriteMode::Replace && mode != AtomicWriteMode::NoReplace)
+        {
             return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
         if (data.size() && !data.data())
+        {
             return VFSResult<void>::Fail(VFSError::IOError);
+        }
         VFSAtomicFileWriter<Context, Path> writer = {};
         auto                               result = writer.Open(ctx, path);
         if (result.Failed())
+        {
             return result;
+        }
         result = writer.Write(data);
         if (result.Succeeded())
+        {
             result = writer.Seal();
+        }
         if (result.Succeeded())
+        {
             result = writer.Commit(path, mode);
+        }
         (void) writer.Reset();
         return result;
     }
@@ -437,7 +497,9 @@ namespace ZEngine::Core::VFS
     VFSResult<void> WriteFileAtomically(IVFSContext& ctx, const VFSPath& path, Containers::ArrayView<const uint8_t> data, AtomicWriteMode mode)
     {
         if (path.IsRoot())
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         return WriteFileAtomicallyImpl(ctx, path, data, mode);
     }
 

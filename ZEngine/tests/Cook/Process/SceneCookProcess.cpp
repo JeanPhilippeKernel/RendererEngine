@@ -116,9 +116,13 @@ namespace ZEngine::Cook::Tests
             {
                 auto& sink = *static_cast<MaterialSink*>(state);
                 if (bytes.size() > sink.Bytes.size() - sink.Size)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 if (!bytes.empty())
+                {
                     (void) Helpers::secure_memcpy(sink.Bytes.data() + sink.Size, sink.Bytes.size() - sink.Size, bytes.data(), bytes.size());
+                }
                 sink.Size += bytes.size();
                 return VFS::VFSResult<void>::Ok();
             }
@@ -134,10 +138,14 @@ namespace ZEngine::Cook::Tests
                     [](void* state, Core::Containers::ArrayView<uint8_t> output, uint64_t offset) {
                         const auto& bytes = static_cast<BorrowedBytes*>(state)->Bytes;
                         if (offset > bytes.size())
+                        {
                             return VFS::VFSResult<size_t>::Fail(VFS::VFSError::Corrupted);
+                        }
                         const size_t count = std::min(output.size(), bytes.size() - static_cast<size_t>(offset));
                         if (count)
+                        {
                             (void) Helpers::secure_memcpy(output.data(), output.size(), bytes.data() + offset, count);
+                        }
                         return VFS::VFSResult<size_t>::Ok(count);
                     },
                     Bytes.size()};
@@ -164,11 +172,15 @@ namespace ZEngine::Cook::Tests
             bool Initialize(const std::filesystem::path& root)
             {
                 if (File >= 0)
+                {
                     return false;
+                }
                 Path = root / ".ze-test-disk-full";
                 File = ::open(Path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
                 if (File < 0)
+                {
                     return false;
+                }
                 struct statfs  filesystem = {};
                 struct statvfs capacity   = {};
                 return ::fstatfs(File, &filesystem) == 0 && filesystem.f_type == TMPFS_MAGIC && ::fstatvfs(File, &capacity) == 0 && capacity.f_frsize && capacity.f_blocks <= ZMega(16) / capacity.f_frsize;
@@ -182,7 +194,9 @@ namespace ZEngine::Cook::Tests
                 {
                     const auto written = ::write(self.File, bytes.data(), bytes.size());
                     if (written < 0 && errno == EINTR)
+                    {
                         continue;
+                    }
                     if (written <= 0)
                     {
                         self.Exhausted = written < 0 && errno == ENOSPC;
@@ -194,7 +208,9 @@ namespace ZEngine::Cook::Tests
             void Reset()
             {
                 if (File < 0)
+                {
                     return;
+                }
                 EXPECT_EQ(::close(File), 0);
                 File = -1;
                 EXPECT_EQ(::unlink(Path.c_str()), 0);
@@ -236,7 +252,9 @@ namespace ZEngine::Cook::Tests
             {
                 EXPECT_EQ(ECS::ComponentTypeOf<FixtureOnlyComponent>(), 0u);
                 if (Options.Custom)
+                {
                     EXPECT_EQ(ECS::ComponentTypeOf<CookCustomComponent>(), 1u);
+                }
             }
             const Core::Containers::FixedArray<ECS::ComponentTypeID (*)(), 5> types = {
                 &ECS::ComponentTypeOf<ECS::Components::UUIDComponent>,
@@ -246,15 +264,21 @@ namespace ZEngine::Cook::Tests
                 &ECS::ComponentTypeOf<ECS::Components::MaterialComponent>,
             };
             for (size_t i = 0; i < types.size(); ++i)
+            {
                 EXPECT_EQ(types[reverse ? types.size() - 1 - i : i](), i + (reverse ? (Options.Custom ? 2u : 1u) : 0u));
+            }
             Memory.Initialize(ZMega(128), {});
             Schemas.Initialize(&Memory.MainArena);
             const bool register_custom = Options.Custom && Options.Mode != "reject-schema";
             if (register_custom && reverse)
+            {
                 ASSERT_TRUE(RegisterCookCustomSchema(Schemas, Options.CustomVersion, &SceneDiagnostics));
+            }
             ASSERT_TRUE(ECS::RegisterBuiltInSceneComponentSchemas(Schemas, &SceneDiagnostics));
             if (register_custom && !reverse)
+            {
                 ASSERT_TRUE(RegisterCookCustomSchema(Schemas, Options.CustomVersion, &SceneDiagnostics));
+            }
             if (Options.Custom && Options.CustomVersion == 2 && !Reading && Options.Mode != "reject-migration")
             {
                 ASSERT_TRUE(Migrations.Initialize(&Memory.MainArena));
@@ -278,9 +302,13 @@ namespace ZEngine::Cook::Tests
             if (HasFailure())
             {
                 for (uint32_t i = 0; i < Diagnostics.Count; ++i)
+                {
                     std::cerr << Diagnostics.Entries[i].Message << " (VFS " << static_cast<uint32_t>(Diagnostics.Entries[i].Underlying) << ", " << Diagnostics.Entries[i].Source.CStr() << ")\n";
+                }
                 for (uint32_t i = 0; i < SceneDiagnostics.Count; ++i)
+                {
                     std::cerr << SceneDiagnostics.Entries[i].Message << '\n';
+                }
             }
             EXPECT_EQ(Allocator.OutstandingAllocations(), 0u);
             Allocator.Release();
@@ -303,14 +331,18 @@ namespace ZEngine::Cook::Tests
             Core::Containers::FixedArray<uint8_t, sizeof(Pixel)> bytes = {};
             (void) Helpers::secure_memcpy(bytes.data(), bytes.size(), Pixel, sizeof(Pixel));
             if (changed)
+            {
                 bytes[54] = 90;
+            }
             Write(Path("/assets/pixel.bmp"), bytes);
         }
 
         void BuildFixture()
         {
             for (cstring path : {"/scenes", "/assets", "/_cache/envmaps", "/scratch", "/output"})
+            {
                 ASSERT_TRUE(Files.CreateDir(Path(path)).Succeeded());
+            }
             ECS::Scene scene = {};
             scene.Initialize(&Memory.MainArena);
             const auto entity = scene.CreateEntity();
@@ -326,7 +358,9 @@ namespace ZEngine::Cook::Tests
             scene.AddComponent<ECS::Components::MeshComponent>(entity, {MeshUUID});
             scene.AddComponent<ECS::Components::MaterialComponent>(entity, {MaterialUUID});
             if (Options.Custom)
+            {
                 scene.AddComponent<CookCustomComponent>(entity, {.Texture = TextureUUID, .Weight = .375f, .RuntimeCache = 12345});
+            }
             ECS::SceneDocumentSettingsView settings = {.UUID = SceneUUID, .Name = SceneName};
             settings.Sky.Mode                       = Rendering::Scenes::SkyMode::HDRI;
             settings.Sky.EnvironmentMap             = SkyUUID;
@@ -428,7 +462,9 @@ namespace ZEngine::Cook::Tests
             Core::Containers::FixedArray<uint8_t, 54> header  = {};
             const auto                                word    = [&](size_t offset, uint32_t value, size_t bytes = 4) {
                 for (size_t i = 0; i < bytes; ++i)
+                {
                     header[offset + i] = static_cast<uint8_t>(value >> (8 * i));
+                }
             };
             header[0] = 'B';
             header[1] = 'M';
@@ -533,7 +569,9 @@ namespace ZEngine::Cook::Tests
             {
                 result = {.ManifestPath = Path("/previous-manifest"), .ManifestDigest = previous_digest, .SceneCount = 77, .AssetCount = 83, .ObjectCount = 91, .ReferencedObjectBytes = 1001, .PeakWorkingBytes = 123, .Published = true};
                 for (auto& peak : result.PeakWorkingBytesByCategory)
+                {
                     peak = 123;
+                }
             }
             const auto cooked = SceneCooker::Cook(request, context, &result, &Diagnostics);
             if (Options.Mode == "reject-migration" || DiskFullMode())
@@ -548,16 +586,22 @@ namespace ZEngine::Cook::Tests
                 EXPECT_EQ(result.ReferencedObjectBytes, 1001u);
                 EXPECT_EQ(result.PeakWorkingBytes, 123u);
                 for (uint64_t peak : result.PeakWorkingBytesByCategory)
+                {
                     EXPECT_EQ(peak, 123u);
+                }
                 EXPECT_TRUE(result.Published);
                 ASSERT_NE(Diagnostics.Count, 0u);
                 EXPECT_EQ(Diagnostics.Entries[0].Code, disk_full ? CookDiagnosticCode::IOFailure : CookDiagnosticCode::UnsupportedVersion);
                 if (disk_full)
                 {
                     if (Options.Mode == "disk-full-manifest")
+                    {
                         EXPECT_GT(Faults.ObjectRenames, 0u);
+                    }
                     else
+                    {
                         EXPECT_EQ(Faults.ObjectRenames, 0u);
+                    }
                     EXPECT_EQ(Faults.ManifestRenames, 0u);
                     EXPECT_EQ(Faults.LiveFiles, 0u);
                 }
@@ -588,14 +632,20 @@ namespace ZEngine::Cook::Tests
         {
             const auto size = file.Size();
             if (size.Failed())
+            {
                 return VFS::VFSResult<void>::Fail(size.Error());
+            }
             if (size.Value() > FileBytes.size())
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+            }
             if (expected)
             {
                 const auto verified = VerifyCookObjectFile(file, *expected, Stream, Allocator);
                 if (verified.Failed())
+                {
                     return verified;
+                }
             }
             FileSize        = static_cast<size_t>(size.Value());
             const auto read = file.ReadAll({FileBytes.data(), FileSize});
@@ -606,7 +656,9 @@ namespace ZEngine::Cook::Tests
         {
             const auto opened = root.Open(path);
             if (opened.Failed())
+            {
                 return VFS::VFSResult<void>::Fail(opened.Error());
+            }
             const auto perform = ReadOpenFile(*opened.Value(), expected);
             const auto closed  = root.CloseChecked(opened.Value());
             return perform.Failed() ? perform : closed;
@@ -638,7 +690,9 @@ namespace ZEngine::Cook::Tests
             const auto written = opened.Value()->Write({&damaged, 1}, 54);
             EXPECT_TRUE(written.Succeeded());
             if (written.Succeeded())
+            {
                 EXPECT_EQ(written.Value(), 1u);
+            }
             EXPECT_EQ(opened.Value()->Size().Value(), texture->Result.Object.Size);
             EXPECT_TRUE(opened.Value()->Flush().Succeeded());
             EXPECT_TRUE(Files.CloseChecked(opened.Value()).Succeeded());
@@ -701,7 +755,9 @@ namespace ZEngine::Cook::Tests
             EXPECT_EQ(roots[1], (CookAssetIdentity{CookAssetKind::Material, MaterialUUID}));
             EXPECT_EQ(roots[2], (CookAssetIdentity{CookAssetKind::Mesh, MeshUUID}));
             if (Options.Custom)
+            {
                 EXPECT_EQ(roots[3], (CookAssetIdentity{CookAssetKind::Texture, TextureUUID}));
+            }
         }
 
         void CheckAsset(const CookManifest& manifest, const CookManifestAsset& entry, bool changed)
@@ -723,9 +779,13 @@ namespace ZEngine::Cook::Tests
                     EXPECT_EQ(mesh.Vertices.size(), 24u);
                     EXPECT_EQ(mesh.Indices.size(), 3u);
                     for (size_t i = 0; i < mesh.Vertices.size(); ++i)
+                    {
                         EXPECT_EQ(mesh.Vertices[i], i == 8 || i == 17 ? 1.f : 0.f);
+                    }
                     for (size_t i = 0; i < mesh.Indices.size(); ++i)
+                    {
                         EXPECT_EQ(mesh.Indices[i], i);
+                    }
                     ASSERT_EQ(mesh.SubMeshes.size(), 1u);
                     EXPECT_EQ(mesh.SubMeshes[0].MaterialUUID, MaterialUUID);
                     EXPECT_EQ(hierarchy.NodeHierarchyUUID, HierarchyUUID);
@@ -798,10 +858,14 @@ namespace ZEngine::Cook::Tests
             VFS::VFSReadRootLease root   = {};
             auto                  status = Files.AcquireReadRoot(VFS::VFSPath::Root(), &root);
             if (status.Failed())
+            {
                 return status;
+            }
             const auto opened = root.Open(Relative("manifest.json"));
             if (opened.Failed())
+            {
                 return VFS::VFSResult<void>::Fail(opened.Error());
+            }
             const auto read_manifest = [&]() -> VFS::VFSResult<void> {
                 if (Options.Mode == "snapshot-read")
                 {
@@ -813,11 +877,17 @@ namespace ZEngine::Cook::Tests
                     {
                         const auto complete = root.Stat(Relative(SnapshotComplete));
                         if (complete.Succeeded())
+                        {
                             break;
+                        }
                         if (complete.Error() != VFS::VFSError::NotFound)
+                        {
                             return VFS::VFSResult<void>::Fail(complete.Error());
+                        }
                         if (std::chrono::steady_clock::now() >= deadline)
+                        {
                             return VFS::VFSResult<void>::Fail(VFS::VFSError::IOError);
+                        }
                         std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     }
                 }
@@ -828,30 +898,44 @@ namespace ZEngine::Cook::Tests
             const auto closed = root.CloseChecked(opened.Value());
             status            = read_manifest.Failed() ? read_manifest : closed;
             if (status.Failed())
+            {
                 return status;
+            }
             CookManifest manifest = {};
             const auto   read     = manifest.Read(Bytes(), CookTarget::DesktopVulkanLE64, Limits, Allocator, &Diagnostics);
             if (read.Failed())
+            {
                 return VFS::VFSResult<void>::Fail(read.Error());
+            }
             if (read.Value() != CookManifestReadStatus::Valid || manifest.Assets().size() != 4 || manifest.Scenes().size() != 1)
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::Corrupted);
+            }
             for (const auto& scene : manifest.Scenes())
             {
                 status = ReadFile(root, scene.Result.Object.Path, &scene.Result.Object);
                 if (status.Failed())
+                {
                     return status;
+                }
                 CheckScene(manifest, scene);
                 if (HasFailure())
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::Corrupted);
+                }
             }
             for (const auto& asset : manifest.Assets())
             {
                 status = ReadFile(root, asset.Result.Object.Path, &asset.Result.Object);
                 if (status.Failed())
+                {
                     return status;
+                }
                 CheckAsset(manifest, asset, changed);
                 if (HasFailure())
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::Corrupted);
+                }
             }
             return VFS::VFSResult<void>::Ok();
         }
@@ -863,7 +947,9 @@ namespace ZEngine::Cook::Tests
         {
             BuildStressFixture();
             if (!HasFailure())
+            {
                 std::cout << "ZE_COOK_STRESS_FIXTURE_WRITTEN\n";
+            }
             return;
         }
 #if defined(__linux__)
@@ -882,7 +968,9 @@ namespace ZEngine::Cook::Tests
             EXPECT_GT(exhaustion.Bytes, 0u);
             exhaustion.Reset();
             if (!HasFailure())
+            {
                 std::cout << "ZE_COOK_DISK_FULL_VERIFIED\n";
+            }
             return;
         }
 #endif
@@ -890,20 +978,30 @@ namespace ZEngine::Cook::Tests
         {
             CorruptTexture();
             if (!HasFailure())
+            {
                 std::cout << "ZE_COOK_OBJECT_CORRUPTED\n";
+            }
             return;
         }
         if (Reading)
         {
             const auto result = ConsumePackage(Options.Mode == "read-changed");
             if (Options.Mode == "reject-missing")
+            {
                 EXPECT_EQ(result.Error(), VFS::VFSError::NotFound);
+            }
             else if (Options.Mode == "reject-corrupt")
+            {
                 EXPECT_EQ(result.Error(), VFS::VFSError::Corrupted);
+            }
             else
+            {
                 EXPECT_TRUE(result.Succeeded()) << static_cast<uint32_t>(result.Error());
+            }
             if (!HasFailure())
+            {
                 std::cout << ((Options.Mode == "reject-schema" || Options.Mode == "reject-version") ? "ZE_COOK_SCHEMA_REJECTION_VERIFIED\n" : "ZE_COOK_PACKAGE_VERIFIED\n");
+            }
             return;
         }
         const bool create = Options.Mode == "write" || Options.Mode == "write-reverse";
@@ -912,27 +1010,37 @@ namespace ZEngine::Cook::Tests
             bool ready     = false;
             char line[256] = {};
             while (std::cin.getline(line, sizeof(line)))
+            {
                 if (Core::Containers::StringView(line) == SnapshotReady)
                 {
                     ready = true;
                     break;
                 }
+            }
             ASSERT_TRUE(ready) << "Snapshot reader never acquired the old manifest";
         }
         if (create)
+        {
             BuildFixture();
+        }
         else if (Options.Mode == "changed" || Options.Mode == "interrupt-before" || Options.Mode == "interrupt-after" || Options.Mode == "snapshot-write")
+        {
             SavePixel(true);
+        }
         ASSERT_FALSE(HasFatalFailure());
         if (Options.Mode == "interrupt-before" || Options.Mode == "interrupt-after")
+        {
             Faults.ManifestBoundary = [](bool committed) {
                 if (committed != (Options.Mode == "interrupt-after"))
+                {
                     return;
+                }
                 // No destructors or test teardown: the disk contains exactly
                 // the state left by an abruptly terminated writer.
                 std::cout << (committed ? "ZE_COOK_INTERRUPTED_AFTER_COMMIT\n" : "ZE_COOK_INTERRUPTED_BEFORE_COMMIT\n") << std::flush;
                 std::_Exit(committed ? 72 : 71);
             };
+        }
         CookFixture(Options.Mode == "force", create || Options.Mode == "changed" || Options.Mode == "rebuild" || Options.Mode == "snapshot-write" || Options.Mode == "schema-change", Options.Mode == "busy");
         if (!HasFailure() && Options.Mode == "snapshot-write")
         {
@@ -942,11 +1050,15 @@ namespace ZEngine::Cook::Tests
             // Keep the pipe open through reader exit, including its trailing
             // GTest output; exiting on the marker alone could give it SIGPIPE.
             while (std::cin.getline(line, sizeof(line)))
+            {
                 verified |= Core::Containers::StringView(line) == "ZE_COOK_PACKAGE_VERIFIED";
+            }
             EXPECT_TRUE(verified) << "Pinned manifest reader did not verify its old package";
         }
         if (!HasFailure())
+        {
             std::cout << (Options.Mode == "busy" ? "ZE_COOK_WRITER_BUSY\n" : Options.Mode == "reject-migration" ? "ZE_COOK_MIGRATION_REJECTION_VERIFIED\n" : "ZE_COOK_FIXTURE_WRITTEN\n");
+        }
     }
 
     template <typename Character>
@@ -959,23 +1071,31 @@ namespace ZEngine::Cook::Tests
             uint64_t    budget      = 0;
             const auto  parsed      = std::from_chars(first, first + budget_text.size(), budget);
             if (parsed.ec != std::errc{} || parsed.ptr != first + budget_text.size() || !budget)
+            {
                 return 2;
+            }
             return RunProjectSmoke(std::filesystem::path(argv[2]), std::filesystem::path(argv[3]), budget, std::filesystem::path(argv[1]) == "smoke-stress" ? 65536u : UINT32_MAX);
         }
         const bool custom = argc == 4 && std::filesystem::path(argv[1]) == "custom";
         if (argc != 3 && !custom)
+        {
             return 2;
+        }
         std::filesystem::path mode(argv[custom ? 2 : 1]);
         const bool            version_two = custom && (mode == "schema-change" || mode == "read-v2" || mode == "repeat-v2" || mode == "force-v2" || mode == "reject-migration");
         if (version_two && mode != "schema-change" && mode != "reject-migration")
+        {
             mode = mode == "read-v2" ? "read" : mode == "repeat-v2" ? "repeat" : "force";
+        }
         const bool custom_phase    = custom && (mode == "schema-change" || mode == "reject-migration" || mode == "reject-schema" || mode == "reject-version");
         bool       disk_full_phase = false;
 #if defined(__linux__)
         disk_full_phase = !custom && (mode == "disk-full" || mode == "disk-full-manifest");
 #endif
         if (!custom_phase && !disk_full_phase && mode != "stress-fixture" && mode != "write" && mode != "write-reverse" && mode != "repeat" && mode != "force" && mode != "changed" && mode != "read" && mode != "read-changed" && mode != "reject-missing" && mode != "reject-corrupt" && mode != "interrupt-before" && mode != "interrupt-after" && mode != "busy" && mode != "rebuild" && mode != "snapshot-read" && mode != "snapshot-write" && mode != "corrupt-texture")
+        {
             return 2;
+        }
         Options           = {mode, std::filesystem::path(argv[custom ? 3 : 2]), custom, version_two ? 2u : 1u};
         int   test_argc   = 1;
         char  name[]      = "SceneCookProcess";

@@ -17,14 +17,20 @@ namespace ZEngine::Core::VFS
         VFSResult<void> ReadSettings(Serialization::JSONReader& reader, MetaFileData& data)
         {
             if (!reader.BeginArray())
+            {
                 return VFSResult<void>::Fail(reader.Error());
+            }
             while (reader.Element())
             {
                 if (data.SettingsCount == META_MAX_SETTINGS)
+                {
                     return VFSResult<void>::Fail(VFSError::SizeLimitExceeded);
+                }
                 auto& setting = data.Settings[data.SettingsCount];
                 if (!reader.BeginObject())
+                {
                     return VFSResult<void>::Fail(reader.Error());
+                }
                 uint32_t               fields         = 0;
                 char                   key_buffer[16] = {};
                 Containers::StringView key            = {};
@@ -32,20 +38,32 @@ namespace ZEngine::Core::VFS
                 {
                     const uint32_t field = key == "key" ? 1 : key == "value" ? 2 : 0;
                     if (!field || (fields & field))
+                    {
                         return VFSResult<void>::Fail(VFSError::Corrupted);
+                    }
                     fields |= field;
                     if (!(field == 1 ? ReadMetaText(reader, setting.Key) : ReadMetaText(reader, setting.Value)))
+                    {
                         return VFSResult<void>::Fail(reader.Error() == VFSError::OK ? VFSError::Corrupted : reader.Error());
+                    }
                 }
                 if (reader.Error() != VFSError::OK)
+                {
                     return VFSResult<void>::Fail(reader.Error());
+                }
                 if (fields != 3)
+                {
                     return VFSResult<void>::Fail(VFSError::Corrupted);
+                }
                 // At most 32 fixed-capacity settings. Avoid a second allocation/
                 // hash table for this small bounded duplicate check.
                 for (uint32_t i = 0; i < data.SettingsCount; ++i)
+                {
                     if (Helpers::secure_strcmp(data.Settings[i].Key, setting.Key) == 0)
+                    {
                         return VFSResult<void>::Fail(VFSError::Corrupted);
+                    }
+                }
                 ++data.SettingsCount;
             }
             return reader.Error() == VFSError::OK ? VFSResult<void>::Ok() : VFSResult<void>::Fail(reader.Error());
@@ -55,13 +73,19 @@ namespace ZEngine::Core::VFS
     VFSResult<void> MetaFileIO::ParseStrict(Containers::ArrayView<const uint8_t> bytes, StrictMetaFileData* output)
     {
         if (!output || (bytes.size() && !bytes.data()))
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         if (bytes.size() > MaxFileSize)
+        {
             return VFSResult<void>::Fail(VFSError::SizeLimitExceeded);
+        }
         StrictMetaFileData        candidate = {};
         Serialization::JSONReader reader(bytes);
         if (!reader.BeginObject())
+        {
             return VFSResult<void>::Fail(reader.Error());
+        }
         constexpr cstring      names[]        = {"uuid", "importer", "settings", "source_path", "source_hash", "import_time_ns", "artifact_path"};
         char                   key_buffer[32] = {};
         Containers::StringView key            = {};
@@ -69,13 +93,21 @@ namespace ZEngine::Core::VFS
         {
             uint32_t index = 0;
             for (; index < sizeof(names) / sizeof(names[0]); ++index)
+            {
                 if (key == names[index])
+                {
                     break;
+                }
+            }
             if (index == sizeof(names) / sizeof(names[0]))
+            {
                 return VFSResult<void>::Fail(VFSError::Corrupted);
+            }
             const uint32_t field = uint32_t(1) << index;
             if (candidate.Fields & field)
+            {
                 return VFSResult<void>::Fail(VFSError::Corrupted);
+            }
             candidate.Fields |= field;
             bool valid        = false;
             switch (static_cast<MetaFileField>(field))
@@ -94,7 +126,9 @@ namespace ZEngine::Core::VFS
                 {
                     const auto settings = ReadSettings(reader, candidate.Data);
                     if (settings.Failed())
+                    {
                         return settings;
+                    }
                     valid = true;
                     break;
                 }
@@ -114,13 +148,19 @@ namespace ZEngine::Core::VFS
                     break;
             }
             if (!valid)
+            {
                 return VFSResult<void>::Fail(reader.Error() == VFSError::OK ? VFSError::Corrupted : reader.Error());
+            }
         }
         if (!reader.Finish())
+        {
             return VFSResult<void>::Fail(reader.Error());
+        }
         constexpr uint32_t required = static_cast<uint32_t>(MetaFileField::UUID) | static_cast<uint32_t>(MetaFileField::Importer) | static_cast<uint32_t>(MetaFileField::Settings);
         if ((candidate.Fields & required) != required)
+        {
             return VFSResult<void>::Fail(VFSError::Corrupted);
+        }
         *output = candidate;
         return VFSResult<void>::Ok();
     }

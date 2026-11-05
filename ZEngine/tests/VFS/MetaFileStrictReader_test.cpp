@@ -78,7 +78,9 @@ namespace ZEngine::Core::VFS
             R"({"uuid\u0000":"11111111-1111-4111-8111-111111111111","importer":"Mesh","settings":[]})",
         };
         for (cstring text : cases)
+        {
             ExpectBadMeta(text);
+        }
     }
 
     TEST(MetaFileStrictReaderTest, IdentityMustBeCanonicalAndNonNil)
@@ -153,7 +155,9 @@ namespace ZEngine::Core::VFS
                 EXPECT_STREQ(output.Data.Settings[31].Key, "k31");
             }
             else
+            {
                 EXPECT_EQ(result.Error(), VFSError::SizeLimitExceeded);
+            }
         }
     }
 

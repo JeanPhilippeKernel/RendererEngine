@@ -291,8 +291,12 @@ namespace ZEngine::Core::Serialization
             char                   buffer[16] = {};
             Containers::StringView key        = {};
             while (reader.Member(buffer, &key))
+            {
                 if (!reader.Null())
+                {
                     break;
+                }
+            }
             EXPECT_FALSE(reader.Finish()) << input;
             EXPECT_EQ(reader.Error(), VFS::VFSError::Corrupted);
         }
@@ -302,8 +306,12 @@ namespace ZEngine::Core::Serialization
             JSONReader reader(JSONBytes(input));
             ASSERT_TRUE(reader.BeginArray());
             while (reader.Element())
+            {
                 if (!reader.Null())
+                {
                     break;
+                }
+            }
             EXPECT_FALSE(reader.Finish()) << input;
             EXPECT_EQ(reader.Error(), VFS::VFSError::Corrupted);
         }

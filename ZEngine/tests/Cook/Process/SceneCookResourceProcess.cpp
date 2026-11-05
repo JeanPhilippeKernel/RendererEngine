@@ -162,7 +162,9 @@ int main(int argc, char** argv)
 {
     testing::InitGoogleTest(&argc, argv);
     if (GTEST_FLAG_GET(repeat) != 1 || GTEST_FLAG_GET(list_tests))
+    {
         return 1;
+    }
     const int   result = RUN_ALL_TESTS();
     const auto* tests  = testing::UnitTest::GetInstance();
     // This is an acceptance process, not an optionally filtered unit shard.

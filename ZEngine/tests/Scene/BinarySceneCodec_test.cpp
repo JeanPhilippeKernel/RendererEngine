@@ -30,7 +30,9 @@ namespace
     {
         EXPECT_LE(offset + 4, bytes.size());
         if (offset > bytes.size() || bytes.size() - offset < 4)
+        {
             return 0;
+        }
         ECS::SceneBinaryReader reader(std::as_bytes(bytes.subspan(offset, 4)));
         uint32_t               value = 0;
         EXPECT_TRUE(reader.UInt32(value));
@@ -136,7 +138,9 @@ namespace
                 const size_t           row = ComponentsOffset() + i * Format::ComponentBytes;
                 const std::string_view actual(reinterpret_cast<const char*>(bytes.data() + Word(bytes, row)), Word(bytes, row + 4));
                 if (actual == key && occurrence-- == 0)
+                {
                     return row;
+                }
             }
             ADD_FAILURE() << "Missing fixture component " << key;
             return 0;
@@ -148,7 +152,9 @@ namespace
             {
                 const auto* schema = Schemas.FindByKey(key);
                 if (!schema || !out->Register({.Key = schema->Key, .Version = std::string_view(key) == "NameComponent" ? name_version : schema->Version, .RuntimeType = schema->RuntimeType, .Fields = schema->Fields, .FieldCount = schema->FieldCount, .Codecs = std::string_view(key) == "NameComponent" ? name_codecs : schema->Codecs, .References = schema->References}, &Diagnostics))
+                {
                     return false;
+                }
             }
             return true;
         }
@@ -208,7 +214,9 @@ namespace
             ASSERT_TRUE(ECS::BinarySceneCodec::Decode({bytes.data(), bytes.size()}, Schemas, &loaded, &Diagnostics));
             EXPECT_EQ(loaded.EntityCount(), count);
             if (!count)
+            {
                 empty.AddComponent<Components::UUIDComponent>(empty.CreateEntity(), {ChildUUID});
+            }
         }
         empty.Shutdown();
     }
@@ -310,9 +318,13 @@ namespace
             auto       bytes  = Copy();
             const auto length = Word(bytes, row + 16);
             if (extend)
+            {
                 bytes.push_back(0);
+            }
             else
+            {
                 bytes.pop_back();
+            }
             SetWord(bytes, row + 16, extend ? length + 1 : length - 1);
             SetWord(bytes, 24, static_cast<uint32_t>(bytes.size()));
             FixChecksum(bytes);
@@ -394,9 +406,13 @@ namespace
         {
             auto bytes = Copy();
             if (unknown_key)
+            {
                 bytes[Word(bytes, row)] = 'O'; // Valid key, still before ParentComponent.
+            }
             else
+            {
                 SetWord(bytes, row + 8, 2);
+            }
             FixChecksum(bytes);
             RefusingRoute route = {};
             Rejects(bytes, {}, nullptr, &route);

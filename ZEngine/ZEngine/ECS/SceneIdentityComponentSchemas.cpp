@@ -33,10 +33,14 @@ namespace ZEngine::ECS
             {
                 const auto* component = scene.GetComponent<Component>(entity);
                 if (!component)
+                {
                     return false;
+                }
                 const auto end = std::find(std::begin(component->Value), std::end(component->Value), '\0');
                 if (end == std::end(component->Value))
+                {
                     return false;
+                }
                 out = {component->Value, static_cast<uint32_t>(end - component->Value)};
                 return Valid(out);
             }
@@ -44,7 +48,9 @@ namespace ZEngine::ECS
             {
                 Component component = {};
                 if (Helpers::secure_strncpy(component.Value, sizeof(component.Value), value.Data, value.Size) != Helpers::MEMORY_OP_SUCCESS)
+                {
                     return false;
+                }
                 scene.AddComponent<Component>(entity, component);
                 return true;
             }
@@ -61,7 +67,9 @@ namespace ZEngine::ECS
                 uint32_t                 size  = 0;
                 std::span<const uint8_t> bytes = {};
                 if (!reader.UInt32(size) || size >= sizeof(Component{}.Value) || !reader.Bytes(size, bytes))
+                {
                     return false;
+                }
                 value = {reinterpret_cast<cstring>(bytes.data()), size};
                 return Valid(value);
             }
@@ -89,7 +97,9 @@ namespace ZEngine::ECS
             {
                 std::span<const uint8_t> bytes = {};
                 if (!reader.Bytes(16, bytes))
+                {
                     return false;
+                }
                 value = uuids::uuid(bytes.begin(), bytes.end());
                 return Valid(value);
             }
@@ -166,7 +176,9 @@ namespace ZEngine::ECS
             {
                 const auto* component = scene.GetComponent<Component>(entity);
                 if (!component)
+                {
                     return false;
+                }
                 if (component->Parent == INVALID_ENTITY)
                 {
                     out = {};
@@ -174,7 +186,9 @@ namespace ZEngine::ECS
                 }
                 const auto* uuid = scene.IsAlive(component->Parent) ? scene.GetComponent<Components::UUIDComponent>(component->Parent) : nullptr;
                 if (!uuid || uuid->Value.is_nil())
+                {
                     return false;
+                }
                 out = uuid->Value;
                 return true;
             }
@@ -186,7 +200,9 @@ namespace ZEngine::ECS
             {
                 std::span<const uint8_t> bytes = {};
                 if (!reader.Bytes(16, bytes))
+                {
                     return false;
+                }
                 value = uuids::uuid(bytes.begin(), bytes.end());
                 return true;
             }
@@ -209,7 +225,9 @@ namespace ZEngine::ECS
             {
                 const auto* field = payload.Find<Value>(Codec::Field);
                 if (payload.Fields().size() != 1 || !field || !Codec::Valid(*field))
+                {
                     return false;
+                }
                 value = *field;
                 return true;
             }
@@ -231,21 +249,29 @@ namespace ZEngine::ECS
             {
                 Value value = {};
                 if (!out || !Read(payload, value) || !out->Require(Codec::Bytes(value)))
+                {
                     return Reject(diagnostics);
+                }
                 auto candidate = *out;
                 if (!Codec::Encode(value, candidate))
+                {
                     return Reject(diagnostics);
+                }
                 *out = candidate;
                 return true;
             }
             static bool Decode(void*, uint32_t version, SceneBinaryReader* input, SceneValueWriter* out, SceneDiagnostics* diagnostics)
             {
                 if (version != 1 || !input)
+                {
                     return Reject(diagnostics);
+                }
                 auto  candidate = *input;
                 Value value     = {};
                 if (!Codec::Decode(candidate, value) || candidate.Remaining() || !Write(value, out, diagnostics))
+                {
                     return Reject(diagnostics);
+                }
                 *input = candidate;
                 return true;
             }
@@ -257,14 +283,18 @@ namespace ZEngine::ECS
             static bool DecodeYAML(void*, uint32_t version, const SceneYAML::Node& input, SceneValueWriter* out, SceneDiagnostics* diagnostics)
             {
                 if (version != 1 || !out || !out->Empty() || !out->Remaining())
+                {
                     return Reject(diagnostics);
+                }
                 const std::array shape = {
                     SceneValueField{Codec::Field, Value{}}
                 };
                 auto  candidate = *out;
                 Value value     = {};
                 if (!DecodeSceneValueYAML(SceneValue(shape), input, &candidate, diagnostics) || !Read(candidate.Value(), value))
+                {
                     return Reject(diagnostics);
+                }
                 *out = candidate;
                 return true;
             }
@@ -274,7 +304,9 @@ namespace ZEngine::ECS
                 {
                     Value value = {};
                     if (!visitor || !Read(payload, value))
+                    {
                         return Reject(diagnostics);
+                    }
                     return value.is_nil() || visitor(context, {Codec::ReferenceKind, value, Codec::Field, Codec::AssetKind});
                 }
                 return Reject(diagnostics);
@@ -285,7 +317,9 @@ namespace ZEngine::ECS
                 {
                     Value value = {};
                     if (!Read(payload, value) || (!value.is_nil() && (!remap.Find || !remap.Find(remap.Context, value, &value))))
+                    {
                         return Reject(diagnostics);
+                    }
                     return Write(value, out, diagnostics);
                 }
                 return Reject(diagnostics);
@@ -296,10 +330,14 @@ namespace ZEngine::ECS
                 {
                     Value value = {};
                     if (!scene.IsAlive(entity) || scene.HasComponent<Components::ParentComponent>(entity) || !Read(payload, value))
+                    {
                         return Reject(diagnostics);
+                    }
                     const auto parent = value.is_nil() ? INVALID_ENTITY : (resolver.Find ? resolver.Find(resolver.Context, value) : INVALID_ENTITY);
                     if (!value.is_nil() && !scene.IsAlive(parent))
+                    {
                         return Reject(diagnostics);
+                    }
                     // Whole-graph cycle validation follows all staged reference writes, O(V+E).
                     scene.AddComponent<Components::ParentComponent>(entity, {parent});
                     return true;
@@ -315,7 +353,9 @@ namespace ZEngine::ECS
             if (const auto* existing = registry.FindByKey(Codec::Key))
             {
                 if (existing->Version == 1 && existing->RuntimeType == ComponentTypeOf<typename Codec::Component>() && existing->Codecs.Capture == Fns::Capture && existing->Codecs.PopulateCandidate == Fns::Populate && existing->Codecs.EncodeBinary == Fns::Encode && existing->Codecs.DecodeBinary == Fns::Decode && existing->Codecs.EncodeYAML == Fns::EncodeYAML && existing->Codecs.DecodeYAML == Fns::DecodeYAML)
+                {
                     return true;
+                }
                 return Fns::Reject(diagnostics);
             }
             SceneComponentSchemaDesc desc = {};
@@ -326,9 +366,13 @@ namespace ZEngine::ECS
             desc.FieldCount               = static_cast<uint32_t>(Codec::Fields.size());
             desc.Codecs                   = {.Capture = Fns::Capture, .PopulateCandidate = Fns::Populate, .EncodeBinary = Fns::Encode, .DecodeBinary = Fns::Decode, .EncodeYAML = Fns::EncodeYAML, .DecodeYAML = Fns::DecodeYAML, .CandidateMemoryBound = Fns::CandidateMemoryBound};
             if constexpr (Codec::IsReference)
+            {
                 desc.References = {.Enumerate = Fns::Enumerate, .Remap = Fns::Remap};
+            }
             if constexpr (std::is_same_v<Codec, ParentCodec>)
+            {
                 desc.Codecs.ResolveCandidateReferences = Fns::Resolve;
+            }
             return registry.Register(desc, diagnostics);
         }
     } // namespace

@@ -34,7 +34,9 @@ namespace ZEngine::Cook
             ECS::SceneComponentCodecFns codecs = {};
             codecs.Capture                     = [](void*, ECS::EntityID, const ECS::Scene&, ECS::SceneValueWriter*, ECS::SceneDiagnostics*) { return true; };
             if (alternate)
+            {
                 codecs.Capture = [](void*, ECS::EntityID, const ECS::Scene&, ECS::SceneValueWriter*, ECS::SceneDiagnostics*) { return false; };
+            }
             codecs.PopulateCandidate = [](void*, ECS::EntityID, ECS::Scene&, const ECS::SceneValue&, ECS::SceneDiagnostics*) { return true; };
             codecs.EncodeBinary      = [](void*, const ECS::SceneValue&, ECS::SceneBinaryWriter*, ECS::SceneDiagnostics*) { return true; };
             codecs.DecodeBinary      = [](void*, uint32_t, ECS::SceneBinaryReader*, ECS::SceneValueWriter*, ECS::SceneDiagnostics*) { return true; };
@@ -125,7 +127,9 @@ namespace ZEngine::Cook
             };
             const uint32_t count = extra_field ? 4 : 3;
             if (reverse)
+            {
                 std::reverse(fields, fields + count);
+            }
             const ECS::SceneComponentSchemaDesc alpha = {.Key = "Alpha", .Version = version, .RuntimeType = runtime, .Fields = fields, .FieldCount = count, .Codecs = UncalledCodecs(reverse)};
             const ECS::SceneComponentSchemaDesc zeta  = {.Key = "Zeta", .Version = 7, .RuntimeType = runtime + 1, .Codecs = UncalledCodecs(reverse)};
             ASSERT_TRUE(registry.Register(reverse ? alpha : zeta, nullptr));
@@ -215,7 +219,9 @@ namespace ZEngine::Cook
         ASSERT_TRUE(ComputeCookSchemaKey(Allocator, Second, workspace, &reordered).Succeeded());
         EXPECT_EQ(output, reordered);
         for (uint32_t i = 0; i < workspace.size(); ++i)
+        {
             EXPECT_EQ(workspace[i], i);
+        }
     }
 
     TEST_F(CookSchemaFingerprintTest, InvalidSetupAndWorkspacePreserveRecipeAndDigestOutputs)
@@ -282,7 +288,9 @@ namespace ZEngine::Cook
                 EXPECT_EQ(result.Succeeded(), available == fixed);
                 EXPECT_EQ(output.SchemaKey, available == fixed ? expected.SchemaKey : Pattern(1));
                 if (result.Failed())
+                {
                     EXPECT_EQ(result.Error(), VFS::VFSError::SizeLimitExceeded);
+                }
                 EXPECT_EQ(budget.Statistics().LiveBytes, 0u);
             }
             EXPECT_EQ(Memory.MainArena.m_current_offset, offset);
@@ -372,12 +380,18 @@ namespace ZEngine::Cook
             }
             const auto root = [&](uint32_t scene, uint32_t id) { return Graph.AddRoot(scene, RecipeIdentity(id), {}, "Test", "asset"); };
             if (reverse)
+            {
                 ASSERT_TRUE(root(SkyScene, 4).Succeeded());
+            }
             ASSERT_TRUE(root(MainScene, 3).Succeeded());
             if (!reverse)
+            {
                 ASSERT_TRUE(root(SkyScene, 4).Succeeded());
+            }
             if (moved)
+            {
                 ASSERT_TRUE(root(MainScene, 3).Succeeded()); // Occurrence provenance/dedup is not semantic.
+            }
             ASSERT_TRUE(Graph.BeginDiscovery().Succeeded());
             const CookDependency mesh_edge = {RecipeIdentity(2), "submeshes/0/material", moved ? "assets/moved.zematerial" : "assets/material.zematerial"};
             Inspect(3, "zemesh-v1-le64", {&mesh_edge, 1});
@@ -398,7 +412,9 @@ namespace ZEngine::Cook
                 auto& result = Results[index];
                 ASSERT_TRUE(ComputeCookAssetInputKey(Allocator, Graph, index, Recipe, Results, &result.InputKey).Succeeded());
                 if (result.Object.Size)
+                {
                     continue;
+                }
                 const auto& node = *Graph.Node(index);
                 const auto  id   = static_cast<uint8_t>(node.Identity.UUID.as_bytes()[15]);
                 ASSERT_TRUE(MakeCookObjectDescriptor(Pattern(static_cast<uint8_t>(0x30 + id)), 100 + id, FindCookAssetFormat(node.Format)->Extension, &result.Object).Succeeded());
@@ -424,7 +440,9 @@ namespace ZEngine::Cook
         {
             Core::Containers::FixedArray<Digest256, 4> keys = {};
             for (uint32_t id = 1; id <= 4; ++id)
+            {
                 keys[id - 1] = Result(id).InputKey;
+            }
             return keys;
         }
     };
@@ -469,7 +487,9 @@ namespace ZEngine::Cook
                 EXPECT_EQ(result.Succeeded(), available == fixed);
                 EXPECT_EQ(output, available == fixed ? expected : Pattern(1));
                 if (result.Failed())
+                {
                     EXPECT_EQ(result.Error(), VFS::VFSError::SizeLimitExceeded);
+                }
                 EXPECT_EQ(budget.Statistics().LiveBytes, 0u);
             }
             EXPECT_EQ(budget.Allocations, 0u);
@@ -521,7 +541,9 @@ namespace ZEngine::Cook
         const auto sky   = SceneKey(SkyScene);
         Build(false, false, true);
         for (uint32_t id : {1u, 2u, 3u})
+        {
             EXPECT_NE(Result(id).InputKey, keys[id - 1]);
+        }
         EXPECT_EQ(Result(4).InputKey, keys[3]);
         EXPECT_NE(GraphKey(), graph);
         EXPECT_NE(SceneKey(MainScene), main);
@@ -563,13 +585,17 @@ namespace ZEngine::Cook
         ++Recipe.Revision;
         FillResults();
         for (uint32_t id = 1; id <= 4; ++id)
+        {
             EXPECT_NE(Result(id).InputKey, keys[id - 1]);
+        }
         EXPECT_NE(SceneKey(MainScene), scene);
         --Recipe.Revision;
         Recipe.SettingsKey.Bytes[0] ^= 1;
         FillResults();
         for (uint32_t id = 1; id <= 4; ++id)
+        {
             EXPECT_NE(Result(id).InputKey, keys[id - 1]);
+        }
         EXPECT_NE(SceneKey(MainScene), scene);
     }
 

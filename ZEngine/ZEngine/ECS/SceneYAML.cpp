@@ -26,14 +26,18 @@ namespace ZEngine::ECS::SceneYAML
     bool Storage::InitializeStorage(void* memory, size_t byte_budget, uint32_t max_nodes, uint32_t max_items, uint32_t max_scalar, Core::Memory::IAllocationRoute* allocation_route, size_t initial_bytes)
     {
         if (m_arena.m_memory || m_backing.Pointer || !byte_budget || byte_budget > ZMega(256) || !max_nodes || max_nodes > 2097152 || !max_items || max_items > 65536 || !max_scalar || max_scalar > 4096)
+        {
             return false;
+        }
         const bool owns_backing = allocation_route && !memory;
         if (owns_backing)
         {
             initial_bytes = InitialRoutedCapacity(byte_budget);
             memory        = allocation_route->Allocate(initial_bytes);
             if (!memory)
+            {
                 return false;
+            }
         }
         if (memory)
         {
@@ -41,7 +45,9 @@ namespace ZEngine::ECS::SceneYAML
             if (!initialized)
             {
                 if (owns_backing)
+                {
                     allocation_route->Free(memory);
+                }
                 return false;
             }
             if (owns_backing)
@@ -51,9 +57,13 @@ namespace ZEngine::ECS::SceneYAML
             }
         }
         else
+        {
             m_arena.Initialize(byte_budget, 0, "SceneYAML/Document");
+        }
         if (!m_arena.m_memory)
+        {
             return false;
+        }
         m_nodes.m_allocator = &m_arena;
         m_links.m_allocator = &m_arena;
         m_max_nodes         = max_nodes;
@@ -106,7 +116,9 @@ namespace ZEngine::ECS::SceneYAML
         }
         const Node node = Make(NodeType::Scalar);
         if (!node.IsDefined())
+        {
             return {};
+        }
         char* copy = static_cast<char*>(m_arena.TryResize(nullptr, 0, text.size() + 1, 1));
         if (!copy)
         {
@@ -114,7 +126,9 @@ namespace ZEngine::ECS::SceneYAML
             return {};
         }
         if (!text.empty())
+        {
             Helpers::secure_memcpy(copy, text.size() + 1, text.data(), text.size());
+        }
         copy[text.size()]           = '\0';
         m_nodes[node.m_index].Text  = {copy, text.size()};
         m_nodes[node.m_index].Plain = plain;
@@ -151,7 +165,9 @@ namespace ZEngine::ECS::SceneYAML
     Node Storage::UUID(const uuids::uuid& value)
     {
         if (value.is_nil())
+        {
             return Make(NodeType::Null);
+        }
         char text[36] = {};
         uuids::to_string<char>(value, text);
         return Scalar({text, sizeof(text)});
@@ -164,9 +180,13 @@ namespace ZEngine::ECS::SceneYAML
             return {};
         }
         if (source.IsScalar())
+        {
             return Scalar(source.Scalar(), source.Plain());
+        }
         if (source.IsNull() || ((source.IsMap() || source.IsSequence()) && source.size() == 0))
+        {
             return Make(source.Type(), source.Style());
+        }
         return CloneTree(source, max_depth);
     }
     Node Storage::CloneTree(const Node& source, uint32_t max_depth)
@@ -210,7 +230,9 @@ namespace ZEngine::ECS::SceneYAML
             }
             walk.Copy = walk.Current.IsScalar() ? Scalar(walk.Current.Scalar(), walk.Current.Plain()) : Make(walk.Current.Type(), walk.Current.Style());
             if (!walk.Copy.IsDefined())
+            {
                 return {};
+            }
             if (walk.Active)
             {
                 const auto& parent = walk.Parents[walk.Active - 1];
@@ -218,10 +240,14 @@ namespace ZEngine::ECS::SceneYAML
                 // Checked append therefore needs no completed-subtree cycle
                 // scan, even when cloning within this same storage owner.
                 if (!(parent.Source.IsMap() ? AppendField(parent.Output, parent.Key, walk.Copy) : Append(parent.Output, walk.Copy)))
+                {
                     return {};
+                }
             }
             else
+            {
                 walk.Root = walk.Copy;
+            }
             if (collection)
             {
                 auto& parent  = walk.Parents[walk.Active++];
@@ -243,27 +269,37 @@ namespace ZEngine::ECS::SceneYAML
                     {
                         parent.Key = Scalar(owner->m_nodes[link.Key].Text);
                         if (!parent.Key.IsDefined())
+                        {
                             return {};
+                        }
                     }
                     walk.Current = Node(owner, link.Value);
                     break;
                 }
                 if (parent.Source.IsMap() && !UniqueKeys(parent.Output))
+                {
                     return {};
+                }
                 --walk.Active;
             }
             if (!walk.Active)
+            {
                 return walk.Root;
+            }
         }
     }
     bool Storage::Contains(Node node, Node target)
     {
         if (node.m_index == target.m_index)
+        {
             return true;
+        }
         // Most inserted children are scalars or newly opened empty containers.
         // Neither can reach another node, so no traversal state is needed.
         if (m_nodes[node.m_index].First == UINT32_MAX)
+        {
             return false;
+        }
         return ContainsChildren(node, target);
     }
     bool Storage::ContainsChildren(Node node, Node target)
@@ -287,14 +323,22 @@ namespace ZEngine::ECS::SceneYAML
         for (;;)
         {
             if (walk.Current == target.m_index || walk.Active > 32 || ++walk.Visited > m_max_nodes)
+            {
                 return true;
+            }
             const auto first = m_nodes[walk.Current].First;
             if (first != UINT32_MAX)
+            {
                 walk.Next[walk.Active++] = first;
+            }
             while (walk.Active && walk.Next[walk.Active - 1] == UINT32_MAX)
+            {
                 --walk.Active;
+            }
             if (!walk.Active)
+            {
                 return false;
+            }
             auto& next   = walk.Next[walk.Active - 1];
             walk.Current = m_links[next].Value;
             next         = m_links[next].Next;
@@ -303,19 +347,31 @@ namespace ZEngine::ECS::SceneYAML
     bool Storage::AddLink(Node parent, uint32_t key, Node value)
     {
         if (!m_good || m_frozen || !Owns(parent) || !Owns(value))
+        {
             return Fail();
+        }
         if (m_nodes[parent.m_index].Count >= m_max_items)
+        {
             return Fail(SceneDiagnosticCode::LimitExceeded);
+        }
         if (Contains(value, parent))
+        {
             return Fail();
+        }
         const auto index = static_cast<uint32_t>(m_links.size());
         if (!m_links.try_push({key, value.m_index}))
+        {
             return FailAllocation();
+        }
         auto& record = m_nodes[parent.m_index];
         if (record.Last == UINT32_MAX)
+        {
             record.First = index;
+        }
         else
+        {
             m_links[record.Last].Next = index;
+        }
         record.Last = index;
         ++record.Count;
         return true;
@@ -323,39 +379,53 @@ namespace ZEngine::ECS::SceneYAML
     bool Storage::Append(Node sequence, Node value)
     {
         if (!sequence.IsSequence())
+        {
             return Fail();
+        }
         return AddLink(sequence, UINT32_MAX, value);
     }
     bool Storage::AppendField(Node map, Node key, Node value)
     {
         if (!map.IsMap() || !Owns(key) || !key.IsScalar())
+        {
             return Fail();
+        }
         return AddLink(map, key.m_index, value);
     }
     bool Storage::Set(Node map, std::string_view key, Node value)
     {
         if (!m_good || m_frozen || !Owns(map) || !map.IsMap() || !Owns(value))
+        {
             return Fail();
+        }
         for (auto link = m_nodes[map.m_index].First; link != UINT32_MAX; link = m_links[link].Next)
+        {
             if (m_nodes[m_links[link].Key].Text == key)
             {
                 if (Contains(value, map))
+                {
                     return Fail();
+                }
                 m_links[link].Value = value.m_index;
                 return true;
             }
+        }
         const auto name = Scalar(key);
         return name.IsDefined() && AppendField(map, name, value);
     }
     bool Storage::UniqueKeys(Node map)
     {
         if (!m_good || !Owns(map) || !map.IsMap())
+        {
             return Fail();
+        }
         // Empty component maps, single-field payloads and two-field entity /
         // component envelopes dominate scene input. Their uniqueness needs no
         // temporary array, arena reservation or sorting helper state.
         if (map.size() < 2)
+        {
             return true;
+        }
         if (map.size() == 2)
         {
             const auto first  = m_nodes[map.m_index].First;
@@ -364,7 +434,9 @@ namespace ZEngine::ECS::SceneYAML
         }
         Core::Memory::WorkingMemoryCharge fixed = {};
         if (!fixed.TryAcquire(WorkingMemoryBudget(), sizeof(Core::Containers::HeapSortState<uint32_t>) + sizeof(Core::Containers::Array<uint32_t>) + sizeof(Core::Memory::ArenaTemp) + sizeof(fixed)))
+        {
             return Fail(SceneDiagnosticCode::LimitExceeded);
+        }
         Core::Containers::HeapSortState<uint32_t> sort = {};
         const auto                                mark = Core::Memory::BeginTempArena(&m_arena);
         Core::Containers::Array<uint32_t>         keys = {};
@@ -375,15 +447,19 @@ namespace ZEngine::ECS::SceneYAML
             return FailAllocation();
         }
         for (auto link = m_nodes[map.m_index].First; link != UINT32_MAX; link = m_links[link].Next)
+        {
             keys.push(m_links[link].Key);
+        }
         Core::Containers::HeapSort<uint32_t>(keys, sort, [&](uint32_t left, uint32_t right) { return m_nodes[left].Text < m_nodes[right].Text; });
         bool unique = true;
         for (size_t i = 1; i < keys.size(); ++i)
+        {
             if (m_nodes[keys[i - 1]].Text == m_nodes[keys[i]].Text)
             {
                 unique = false;
                 break;
             }
+        }
         Core::Memory::EndTempArena(mark);
         return unique || Fail();
     }
@@ -435,17 +511,25 @@ namespace ZEngine::ECS::SceneYAML
     Node Node::operator[](size_t index) const
     {
         if (!IsSequence() || index >= size())
+        {
             return {};
+        }
         auto link = m_owner->m_nodes[m_index].First;
         while (index--)
+        {
             link = m_owner->m_links[link].Next;
+        }
         return {m_owner, m_owner->m_links[link].Value};
     }
     Node Node::operator[](std::string_view key) const
     {
         for (const auto field : Mapping())
+        {
             if (field.Key == key)
+            {
                 return field.Value;
+            }
+        }
         return {};
     }
 
@@ -463,13 +547,17 @@ namespace ZEngine::ECS::SceneYAML
             Initialized = yaml_emitter_initialize(&Writer) != 0;
             Valid       = Initialized;
             if (!Valid)
+            {
                 return;
+            }
             yaml_emitter_set_output(
                 &Writer,
                 [](void* context, unsigned char* bytes, size_t size) {
                     auto& output = *static_cast<Impl*>(context);
                     if (size > output.Limit - output.Text.size())
+                    {
                         return 0;
+                    }
                     output.Text.append(reinterpret_cast<const char*>(bytes), size);
                     return 1;
                 },
@@ -483,16 +571,24 @@ namespace ZEngine::ECS::SceneYAML
                 return;
             }
             if (!Send(event))
+            {
                 return;
+            }
             if (!yaml_document_start_event_initialize(&event, nullptr, nullptr, nullptr, 1))
+            {
                 Valid = false;
+            }
             else
+            {
                 Send(event);
+            }
         }
         ~Impl()
         {
             if (Initialized)
+            {
                 yaml_emitter_delete(&Writer);
+            }
         }
 
         bool Send(yaml_event_t& event)
@@ -508,7 +604,9 @@ namespace ZEngine::ECS::SceneYAML
         bool Collection(Event type, bool flow = false)
         {
             if (!Valid || Finished)
+            {
                 return false;
+            }
             yaml_event_t event       = {};
             int          initialized = 0;
             switch (type)
@@ -538,7 +636,9 @@ namespace ZEngine::ECS::SceneYAML
         bool Scalar(std::string_view text, bool plain)
         {
             if (!Valid || Finished)
+            {
                 return false;
+            }
             if (text.size() > INT_MAX)
             {
                 Valid = false;
@@ -561,25 +661,41 @@ namespace ZEngine::ECS::SceneYAML
                 return false;
             }
             if (node.IsNull())
+            {
                 return Scalar("null", true);
+            }
             if (node.IsScalar())
+            {
                 return Scalar(node.Scalar(), node.Plain());
+            }
             if (node.IsSequence())
             {
                 if (!Collection(BeginSeq, node.Style() == EmitterStyle::Flow))
+                {
                     return false;
+                }
                 for (const auto& item : node.Sequence())
+                {
                     if (!Emit(item, depth + 1))
+                    {
                         return false;
+                    }
+                }
                 return Collection(EndSeq);
             }
             if (node.IsMap())
             {
                 if (!Collection(BeginMap, node.Style() == EmitterStyle::Flow))
+                {
                     return false;
+                }
                 for (const auto& entry : node.Mapping())
+                {
                     if (!Scalar(entry.Key, false) || !Emit(entry.Value, depth + 1))
+                    {
                         return false;
+                    }
+                }
                 return Collection(EndMap);
             }
             Valid = false;
@@ -592,19 +708,25 @@ namespace ZEngine::ECS::SceneYAML
     Emitter& Emitter::operator<<(Event event)
     {
         if (m_impl)
+        {
             m_impl->Collection(event);
+        }
         return *this;
     }
     Emitter& Emitter::operator<<(const Node& node)
     {
         if (m_impl)
+        {
             m_impl->Emit(node);
+        }
         return *this;
     }
     Emitter& Emitter::operator<<(std::string_view text)
     {
         if (m_impl)
+        {
             m_impl->Scalar(text, false);
+        }
         return *this;
     }
     Emitter& Emitter::operator<<(uint32_t value)
@@ -612,7 +734,9 @@ namespace ZEngine::ECS::SceneYAML
         char       text[16] = {};
         const auto result   = std::to_chars(text, text + sizeof(text), value);
         if (m_impl)
+        {
             m_impl->Scalar({text, static_cast<size_t>(result.ptr - text)}, true);
+        }
         return *this;
     }
     bool Emitter::good() const
@@ -622,23 +746,39 @@ namespace ZEngine::ECS::SceneYAML
     bool Emitter::Output(std::string* out)
     {
         if (!m_impl)
+        {
             return false;
+        }
         auto& impl = *m_impl;
         if (!out || !impl.Valid || impl.Finished)
+        {
             return false;
+        }
         yaml_event_t event = {};
         if (!yaml_document_end_event_initialize(&event, 1))
+        {
             impl.Valid = false;
+        }
         else
+        {
             impl.Send(event);
+        }
         if (!impl.Valid)
+        {
             return false;
+        }
         if (!yaml_stream_end_event_initialize(&event))
+        {
             impl.Valid = false;
+        }
         else
+        {
             impl.Send(event);
+        }
         if (!impl.Valid)
+        {
             return false;
+        }
         impl.Finished = true;
         *out          = std::move(impl.Text);
         return true;

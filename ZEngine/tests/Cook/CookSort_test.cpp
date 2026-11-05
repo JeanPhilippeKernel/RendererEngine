@@ -34,13 +34,17 @@ namespace ZEngine::Cook
         for (size_t count = 0; count <= input.size(); ++count)
         {
             for (size_t i = 0; i < count; ++i)
+            {
                 input[i] = static_cast<uint32_t>(i);
+            }
             do
             {
                 actual = input;
                 Core::Containers::HeapSort<uint32_t>({actual.data(), count}, state, [](uint32_t a, uint32_t b) { return a < b; });
                 for (size_t i = 0; i < count; ++i)
+                {
                     ASSERT_EQ(actual[i], i) << "count=" << count;
+                }
             } while (std::next_permutation(input.data(), input.data() + count));
         }
     }
@@ -52,7 +56,9 @@ namespace ZEngine::Cook
         Core::Containers::FixedArray<uint32_t, capacity>     reference = {};
         Detail::CookSortState<uint32_t>                      state     = {};
         for (const size_t count : {size_t{0}, size_t{1}, size_t{2}, size_t{3}, size_t{4}, size_t{7}, size_t{8}, size_t{9}, size_t{127}, size_t{128}, size_t{129}, capacity - 1, capacity})
+        {
             for (uint32_t pattern = 0; pattern < 5; ++pattern)
+            {
                 for (const bool descending : {false, true})
                 {
                     actual[0]         = UINT32_MAX;
@@ -75,16 +81,24 @@ namespace ZEngine::Cook
                         return before(a, b);
                     });
                     for (size_t i = 0; i < count; ++i)
+                    {
                         ASSERT_EQ(actual[i + 1], reference[i]) << "count=" << count << " pattern=" << pattern << " descending=" << descending;
+                    }
                     EXPECT_EQ(actual[0], UINT32_MAX);
                     EXPECT_EQ(actual[count + 1], UINT32_MAX - 1);
                     uint64_t levels = 0;
                     for (size_t n = count; n > 1; n = n / 2 + n % 2)
+                    {
                         ++levels;
+                    }
                     EXPECT_LE(comparisons, 2 * count * (levels + 1));
                     if (count < 2)
+                    {
                         EXPECT_EQ(comparisons, 0u);
+                    }
                 }
+            }
+        }
     }
 
     TEST(CookSortTest, HeapPushAndPopOrderEveryPermutationThroughSevenElements)
@@ -95,7 +109,9 @@ namespace ZEngine::Cook
         for (size_t count = 0; count <= input.size(); ++count)
         {
             for (size_t i = 0; i < count; ++i)
+            {
                 input[i] = static_cast<uint32_t>(i);
+            }
             do
             {
                 for (const bool minimumFirst : {false, true})
@@ -127,7 +143,9 @@ namespace ZEngine::Cook
         Core::Containers::FixedArray<uint32_t, capacity>     reference = {};
         Detail::CookSortState<uint32_t>                      state     = {};
         for (uint32_t pattern = 0; pattern < 5; ++pattern)
+        {
             for (const bool minimumFirst : {false, true})
+            {
                 for (const bool interleaved : {false, true})
                 {
                     values[0]              = UINT32_MAX;
@@ -143,7 +161,9 @@ namespace ZEngine::Cook
                     const auto bound = [&] {
                         uint64_t levels = 0;
                         for (size_t n = count; n > 1; n = n / 2 + n % 2)
+                        {
                             ++levels;
+                        }
                         return 2 * (levels + 1);
                     };
                     const auto pop = [&] {
@@ -154,7 +174,9 @@ namespace ZEngine::Cook
                         --count;
                         ASSERT_EQ(values[count + 1], reference[count]);
                         if (count)
+                        {
                             ASSERT_EQ(values[1], reference[0]);
+                        }
                     };
                     for (size_t i = 0; i < capacity; ++i)
                     {
@@ -170,13 +192,19 @@ namespace ZEngine::Cook
                         std::push_heap(reference.data(), reference.data() + count, before);
                         ASSERT_EQ(values[1], reference[0]);
                         if (interleaved && i % 3 == 0)
+                        {
                             pop();
+                        }
                     }
                     while (count)
+                    {
                         pop();
+                    }
                     EXPECT_EQ(values[0], UINT32_MAX);
                     EXPECT_EQ(values[capacity + 1], UINT32_MAX - 1);
                 }
+            }
+        }
     }
 
     TEST(CookSortTest, BottomUpHeapConstructionHasLinearComparisonsAndReusesSortingState)
@@ -185,7 +213,9 @@ namespace ZEngine::Cook
         Core::Containers::FixedArray<uint32_t, capacity + 2> values   = {};
         Detail::CookSortState<uint32_t>                      state    = {};
         for (const size_t count : {size_t{0}, size_t{1}, size_t{2}, size_t{3}, size_t{4}, size_t{127}, size_t{128}, size_t{129}, capacity - 1, capacity})
+        {
             for (uint32_t pattern = 0; pattern < 5; ++pattern)
+            {
                 for (const bool minimumFirst : {false, true})
                 {
                     values[0]         = UINT32_MAX;
@@ -213,6 +243,8 @@ namespace ZEngine::Cook
                     EXPECT_EQ(values[0], UINT32_MAX);
                     EXPECT_EQ(values[count + 1], UINT32_MAX - 1);
                 }
+            }
+        }
     }
 
     TEST(CookSortTest, HeapQueuePreservesEveryOwnedRecordAcrossPushAndPop)

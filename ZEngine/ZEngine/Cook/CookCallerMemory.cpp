@@ -28,9 +28,13 @@ namespace ZEngine::Cook
     {
         using Result = VFS::VFSResult<uint64_t>;
         if (!result || !diagnostics || request.Sources.empty() || !request.Sources.data())
+        {
             return Result::Fail(VFS::VFSError::InvalidPath);
+        }
         if (request.Sources.size() > SIZE_MAX / sizeof(VFS::VFSPath))
+        {
             return Result::Fail(VFS::VFSError::SizeLimitExceeded);
+        }
         // Five values only, independent of scene count. Compact/insert by integer
         // address: at most ten shifts, no recursive sort or redundant endpoints.
         // Writes never reach beyond the current input element.
@@ -48,9 +52,13 @@ namespace ZEngine::Cook
         {
             const auto begin = reinterpret_cast<uintptr_t>(range.Object);
             if (range.Bytes > UINTPTR_MAX - begin)
+            {
                 return Result::Fail(VFS::VFSError::SizeLimitExceeded);
+            }
             if (Contains(range.Object, range.Bytes))
+            {
                 continue;
+            }
             size_t position = count++;
             while (position && reinterpret_cast<uintptr_t>(ranges[position - 1].Object) > begin)
             {
@@ -68,10 +76,14 @@ namespace ZEngine::Cook
             const auto  limit = begin + range.Bytes;
             // A nested range contributes nothing; avoid unsigned subtraction.
             if (limit <= end)
+            {
                 continue;
+            }
             const auto addition = limit - std::max(end, begin);
             if (addition > UINT64_MAX - bytes)
+            {
                 return Result::Fail(VFS::VFSError::SizeLimitExceeded);
+            }
             bytes += addition;
             end    = limit;
         }
@@ -81,9 +93,13 @@ namespace ZEngine::Cook
     VFS::VFSResult<uint64_t> QueryCookCallerMemory(const SceneCookRequest& request, const SceneCookContext& context, const SceneCookResult* result, const CookDiagnostics* diagnostics) noexcept
     {
         if (!result || !diagnostics || request.Sources.empty() || !request.Sources.data())
+        {
             return VFS::VFSResult<uint64_t>::Fail(VFS::VFSError::InvalidPath);
+        }
         if (request.Sources.size() > SIZE_MAX / sizeof(VFS::VFSPath))
+        {
             return VFS::VFSResult<uint64_t>::Fail(VFS::VFSError::SizeLimitExceeded);
+        }
         Detail::CookNativeServiceMemory services    = {};
         const auto                      initialized = services.Initialize(context, context.Callbacks ? context.Callbacks->StorageArena() : nullptr);
         return initialized.Succeeded() ? services.CallerRequirements(request, context, result, diagnostics) : VFS::VFSResult<uint64_t>::Fail(initialized.Error());

@@ -92,12 +92,14 @@ namespace ZEngine::Cook
         std::barrier                                 ready(5), finish(5);
         Core::Containers::FixedArray<std::thread, 4> readers = {};
         for (auto& thread : readers)
+        {
             thread = std::thread([&] {
                 CookLibraryReadLease lease = {};
                 EXPECT_TRUE(owner.TryAcquireRead(&lease).Succeeded());
                 ready.arrive_and_wait();
                 finish.arrive_and_wait();
             });
+        }
         ready.arrive_and_wait();
         CookLibraryMutationLease writer = {};
         EXPECT_EQ(owner.TryAcquireMutation(&writer).Error(), Core::VFS::VFSError::AlreadyExists);
@@ -106,7 +108,9 @@ namespace ZEngine::Cook
         extra.Reset();
         finish.arrive_and_wait();
         for (auto& thread : readers)
+        {
             thread.join();
+        }
         ASSERT_TRUE(owner.TryAcquireMutation(&writer).Succeeded());
     }
 } // namespace ZEngine::Cook

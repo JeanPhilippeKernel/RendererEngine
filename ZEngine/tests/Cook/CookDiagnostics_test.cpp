@@ -14,14 +14,20 @@ namespace ZEngine::Cook
         EXPECT_STREQ(CookTargetKey(CookTarget::DesktopVulkanLE64), "desktop-vulkan-le64");
         EXPECT_EQ(CookAssetKindKey(CookAssetKind::Unknown), nullptr);
         for (auto kind : {CookAssetKind::EnvironmentMap, CookAssetKind::Material, CookAssetKind::Mesh, CookAssetKind::Texture})
+        {
             EXPECT_EQ(ParseCookAssetKind(CookAssetKindKey(kind)), kind);
+        }
         for (cstring key : {"Mesh", "mesh ", "mesh\n", "", "other"})
+        {
             EXPECT_EQ(ParseCookAssetKind(key), CookAssetKind::Unknown);
+        }
         EXPECT_EQ(ParseCookAssetKind({"mesh\0suffix", 11}), CookAssetKind::Unknown);
         EXPECT_TRUE(IsCookRootKey("a"));
         EXPECT_TRUE(IsCookRootKey("assets_02-library"));
         for (cstring key : {"", "Assets", "1assets", "_assets", "assets.root", "assets/path", "assets\n"})
+        {
             EXPECT_FALSE(IsCookRootKey(key));
+        }
         char key[33] = {};
         std::fill_n(key, sizeof(key), 'a');
         EXPECT_TRUE(IsCookRootKey({key, 32}));
@@ -62,7 +68,9 @@ namespace ZEngine::Cook
         CookDiagnostic warning = {.Severity = CookSeverity::Warning, .Code = CookDiagnosticCode::IOFailure};
         ASSERT_TRUE(warning.SetMessage("retained warning"));
         for (size_t i = 0; i < diagnostics.Entries.size(); ++i)
+        {
             diagnostics.Add(warning);
+        }
         EXPECT_EQ(diagnostics.Count, 64u);
         EXPECT_FALSE(diagnostics.HasErrors());
         CookDiagnostic failure = {.Code = CookDiagnosticCode::InvalidAsset};
@@ -105,7 +113,9 @@ namespace ZEngine::Cook
         ASSERT_TRUE(old.SetKeys("OldSchema", "old_field"));
         ASSERT_TRUE(old.SetMessage("old message"));
         for (auto& identity : old.Chain)
+        {
             identity = old.Asset;
+        }
         old.ChainCount     = 32;
         old.ChainTruncated = true;
         auto* entry        = diagnostics.Emplace(CookStage::Publish, CookDiagnosticCode::IOFailure, Core::VFS::VFSError::IOError);
@@ -123,7 +133,9 @@ namespace ZEngine::Cook
         EXPECT_EQ(entry->ChainCount, 0u);
         EXPECT_FALSE(entry->ChainTruncated);
         for (const auto& identity : entry->Chain)
+        {
             EXPECT_EQ(identity, CookAssetIdentity{});
+        }
         EXPECT_TRUE(std::all_of(std::begin(entry->SchemaKey), std::end(entry->SchemaKey), [](char c) { return c == '\0'; }));
         EXPECT_TRUE(std::all_of(std::begin(entry->FieldKey), std::end(entry->FieldKey), [](char c) { return c == '\0'; }));
         EXPECT_TRUE(std::all_of(std::begin(entry->Message), std::end(entry->Message), [](char c) { return c == '\0'; }));
@@ -281,7 +293,9 @@ namespace ZEngine::Cook
         EXPECT_EQ(entry.ChainCount, 32u);
         EXPECT_TRUE(entry.ChainTruncated);
         for (size_t i = 0; i < 31; ++i)
+        {
             EXPECT_EQ(entry.Chain[i], chain[i]);
+        }
         EXPECT_EQ(entry.Chain[31], chain[39]);
         chain[1] = {};
         EXPECT_FALSE(entry.SetChain({chain.data(), 2}));

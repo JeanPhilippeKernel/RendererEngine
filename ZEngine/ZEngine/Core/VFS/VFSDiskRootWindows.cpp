@@ -57,7 +57,9 @@ namespace ZEngine::Core::VFS
                 // allocation, optional library lifetime, or per-call cache.
                 const auto module = GetModuleHandleW(L"ntdll.dll");
                 if (!module)
+                {
                     return false;
+                }
                 Create        = reinterpret_cast<decltype(Create)>(GetProcAddress(module, "NtCreateFile"));
                 StatusToError = reinterpret_cast<decltype(StatusToError)>(GetProcAddress(module, "RtlNtStatusToDosError"));
                 return Create && StatusToError;
@@ -66,9 +68,13 @@ namespace ZEngine::Core::VFS
             VFSResult<void> Open(HANDLE parent, const wchar_t* name, size_t length, ACCESS_MASK access, ULONG share, ULONG disposition, ULONG kind, NativeHandle& output) const
             {
                 if (!Create || !StatusToError)
+                {
                     return VFSResult<void>::Fail(VFSError::Unsupported);
+                }
                 if (!name || !length || length >= VFS_MAX_PATH)
+                {
                     return VFSResult<void>::Fail(VFSError::InvalidPath);
+                }
                 // NtCreateFile borrows a counted, read-only name. Enumeration
                 // records need not have a trailing NUL, nor a copied name buffer.
                 UNICODE_STRING    text       = {.Length = static_cast<USHORT>(length * sizeof(wchar_t)), .MaximumLength = static_cast<USHORT>(length * sizeof(wchar_t)), .Buffer = const_cast<wchar_t*>(name)};
@@ -79,14 +85,20 @@ namespace ZEngine::Core::VFS
                 if (status < 0)
                 {
                     if (handle != INVALID_HANDLE_VALUE && handle)
+                    {
                         (void) CloseHandle(handle);
+                    }
                     // Rtl's DOS mapping loses the file/directory distinction.
                     if (static_cast<ULONG>(status) == 0xc00000baul) // STATUS_FILE_IS_A_DIRECTORY
+                    {
                         return VFSResult<void>::Fail(VFSError::NotAFile);
+                    }
                     return VFSResult<void>::Fail(Detail::NativeWindowsError(StatusToError(status)));
                 }
                 if (!handle || handle == INVALID_HANDLE_VALUE)
+                {
                     return VFSResult<void>::Fail(VFSError::IOError);
+                }
                 output.Reset(handle);
                 return VFSResult<void>::Ok();
             }
@@ -102,7 +114,9 @@ namespace ZEngine::Core::VFS
         {
             const auto stat = Detail::NativeStat(handle);
             if (stat.Failed())
+            {
                 return VFSResult<NativeEntry>::Fail(stat.Error());
+            }
             const auto identity = Detail::NativeIdentity(handle);
             return identity.Succeeded() ? VFSResult<NativeEntry>::Ok({stat.Value(), identity.Value()}) : VFSResult<NativeEntry>::Fail(identity.Error());
         }
@@ -111,17 +125,23 @@ namespace ZEngine::Core::VFS
         {
             auto entry = InspectNative(handle);
             if (entry.Succeeded() && entry.Value().Identity.Volume != volume)
+            {
                 return VFSResult<NativeEntry>::Fail(VFSError::PermissionDenied);
+            }
             return entry;
         }
 
         VFSResult<size_t> ToWide(Containers::StringView text, wchar_t (&output)[VFS_MAX_PATH])
         {
             if (text.empty() || text.size() >= VFS_MAX_PATH)
+            {
                 return VFSResult<size_t>::Fail(VFSError::InvalidPath);
+            }
             const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), output, VFS_MAX_PATH - 1);
             if (length <= 0)
+            {
                 return VFSResult<size_t>::Fail(VFSError::InvalidPath);
+            }
             output[length] = L'\0';
             return VFSResult<size_t>::Ok(static_cast<size_t>(length));
         }
@@ -130,7 +150,9 @@ namespace ZEngine::Core::VFS
         {
             HANDLE duplicate = INVALID_HANDLE_VALUE;
             if (!DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), &duplicate, 0, FALSE, DUPLICATE_SAME_ACCESS))
+            {
                 return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+            }
             output.Reset(duplicate);
             return VFSResult<void>::Ok();
         }
@@ -139,25 +161,37 @@ namespace ZEngine::Core::VFS
         {
             const auto duplicate = Duplicate(root, output);
             if (duplicate.Failed())
+            {
                 return duplicate;
+            }
             for (size_t offset = 0; offset < length;)
             {
                 size_t end = offset;
                 while (end < length && path[end] != '/')
+                {
                     ++end;
+                }
                 wchar_t    component[VFS_MAX_PATH] = {};
                 const auto converted               = ToWide({path + offset, end - offset}, component);
                 if (converted.Failed())
+                {
                     return VFSResult<void>::Fail(converted.Error());
+                }
                 NativeHandle child  = {};
                 const auto   opened = functions.Open(output.Value, component, converted.Value(), DirectoryAccess, SharedMetadata, create ? FILE_OPEN_IF : FILE_OPEN, FILE_DIRECTORY_FILE, child);
                 if (opened.Failed())
+                {
                     return opened;
+                }
                 const auto checked = InspectNative(child.Value, volume);
                 if (checked.Failed())
+                {
                     return VFSResult<void>::Fail(checked.Error());
+                }
                 if (!checked.Value().Stat.IsDirectory)
+                {
                     return VFSResult<void>::Fail(VFSError::NotADirectory);
+                }
                 output.Reset(child.Release());
                 offset = end + 1;
             }
@@ -174,16 +208,24 @@ namespace ZEngine::Core::VFS
         VFSResult<void> ResolveParent(const NativeFunctions& functions, HANDLE root, uint64_t volume, const VFSRelativePath& path, NativeParent& output)
         {
             if (!path.IsValid())
+            {
                 return VFSResult<void>::Fail(VFSError::InvalidPath);
+            }
             size_t offset = path.Length();
             while (offset && path.CStr()[offset - 1] != '/')
+            {
                 --offset;
+            }
             const auto walked = WalkDirectories(functions, root, volume, path.CStr(), offset ? offset - 1 : 0, false, output.Directory);
             if (walked.Failed())
+            {
                 return walked;
+            }
             const auto converted = ToWide({path.CStr() + offset, path.Length() - offset}, output.Leaf);
             if (converted.Failed())
+            {
                 return VFSResult<void>::Fail(converted.Error());
+            }
             output.Length = converted.Value();
             return VFSResult<void>::Ok();
         }
@@ -210,7 +252,9 @@ namespace ZEngine::Core::VFS
         VFSResult<void> VisitDirectoryEntries(HANDLE directory, Containers::ArrayView<uint8_t> storage, Visitor&& visitor)
         {
             if (!storage.data() || storage.size() < ZKilo(4) || storage.size() > ZKilo(64))
+            {
                 return VFSResult<void>::Fail(VFSError::InvalidPath);
+            }
             // The native query requires 8-byte alignment. Adapt caller-owned
             // byte storage without allocating or requiring a stronger API type.
             const auto   address     = reinterpret_cast<uintptr_t>(storage.data());
@@ -229,19 +273,27 @@ namespace ZEngine::Core::VFS
                 {
                     constexpr size_t prefix = offsetof(FILE_ID_EXTD_DIR_INFO, FileName);
                     if (offset > buffer.size() || buffer.size() - offset < prefix)
+                    {
                         return VFSResult<void>::Fail(VFSError::Corrupted);
+                    }
                     FILE_ID_EXTD_DIR_INFO header = {};
                     (void) Helpers::secure_memcpy(&header, sizeof(header), buffer.data() + offset, prefix);
                     const size_t available = buffer.size() - offset;
                     const size_t record    = header.NextEntryOffset ? header.NextEntryOffset : available;
                     if (record < prefix || record > available || !header.FileNameLength || header.FileNameLength % sizeof(wchar_t) || header.FileNameLength > record - prefix || (header.NextEntryOffset && header.NextEntryOffset % alignof(FILE_ID_EXTD_DIR_INFO)))
+                    {
                         return VFSResult<void>::Fail(VFSError::Corrupted);
+                    }
                     const DirectoryEntry entry   = {reinterpret_cast<const wchar_t*>(buffer.data() + offset + prefix), header.FileNameLength / sizeof(wchar_t), header.FileId};
                     const auto           visited = visitor(entry);
                     if (visited.Failed())
+                    {
                         return visited;
+                    }
                     if (!header.NextEntryOffset)
+                    {
                         break;
+                    }
                     offset += header.NextEntryOffset;
                 }
             }
@@ -263,7 +315,9 @@ namespace ZEngine::Core::VFS
             // native file object/offset without resolving a saved pathname.
             const auto reopened = ReOpenFile(handle, DirectoryAccess, SharedMetadata, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
             if (reopened == INVALID_HANDLE_VALUE)
+            {
                 return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+            }
             output.Reset(reopened);
             return VFSResult<void>::Ok();
         }
@@ -289,36 +343,50 @@ namespace ZEngine::Core::VFS
             NativeHandle directory = {};
             const auto   reopened  = ReopenDirectory(handle, directory);
             if (reopened.Failed())
+            {
                 return reopened;
+            }
             Containers::FixedArray<uint8_t, ZKilo(4)> buffer    = {};
             FILE_ID_128                               parent_id = {};
             bool                                      found     = false;
             uint32_t                                  entries   = 0;
             const auto                                visited   = VisitDirectoryEntries(directory.Value, buffer, [&](const DirectoryEntry& entry) {
                 if (++entries > 4096)
+                {
                     return VFSResult<void>::Fail(VFSError::SizeLimitExceeded);
+                }
                 if (!IsParent(entry))
+                {
                     return VFSResult<void>::Ok();
+                }
                 parent_id = entry.Identity;
                 found     = true;
                 // Stop without scanning/allocating an entire ancestor directory.
                 return VFSResult<void>::Fail(VFSError::Cancelled);
             });
             if (!found)
+            {
                 return visited.Failed() ? visited : VFSResult<void>::Fail(VFSError::Unsupported);
+            }
             FILE_ID_DESCRIPTOR descriptor = {};
             descriptor.dwSize             = sizeof(descriptor);
             descriptor.Type               = ExtendedFileIdType;
             descriptor.ExtendedFileId     = parent_id;
             const auto parent             = OpenFileById(handle, &descriptor, DirectoryAccess, SharedMetadata, nullptr, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
             if (parent == INVALID_HANDLE_VALUE)
+            {
                 return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+            }
             NativeHandle pending(parent);
             const auto   checked = InspectNative(parent, volume);
             if (checked.Failed())
+            {
                 return VFSResult<void>::Fail(checked.Error());
+            }
             if (!checked.Value().Stat.IsDirectory)
+            {
                 return VFSResult<void>::Fail(VFSError::NotADirectory);
+            }
             output.Reset(pending.Release());
             return VFSResult<void>::Ok();
         }
@@ -328,28 +396,44 @@ namespace ZEngine::Core::VFS
             NativeHandle current   = {};
             const auto   duplicate = Duplicate(handle, current);
             if (duplicate.Failed())
+            {
                 return VFSResult<bool>::Fail(duplicate.Error());
+            }
             for (uint32_t depth = 0; depth < 1024; ++depth)
             {
                 const auto own = Detail::NativeIdentity(current.Value);
                 if (own.Failed())
+                {
                     return VFSResult<bool>::Fail(own.Error());
+                }
                 if (own.Value() == identity)
+                {
                     return VFSResult<bool>::Ok(true);
+                }
                 const auto root = IsVolumeRoot(current.Value);
                 if (root.Failed())
+                {
                     return VFSResult<bool>::Fail(root.Error());
+                }
                 if (root.Value())
+                {
                     return VFSResult<bool>::Ok(false);
+                }
                 NativeHandle parent = {};
                 const auto   opened = OpenParentByIdentity(current.Value, own.Value().Volume, parent);
                 if (opened.Failed())
+                {
                     return VFSResult<bool>::Fail(opened.Error());
+                }
                 const auto parent_identity = Detail::NativeIdentity(parent.Value);
                 if (parent_identity.Failed())
+                {
                     return VFSResult<bool>::Fail(parent_identity.Error());
+                }
                 if (parent_identity.Value() == own.Value())
+                {
                     return VFSResult<bool>::Ok(false);
+                }
                 current.Reset(parent.Release());
             }
             return VFSResult<bool>::Fail(VFSError::SizeLimitExceeded);
@@ -363,25 +447,35 @@ namespace ZEngine::Core::VFS
             wchar_t filesystem[16] = {};
             DWORD   flags          = 0;
             if (!GetVolumeInformationByHandleW(directory, nullptr, 0, nullptr, nullptr, &flags, filesystem, static_cast<DWORD>(std::size(filesystem))))
+            {
                 return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+            }
             if (!(flags & FILE_SUPPORTS_OPEN_BY_FILE_ID) || (std::wcscmp(filesystem, L"NTFS") != 0 && std::wcscmp(filesystem, L"ReFS") != 0))
+            {
                 return VFSResult<void>::Fail(VFSError::Unsupported);
+            }
             FILE_REMOTE_PROTOCOL_INFO remote = {};
             if (GetFileInformationByHandleEx(directory, FileRemoteProtocolInfo, &remote, sizeof(remote)))
             {
                 if (remote.Protocol != 0)
+                {
                     return VFSResult<void>::Fail(VFSError::Unsupported);
+                }
             }
             else
             {
                 const auto error = GetLastError();
                 if (error != ERROR_INVALID_PARAMETER && error != ERROR_INVALID_FUNCTION && error != ERROR_NOT_SUPPORTED)
+                {
                     return VFSResult<void>::Fail(Detail::NativeWindowsError(error));
+                }
             }
             NativeHandle reopened = {};
             const auto   opened   = ReopenDirectory(directory, reopened);
             if (opened.Failed())
+            {
                 return opened;
+            }
             Containers::FixedArray<uint8_t, ZKilo(4)> buffer = {};
             // Probe the actual bounded query without scanning a large directory
             // or changing its retained enumeration offset. Empty is valid too.
@@ -408,7 +502,9 @@ namespace ZEngine::Core::VFS
             using Result = VFSResult<Helpers::Scope<IVFSRootOperations>>;
             Helpers::Scope<VFSDiskRoot> root(new (std::nothrow) VFSDiskRoot());
             if (!root)
+            {
                 return Result::Fail(VFSError::OutOfMemory);
+            }
             root->Provider  = &provider;
             root->Functions = functions;
             root->Anchor.Reset(anchor.Release());
@@ -429,7 +525,9 @@ namespace ZEngine::Core::VFS
         VFSResult<Helpers::Scope<IVFSRootOperations>> AcquireChild(const VFSRelativePath& path) override
         {
             if (!path.IsValid())
+            {
                 return VFSResult<Helpers::Scope<IVFSRootOperations>>::Fail(VFSError::InvalidPath);
+            }
             NativeHandle anchor = {};
             const auto   walked = WalkDirectories(Functions, Anchor.Value, Volume, path.CStr(), path.Length(), false, anchor);
             return walked.Succeeded() ? Create(*Provider, Functions, anchor, Volume, Access, RootCapabilities) : VFSResult<Helpers::Scope<IVFSRootOperations>>::Fail(walked.Error());
@@ -441,37 +539,57 @@ namespace ZEngine::Core::VFS
             const bool     read = HasFlag(flags, VFSOpenFlags::Read), write = HasFlag(flags, VFSOpenFlags::Write);
             const bool     create = HasFlag(flags, VFSOpenFlags::Create), exclusive = HasFlag(flags, VFSOpenFlags::Exclusive);
             if (Access == VFSRootAccess::ReadOnly && write)
+            {
                 return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);
+            }
             if ((static_cast<uint32_t>(flags) & ~static_cast<uint32_t>(known)) || (!read && !write) || (HasFlag(flags, VFSOpenFlags::AllowReplace) && flags != (VFSOpenFlags::Read | VFSOpenFlags::AllowReplace)) || (!write && (create || exclusive || HasFlag(flags, VFSOpenFlags::Truncate) || HasFlag(flags, VFSOpenFlags::Append))) || (exclusive && !create))
+            {
                 return VFSResult<IVFSFile*>::Fail(VFSError::Unsupported);
+            }
             const auto file_path = VFSPath::Parse(path.CStr(), path.Length());
             if (file_path.Failed())
+            {
                 return VFSResult<IVFSFile*>::Fail(file_path.Error());
+            }
             NativeParent parent   = {};
             const auto   resolved = ResolveParent(Functions, Anchor.Value, Volume, path, parent);
             if (resolved.Failed())
+            {
                 return VFSResult<IVFSFile*>::Fail(resolved.Error());
+            }
             std::lock_guard lock(FileMutex);
             size_t          slot = 0;
             while (slot < MaxOpenFiles && Used[slot])
+            {
                 ++slot;
+            }
             if (slot == MaxOpenFiles)
+            {
                 return VFSResult<IVFSFile*>::Fail(VFSError::OutOfMemory);
+            }
             NativeHandle handle = {};
             const auto   opened = Functions.Open(parent.Directory.Value, parent.Leaf, parent.Length, FILE_GENERIC_READ | (write ? FILE_GENERIC_WRITE : 0), FILE_SHARE_READ | (HasFlag(flags, VFSOpenFlags::AllowReplace) ? FILE_SHARE_DELETE : 0), exclusive ? FILE_CREATE : create ? FILE_OPEN_IF : FILE_OPEN, 0, handle);
             if (opened.Failed())
+            {
                 return VFSResult<IVFSFile*>::Fail(opened.Error());
+            }
             const auto checked = InspectNative(handle.Value, Volume);
             if (checked.Failed())
+            {
                 return VFSResult<IVFSFile*>::Fail(checked.Error());
+            }
             if (checked.Value().Stat.IsDirectory)
+            {
                 return VFSResult<IVFSFile*>::Fail(VFSError::NotAFile);
+            }
             uint64_t size = checked.Value().Stat.SizeBytes;
             if (HasFlag(flags, VFSOpenFlags::Truncate))
             {
                 FILE_END_OF_FILE_INFO end = {};
                 if (!SetFileInformationByHandle(handle.Value, FileEndOfFileInfo, &end, sizeof(end)))
+                {
                     return VFSResult<IVFSFile*>::Fail(Detail::NativeWindowsError(GetLastError()));
+                }
                 size = 0;
             }
             auto& file      = Files[slot];
@@ -487,15 +605,19 @@ namespace ZEngine::Core::VFS
         VFSResult<void> CloseChecked(IVFSFile* file) override
         {
             if (!file)
+            {
                 return VFSResult<void>::Ok();
+            }
             std::lock_guard lock(FileMutex);
             for (size_t i = 0; i < MaxOpenFiles; ++i)
+            {
                 if (file == &Files[i] && Used[i])
                 {
                     const auto closed = Files[i].Close();
                     Used[i]           = false;
                     return closed;
                 }
+            }
             return VFSResult<void>::Fail(VFSError::InvalidPath);
         }
 
@@ -504,7 +626,9 @@ namespace ZEngine::Core::VFS
             NativeParent parent   = {};
             const auto   resolved = ResolveParent(Functions, Anchor.Value, Volume, path, parent);
             if (resolved.Failed())
+            {
                 return VFSResult<NativeEntry>::Fail(resolved.Error());
+            }
             NativeHandle handle = {};
             return OpenMetadata(Functions, parent, Volume, handle);
         }
@@ -526,12 +650,18 @@ namespace ZEngine::Core::VFS
         {
             const auto* other = dynamic_cast<const VFSDiskRoot*>(&operations);
             if (!other)
+            {
                 return VFSResult<bool>::Fail(VFSError::Unsupported);
+            }
             const auto own = RootIdentity(), theirs = other->RootIdentity();
             if (own.Failed() || theirs.Failed())
+            {
                 return VFSResult<bool>::Fail(own.Failed() ? own.Error() : theirs.Error());
+            }
             if (own.Value().Volume != theirs.Value().Volume)
+            {
                 return VFSResult<bool>::Ok(false);
+            }
             const auto contained = AncestorsContain(other->Anchor.Value, own.Value());
             return contained.Failed() || contained.Value() ? contained : AncestorsContain(Anchor.Value, theirs.Value());
         }
@@ -539,9 +669,13 @@ namespace ZEngine::Core::VFS
         VFSResult<void> CreateDir(const VFSRelativePath& path, bool exclusive) override
         {
             if (Access == VFSRootAccess::ReadOnly)
+            {
                 return VFSResult<void>::Fail(VFSError::PermissionDenied);
+            }
             if (!path.IsValid())
+            {
                 return VFSResult<void>::Fail(VFSError::InvalidPath);
+            }
             if (!exclusive)
             {
                 NativeHandle directory = {};
@@ -550,11 +684,15 @@ namespace ZEngine::Core::VFS
             NativeParent parent   = {};
             const auto   resolved = ResolveParent(Functions, Anchor.Value, Volume, path, parent);
             if (resolved.Failed())
+            {
                 return resolved;
+            }
             NativeHandle handle  = {};
             const auto   created = Functions.Open(parent.Directory.Value, parent.Leaf, parent.Length, DirectoryAccess, SharedMetadata, FILE_CREATE, FILE_DIRECTORY_FILE, handle);
             if (created.Failed())
+            {
                 return created;
+            }
             const auto checked = InspectNative(handle.Value, Volume);
             return checked.Succeeded() ? handle.Close() : VFSResult<void>::Fail(checked.Error());
         }
@@ -562,42 +700,62 @@ namespace ZEngine::Core::VFS
         VFSResult<void> Remove(const VFSRelativePath& path) override
         {
             if (Access == VFSRootAccess::ReadOnly)
+            {
                 return VFSResult<void>::Fail(VFSError::PermissionDenied);
+            }
             NativeParent parent   = {};
             const auto   resolved = ResolveParent(Functions, Anchor.Value, Volume, path, parent);
             if (resolved.Failed())
+            {
                 return resolved;
+            }
             NativeHandle handle  = {};
             const auto   checked = OpenMetadata(Functions, parent, Volume, handle, DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE);
             if (checked.Failed())
+            {
                 return VFSResult<void>::Fail(checked.Error());
+            }
             FILE_DISPOSITION_INFO disposition = {.DeleteFile = TRUE};
             if (!SetFileInformationByHandle(handle.Value, FileDispositionInfo, &disposition, sizeof(disposition)))
+            {
                 return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+            }
             return handle.Close();
         }
 
         VFSResult<void> Rename(const VFSRelativePath& from, const VFSRelativePath& to, bool replace) override
         {
             if (Access == VFSRootAccess::ReadOnly)
+            {
                 return VFSResult<void>::Fail(VFSError::PermissionDenied);
+            }
             NativeParent source = {}, target = {};
             const auto   resolved_source = ResolveParent(Functions, Anchor.Value, Volume, from, source);
             if (resolved_source.Failed())
+            {
                 return resolved_source;
+            }
             const auto resolved_target = ResolveParent(Functions, Anchor.Value, Volume, to, target);
             if (resolved_target.Failed())
+            {
                 return resolved_target;
+            }
             NativeHandle source_handle = {}, target_handle = {};
             const auto   checked_source = OpenMetadata(Functions, source, Volume, source_handle, DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE);
             if (checked_source.Failed())
+            {
                 return VFSResult<void>::Fail(checked_source.Error());
+            }
             const auto checked_target = OpenMetadata(Functions, target, Volume, target_handle);
             if (checked_target.Failed() && checked_target.Error() != VFSError::NotFound)
+            {
                 return VFSResult<void>::Fail(checked_target.Error());
+            }
             const auto closed_target = target_handle.Close();
             if (closed_target.Failed())
+            {
                 return closed_target;
+            }
             alignas(FILE_RENAME_INFO) uint8_t storage[offsetof(FILE_RENAME_INFO, FileName) + VFS_MAX_PATH * sizeof(wchar_t)] = {};
             auto*                             rename                                                                         = new (storage) FILE_RENAME_INFO{};
             rename->ReplaceIfExists                                                                                          = replace ? TRUE : FALSE;
@@ -608,7 +766,9 @@ namespace ZEngine::Core::VFS
             // existence-check replacement fallback. The destination is a leaf.
             const auto renamed = SetFileInformationByHandle(source_handle.Value, FileRenameInfo, storage, static_cast<DWORD>(offsetof(FILE_RENAME_INFO, FileName) + rename->FileNameLength));
             if (!renamed)
+            {
                 return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+            }
             // Commit is the rename itself. A successful publication must not be
             // reported failed merely because this metadata handle's close fails.
             return VFSResult<void>::Ok();
@@ -617,37 +777,57 @@ namespace ZEngine::Core::VFS
         VFSResult<void> Visit(const VFSRelativePath* path, uint64_t maximum, Containers::ArrayView<uint8_t> buffer, VFSRootVisitorFn visitor, void* context) const override
         {
             if (!visitor || (path && !path->IsValid()) || !buffer.data() || buffer.size() < ZKilo(4) || buffer.size() > ZKilo(64))
+            {
                 return VFSResult<void>::Fail(VFSError::InvalidPath);
+            }
             NativeHandle parent = {}, directory = {};
             const auto   walked = WalkDirectories(Functions, Anchor.Value, Volume, path ? path->CStr() : "", path ? path->Length() : 0, false, parent);
             if (walked.Failed())
+            {
                 return walked;
+            }
             const auto reopened = ReopenDirectory(parent.Value, directory);
             if (reopened.Failed())
+            {
                 return reopened;
+            }
             uint64_t   seen    = 0;
             const auto visited = VisitDirectoryEntries(directory.Value, buffer, [&](const DirectoryEntry& entry) {
                 if (IsDot(entry) || IsParent(entry))
+                {
                     return VFSResult<void>::Ok();
+                }
                 if (seen == maximum)
+                {
                     return VFSResult<void>::Fail(VFSError::SizeLimitExceeded);
+                }
                 ++seen;
                 if (!entry.Length || entry.Length >= VFS_MAX_PATH)
+                {
                     return VFSResult<void>::Fail(VFSError::InvalidPath);
+                }
                 char      name[VFS_MAX_PATH] = {};
                 const int bytes              = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, entry.Name, static_cast<int>(entry.Length), name, sizeof(name) - 1, nullptr, nullptr);
                 if (bytes <= 0)
+                {
                     return VFSResult<void>::Fail(VFSError::InvalidPath);
+                }
                 const auto leaf = VFSRelativePath::Parse(name, static_cast<size_t>(bytes));
                 if (leaf.Failed() || leaf.Value().ComponentCount() != 1)
+                {
                     return VFSResult<void>::Fail(VFSError::InvalidPath);
+                }
                 const auto relative = path ? path->Append(leaf.Value()) : leaf;
                 if (relative.Failed())
+                {
                     return VFSResult<void>::Fail(relative.Error());
+                }
                 NativeHandle handle  = {};
                 const auto   checked = OpenMetadata(Functions, directory.Value, entry.Name, entry.Length, Volume, handle);
                 if (checked.Failed())
+                {
                     return VFSResult<void>::Fail(checked.Error());
+                }
                 return visitor(context, {.Path = relative.Value(), .Stat = checked.Value().Stat, .Identity = checked.Value().Identity});
             });
             const auto closed  = directory.Close();
@@ -667,7 +847,9 @@ namespace ZEngine::Core::VFS
             const auto root_bytes     = VFSDiskRoot::NativeStorageBytes();
             const auto provider_bytes = NativeStorageBytes();
             if (!root_bytes || !provider_bytes)
+            {
                 return VFSResult<VFSRootMemoryRequirements>::Fail(VFSError::Unsupported);
+            }
             return VFSResult<VFSRootMemoryRequirements>::Ok({
                 .StateBytes = root_bytes, .Storage = {this, provider_bytes}
             });
@@ -677,26 +859,38 @@ namespace ZEngine::Core::VFS
         {
             using Result = VFSResult<Helpers::Scope<IVFSRootOperations>>;
             if (!HasCap(Caps, VFSBackendCaps::Read) || (access != VFSRootAccess::ReadOnly && !HasCap(Caps, VFSBackendCaps::Write)))
+            {
                 return Result::Fail(VFSError::Unsupported);
+            }
             if (Anchor.Value == INVALID_HANDLE_VALUE)
             {
                 const auto handle = CreateFileW(NativeRoot, DirectoryAccess, SharedMetadata, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
                 if (handle == INVALID_HANDLE_VALUE)
+                {
                     return Result::Fail(Detail::NativeWindowsError(GetLastError()));
+                }
                 Anchor.Reset(handle);
             }
             const auto own = InspectNative(Anchor.Value);
             if (own.Failed())
+            {
                 return Result::Fail(own.Error());
+            }
             if (!own.Value().Stat.IsDirectory)
+            {
                 return Result::Fail(VFSError::NotADirectory);
+            }
             NativeHandle root   = {};
             const auto   walked = WalkDirectories(Functions, Anchor.Value, own.Value().Identity.Volume, relative.CStr() + 1, relative.Length() - 1, false, root);
             if (walked.Failed())
+            {
                 return Result::Fail(walked.Error());
+            }
             const auto supported = CheckFilesystem(root.Value);
             if (supported.Failed())
+            {
                 return Result::Fail(supported.Error());
+            }
             return VFSDiskRoot::Create(*this, Functions, root, own.Value().Identity.Volume, access, {.BackendIdentity = BackendIdentity(), .Guarantees = access == VFSRootAccess::ReadOnly ? VFS_READ_GUARANTEES : VFS_PUBLICATION_GUARANTEES | VFS_READ_GUARANTEES});
         }
     };
@@ -704,13 +898,19 @@ namespace ZEngine::Core::VFS
     Helpers::Ref<IVFSRootProvider> CreateWindowsDiskRootProvider(cstring native_root, VFSBackendCaps caps)
     {
         if (!native_root)
+        {
             return {};
+        }
         size_t length = 0;
         while (length < VFS_MAX_PATH && native_root[length])
+        {
             ++length;
+        }
         Helpers::Ref<WindowsRootProvider> provider(new (std::nothrow) WindowsRootProvider());
         if (!provider || !provider->BackendIdentity() || !provider->Functions.Initialize() || ToWide({native_root, length}, provider->NativeRoot).Failed())
+        {
             return {};
+        }
         provider->Caps = caps;
         return provider;
     }

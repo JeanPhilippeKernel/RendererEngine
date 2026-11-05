@@ -25,7 +25,9 @@ namespace ZEngine::Importers
         void          AddImportSetting(Core::VFS::MetaFileData& meta, const char* key, const char* value)
         {
             if (meta.SettingsCount >= Core::VFS::META_MAX_SETTINGS)
+            {
                 return;
+            }
             Core::VFS::MetaKeyValuePair& setting = meta.Settings[meta.SettingsCount++];
             std::snprintf(setting.Key, sizeof(setting.Key), "%s", key);
             std::snprintf(setting.Value, sizeof(setting.Value), "%s", value);
@@ -34,9 +36,13 @@ namespace ZEngine::Importers
         void FreeDecodedPixels(float* pixels, bool is_exr)
         {
             if (is_exr)
+            {
                 std::free(pixels);
+            }
             else
+            {
                 stbi_image_free(pixels);
+            }
         }
     } // namespace
 
@@ -49,30 +55,42 @@ namespace ZEngine::Importers
     bool EnvironmentMapImporter::CanImport(const char* extension) const
     {
         if (!extension)
+        {
             return false;
+        }
         return Helpers::secure_strcmp(extension, "hdr") == 0 || Helpers::secure_strcmp(extension, "exr") == 0;
     }
 
     bool EnvironmentMapImporter::IsSupportedEquirectangularSource(int width, int height, const float* rgba_pixels)
     {
         if (!rgba_pixels || width <= 0 || height <= 0 || width != height * 2 || width % 4 != 0)
+        {
             return false;
+        }
 
         const int face_size = width / 4;
         if (face_size <= 0 || face_size > static_cast<int>(AssetCodec::ENVIRONMENT_MAP_MAX_FACE_SIZE))
+        {
             return false;
+        }
 
         const size_t component_count = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
         for (size_t index = 0; index < component_count; ++index)
+        {
             if (!std::isfinite(rgba_pixels[index]) || rgba_pixels[index] < 0.0f)
+            {
                 return false;
+            }
+        }
         return true;
     }
 
     bool EnvironmentMapImporter::BuildArtifactPath(const uuids::uuid& asset_uuid, char* out_path, size_t out_path_size)
     {
         if (asset_uuid.is_nil() || !out_path || out_path_size == 0)
+        {
             return false;
+        }
         const int written = std::snprintf(out_path, out_path_size, "/_cache/envmaps/%s.zenvmap", uuids::to_string(asset_uuid).c_str());
         return written > 0 && static_cast<size_t>(written) < out_path_size;
     }
@@ -89,9 +107,13 @@ namespace ZEngine::Importers
         char            native[MAX_FILE_PATH_COUNT] = {};
         const char*     working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
         if (working_space && working_space[0] != '\0')
+        {
             path.ResolveNative(working_space, native, sizeof(native));
+        }
         else
+        {
             path.ToNative(native, sizeof(native));
+        }
 
         int        width = 0, height = 0;
         float*     image_data = nullptr;
@@ -103,7 +125,9 @@ namespace ZEngine::Importers
             {
                 ZENGINE_CORE_ERROR("EnvironmentMapImporter: failed to load EXR '{}': {}", native, error_message ? error_message : "unknown decoder error")
                 if (error_message)
+                {
                     FreeEXRErrorMessage(error_message);
+                }
                 FreeDecodedPixels(image_data, true);
                 return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::IOError);
             }

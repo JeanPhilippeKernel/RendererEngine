@@ -210,7 +210,9 @@ namespace ZEngine::ECS::SceneYAML
             ~RoutedBacking()
             {
                 if (Pointer)
+                {
                     Route->Free(Pointer);
+                }
             }
         };
         // Declared first, freed last: arrays and borrowed arena must finish
@@ -235,7 +237,9 @@ namespace ZEngine::ECS::SceneYAML
         {
             m_good = false;
             if (m_failure == SceneDiagnosticCode::None)
+            {
                 m_failure = code;
+            }
             return false;
         }
         bool FailAllocation()

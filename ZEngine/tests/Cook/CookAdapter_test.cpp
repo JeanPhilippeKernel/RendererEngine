@@ -28,7 +28,9 @@ namespace ZEngine::Cook
         {
             Core::Containers::FixedArray<CookAdapterFns, 4> entries = {};
             for (size_t i = 0; i < entries.size(); ++i)
+            {
                 entries[i] = {static_cast<CookAssetKind>(i + 1), 1, nullptr, RegistryInspect, RegistryEncode};
+            }
             return entries;
         }
 
@@ -64,15 +66,21 @@ namespace ZEngine::Cook
             {
                 auto result = Expected;
                 if (WrongDigest)
+                {
                     result.Bytes[0] ^= 1;
+                }
                 return result;
             }
             VFS::VFSResult<size_t> Read(uint64_t offset, Core::Containers::ArrayView<uint8_t> output) const override
             {
                 if (++Reads == FailAt)
+                {
                     return VFS::VFSResult<size_t>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 if (offset >= Bytes.size() || output.empty())
+                {
                     return VFS::VFSResult<size_t>::Ok(0);
+                }
                 // Deliberately fragmented capture: the shared exact-read loop
                 // must finish it without enlarging or allocating a stream.
                 output[0] = Bytes[static_cast<size_t>(offset)];
@@ -90,9 +98,13 @@ namespace ZEngine::Cook
             VFS::VFSResult<void>                     Write(Core::Containers::ArrayView<const uint8_t> bytes) override
             {
                 if (++Calls == FailAt)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::IOError);
+                }
                 if (bytes.size() > Bytes.size() - Written)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 Helpers::secure_memcpy(Bytes.data() + Written, Bytes.size() - Written, bytes.data(), bytes.size());
                 Written += bytes.size();
                 return VFS::VFSResult<void>::Ok();
@@ -146,17 +158,29 @@ namespace ZEngine::Cook
             CookAdapterRegistry registry = {};
             auto                entries  = RegistryEntries();
             if (failure == 0)
+            {
                 entries[3] = entries[0];
+            }
             if (failure == 1)
+            {
                 entries[0].Kind = CookAssetKind::Unknown;
+            }
             if (failure == 2)
+            {
                 entries[0].Kind = static_cast<CookAssetKind>(255);
+            }
             if (failure == 3)
+            {
                 entries[0].Revision = 0;
+            }
             if (failure == 4)
+            {
                 entries[0].Inspect = nullptr;
+            }
             if (failure == 5)
+            {
                 entries[0].Encode = nullptr;
+            }
             const Core::Containers::ArrayView<const CookAdapterFns> view = failure == 6 ? Core::Containers::ArrayView<const CookAdapterFns>{entries.data(), 3} : failure == 7 ? Core::Containers::ArrayView<const CookAdapterFns>{nullptr, 4} : Core::Containers::ArrayView<const CookAdapterFns>{entries};
             EXPECT_TRUE(registry.Initialize(view).Failed()) << failure;
             EXPECT_FALSE(registry.IsInitialized());
@@ -262,19 +286,33 @@ namespace ZEngine::Cook
                 valid, {DependencyIdentity(), "normal", {}}
             };
             if (failure == 0)
+            {
                 dependencies[0].Identity = {};
+            }
             if (failure == 1)
+            {
                 dependencies[0].Slot = {};
+            }
             if (failure == 2)
+            {
                 dependencies[0].Slot = {nullptr, 3};
+            }
             if (failure == 3)
+            {
                 dependencies[0].SourcePath = "/Assets/../tex.png";
+            }
             if (failure == 4)
+            {
                 dependencies[1].Slot = "albedo";
+            }
             if (failure == 5)
+            {
                 dependencies[0].Slot = "specular";
+            }
             if (failure == 6)
+            {
                 allocator.Failure = VFS::VFSError::OutOfMemory;
+            }
             EXPECT_TRUE(inspection.Assign(failure == 7 ? "unknown" : "zematerial-v1-json", {}, {}, dependencies, allocator).Failed()) << failure;
             EXPECT_EQ(inspection.Dependencies().data(), original);
             EXPECT_EQ(inspection.LocalContentKey(), AdapterDigest());
@@ -355,7 +393,9 @@ namespace ZEngine::Cook
         EXPECT_FALSE(context.Value().Logical.IsValid());
         EXPECT_STREQ(context.Value().Context.CStr(), "/Assets/tex.png");
         for (cstring invalid : {"", "/", "tex.png", "Assets/tex.png", "/Assets//tex.png", "/Assets/./tex.png", "/Assets/../tex.png", "//server/tex.png", "C:/tex.png", "assets\\tex.png", "assets/tex.png/", "/Assets/tex.png\n"})
+        {
             EXPECT_TRUE(ParseCookInputPath(invalid).Failed()) << invalid;
+        }
         EXPECT_TRUE(ParseCookInputPath({"assets/tex.png\0ignored", 22}).Failed());
         EXPECT_TRUE(ParseCookInputPath({nullptr, 20}).Failed());
     }

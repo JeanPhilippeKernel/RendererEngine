@@ -50,7 +50,9 @@ namespace ZEngine::Tests
                     const auto identity = probe.ReadRoot->Identity(entry.Path);
                     EXPECT_TRUE(identity.Succeeded());
                     if (identity.Succeeded())
+                    {
                         EXPECT_EQ(identity.Value(), entry.Identity);
+                    }
                     if (!entry.Stat.IsDirectory)
                     {
                         const auto open = probe.ReadRoot->Open(entry.Path);
@@ -204,7 +206,9 @@ namespace ZEngine::Tests
         ASSERT_TRUE(Root.CreateDirExclusive(MemoryRelative("target")).Succeeded());
         Core::Containers::FixedArray<VFS::VFSPublicationRootLease, 63> children = {};
         for (auto& child : children)
+        {
             ASSERT_TRUE(Root.AcquireChildRoot(MemoryRelative("target"), &child).Succeeded());
+        }
         VFS::VFSPublicationRootLease overflow = {};
         EXPECT_EQ(Root.AcquireChildRoot(MemoryRelative("target"), &overflow).Error(), VFS::VFSError::SizeLimitExceeded);
         EXPECT_FALSE(overflow.IsValid());
@@ -212,7 +216,9 @@ namespace ZEngine::Tests
         EXPECT_EQ(Root.AcquireChildRoot(MemoryRelative("missing"), &overflow).Error(), VFS::VFSError::NotFound);
         ASSERT_TRUE(Root.AcquireChildRoot(MemoryRelative("target"), &overflow).Succeeded());
         for (auto& child : children)
+        {
             child.Reset();
+        }
         Root.Reset();
         EXPECT_EQ(Context.Unmount(VFS::VFSPath::Root()).Error(), VFS::VFSError::AlreadyExists);
         overflow.Reset();
@@ -456,7 +462,9 @@ namespace ZEngine::Tests
         {
             ASSERT_TRUE(VFS::WriteFileAtomically(Root, path, payload).Succeeded()) << "publication " << i;
             if (i % 32 == 0)
+            {
                 ASSERT_TRUE(Root.Remove(path).Succeeded());
+            }
         }
         EXPECT_EQ(Root.Stat(path).Value().SizeBytes, sizeof(payload));
     }
@@ -482,8 +490,12 @@ namespace ZEngine::Tests
         ASSERT_GT(count, 0u);
         ASSERT_LT(count, snapshots.size()); // Byte exhaustion, not the 32-wrapper limit.
         for (auto* file : snapshots)
+        {
             if (file)
+            {
                 EXPECT_TRUE(Root.CloseChecked(file).Succeeded());
+            }
+        }
         for (size_t i = 0; i < count; ++i)
         {
             const auto open = Root.Open(path, VFS::VFSOpenFlags::Read | VFS::VFSOpenFlags::AllowReplace);
@@ -491,7 +503,9 @@ namespace ZEngine::Tests
             snapshots[i] = open.Value();
         }
         for (size_t i = 0; i < count; ++i)
+        {
             EXPECT_TRUE(Root.CloseChecked(snapshots[i]).Succeeded());
+        }
     }
 
     TEST_F(VFSMemoryRootLeaseTest, WriteFailurePreservesExistingBytesAndDoesNotPublishMissingFile)
@@ -536,7 +550,9 @@ namespace ZEngine::Tests
         ASSERT_TRUE(Context.AcquirePublicationRoot(MemoryPath("/output"), &other).Succeeded());
         EXPECT_EQ(other.CloseChecked(files[0]).Error(), VFS::VFSError::InvalidPath);
         for (auto* file : files)
+        {
             EXPECT_TRUE(Root.CloseChecked(file).Succeeded());
+        }
         ASSERT_TRUE(VFS::WriteFileAtomically(Root, MemoryRelative("not-created"), MemoryNew).Succeeded());
     }
 
@@ -606,7 +622,9 @@ namespace ZEngine::Tests
             ASSERT_TRUE(backend.CreateDir(path).Succeeded());
             auto root = provider->Acquire(path, VFS::VFSRootAccess::Publication);
             if (i == roots.size())
+            {
                 EXPECT_EQ(root.Error(), VFS::VFSError::OutOfMemory);
+            }
             else
             {
                 ASSERT_TRUE(root.Succeeded());

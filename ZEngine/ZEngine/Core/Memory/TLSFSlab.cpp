@@ -9,11 +9,15 @@ namespace ZEngine::Core::Memory
     {
         const size_t overhead = tlsf_size() + tlsf_pool_overhead();
         if (Pool || !arena || bytes < overhead || bytes - overhead < tlsf_block_size_min() || bytes - overhead >= tlsf_block_size_max())
+        {
             return false;
+        }
         const auto temporary = BeginTempArena(arena);
         void*      backing   = arena->AllocateNoZero(bytes);
         if (!backing)
+        {
             return false;
+        }
         auto pool = tlsf_create_with_pool(backing, bytes);
         if (!pool)
         {
@@ -87,7 +91,9 @@ namespace ZEngine::Core::Memory
         const size_t maximum  = tlsf_block_size_max();
         const size_t overhead = tlsf_block_size_min() + 2 * tlsf_alloc_overhead();
         if (!n || !alignment || (alignment & (alignment - 1)) || alignment >= (maximum - overhead) / 2 || n >= maximum - 2 * alignment - overhead)
+        {
             return 0;
+        }
         const size_t base_alignment = tlsf_align_size();
         const size_t payload        = std::max((n + base_alignment - 1) & ~(base_alignment - 1), tlsf_block_size_min());
         // block_can_split compares against sizeof(block_header_t), exposed by
@@ -99,7 +105,9 @@ namespace ZEngine::Core::Memory
     void* TLSFSlab::TryAllocate(size_t n, size_t alignment)
     {
         if (!Pool || !AllocationFootprintBound(n, alignment))
+        {
             return nullptr;
+        }
         AcquireLock();
         void* result = tlsf_memalign(Pool, alignment, n);
         ReleaseLock();

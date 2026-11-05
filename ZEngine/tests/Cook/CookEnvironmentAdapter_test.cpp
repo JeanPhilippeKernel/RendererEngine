@@ -42,18 +42,26 @@ namespace ZEngine::Cook
                 (void) hash.Update({Bytes.data(), Bytes.size()});
                 (void) hash.Finalize(&digest);
                 if (WrongDigest)
+                {
                     digest.Bytes[0] ^= 1;
+                }
                 return digest;
             }
             VFS::VFSResult<size_t> Read(uint64_t offset, Core::Containers::ArrayView<uint8_t> bytes) const override
             {
                 if (++Reads == FailAt)
+                {
                     return VFS::VFSResult<size_t>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 if (Overreport)
+                {
                     return VFS::VFSResult<size_t>::Ok(bytes.size() + 1);
+                }
                 const size_t count = offset >= Bytes.size() ? 0 : std::min({bytes.size(), Bytes.size() - static_cast<size_t>(offset), Chunk});
                 if (count)
+                {
                     Helpers::secure_memcpy(bytes.data(), bytes.size(), Bytes.data() + offset, count);
+                }
                 return VFS::VFSResult<size_t>::Ok(count);
             }
         };
@@ -65,7 +73,9 @@ namespace ZEngine::Cook
             VFS::VFSResult<void> Write(Core::Containers::ArrayView<const uint8_t> bytes) override
             {
                 if (++Calls == FailAt)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 Bytes.insert(Bytes.end(), bytes.begin(), bytes.end());
                 return VFS::VFSResult<void>::Ok();
             }
@@ -96,7 +106,9 @@ namespace ZEngine::Cook
             {
                 LastBytes = bytes;
                 if (Calls < Requests.size())
+                {
                     Requests[Calls] = bytes;
+                }
                 return ++Calls == FailAt ? VFS::VFSResult<void>::Fail(Failure) : Parent->TryCharge(bytes, category, output);
             }
         };
@@ -122,10 +134,14 @@ namespace ZEngine::Cook
             ASSERT_TRUE(Scratch.Initialize(Parent, ZKilo(128), CookMemoryCategory::Codecs).Succeeded());
             Source.Bytes.resize(8193);
             for (size_t i = 0; i < Source.Bytes.size(); ++i)
+            {
                 Source.Bytes[i] = static_cast<uint8_t>(i * 37);
+            }
             uint64_t hash = 0;
             for (size_t offset = 0; offset < Source.Bytes.size(); offset += 4096)
+            {
                 hash = rapidhash_withSeed(Source.Bytes.data() + offset, std::min(size_t(4096), Source.Bytes.size() - offset), hash);
+            }
             const auto metadata = std::string(R"({"uuid":"00000000-0000-0000-0000-000000000001","importer":"EnvironmentMapImporter","source_hash":)") + std::to_string(hash) + R"(,"artifact_path":"/_cache/envmaps/sky.zenvmap","settings":[{"key":"exposure","value":"1.0"},{"key":"artifact_version","value":"2"},{"key":"pixel_format","value":"rgba32f"},{"key":"color_space","value":"linear_scene"},{"key":"orientation","value":"renderer_canonical_v1"},{"key":"mip_policy","value":"generate_on_gpu"}]})";
             ASSERT_TRUE(VFS::MetaFileIO::ParseStrict({reinterpret_cast<const uint8_t*>(metadata.data()), metadata.size()}, &Metadata).Succeeded());
             Header = {.MagicNumber = ZENVMAP_MAGIC, .Version = 2, .HeaderByteSize = sizeof(Header), .ImporterVersion = 1, .SourceHash = hash, .FaceWidth = 1, .FaceHeight = 1, .Channel = 4, .LayerCount = 6, .MipCount = 1, .ColorSpace = 1, .Orientation = 1, .MipPolicy = 1, .Exposure = 1, .BufferByteSize = 96};
@@ -257,6 +273,7 @@ namespace ZEngine::Cook
     {
         const auto retained = Parent.Statistics().LiveBytes;
         for (auto error : {VFS::VFSError::SizeLimitExceeded, VFS::VFSError::Unsupported})
+        {
             for (uint32_t failure : {1u, 2u, 3u}) // Metadata, source hash, then copy.
             {
                 SCOPED_TRACE(failure);
@@ -278,6 +295,7 @@ namespace ZEngine::Cook
                 EXPECT_EQ(Parent.Statistics().LiveBytes, retained);
                 EXPECT_EQ(Scratch.OutstandingAllocations(), 0u);
             }
+        }
         EXPECT_EQ(Parent.Allocations, 1u);
     }
 
@@ -498,6 +516,7 @@ namespace ZEngine::Cook
         const uint32_t      counts[]   = {Source.Reads, Artifact.Reads};
         EnvironmentCapture* captures[] = {&Source, &Artifact};
         for (size_t which = 0; which < 2; ++which)
+        {
             for (uint32_t failure = 1; failure <= counts[which]; ++failure)
             {
                 Source.Reads = Artifact.Reads = 0;
@@ -507,6 +526,7 @@ namespace ZEngine::Cook
                 EXPECT_EQ(Scratch.OutstandingAllocations(), 0u);
                 captures[which]->FailAt = UINT32_MAX;
             }
+        }
         Source.Overreport    = true;
         EnvironmentSink sink = {};
         EXPECT_EQ(Encode(sink).Error(), VFS::VFSError::IOError);

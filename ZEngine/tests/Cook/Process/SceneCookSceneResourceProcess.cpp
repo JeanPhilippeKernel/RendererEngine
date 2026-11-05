@@ -45,10 +45,16 @@ namespace ZEngine::Cook
                 const auto* value = scene.GetComponent<NumericComponent>(entity);
                 const auto& codec = *static_cast<NumericCodec*>(context);
                 if (!value || !output || value->Count > codec.Keys.size())
+                {
                     return false;
+                }
                 for (uint32_t i = 0; i < value->Count; ++i)
+                {
                     if (!output->Add(codec.Keys[i].data(), value->Values[i]))
+                    {
                         return false;
+                    }
+                }
                 return true;
             }
             static bool Populate(void* context, ECS::EntityID entity, ECS::Scene& scene, const ECS::SceneValue& payload, ECS::SceneDiagnostics*)
@@ -56,12 +62,16 @@ namespace ZEngine::Cook
                 const auto&      codec     = *static_cast<NumericCodec*>(context);
                 NumericComponent component = {};
                 if (payload.Fields().size() > codec.Keys.size())
+                {
                     return false;
+                }
                 for (const auto& field : payload.Fields())
                 {
                     const auto* value = std::get_if<uint32_t>(&field.Value);
                     if (!value || Helpers::secure_strcmp(field.Key, codec.Keys[component.Count].data()))
+                    {
                         return false;
+                    }
                     component.Values[component.Count++] = *value;
                 }
                 scene.AddComponent<NumericComponent>(entity, component);
@@ -71,13 +81,17 @@ namespace ZEngine::Cook
             {
                 const auto& codec = *static_cast<NumericCodec*>(context);
                 if (!output || payload.Fields().size() > codec.Keys.size() || !output->Require(4 + 4 * payload.Fields().size()) || !output->UInt32(static_cast<uint32_t>(payload.Fields().size())))
+                {
                     return false;
+                }
                 size_t index = 0;
                 for (const auto& field : payload.Fields())
                 {
                     const auto* value = std::get_if<uint32_t>(&field.Value);
                     if (!value || Helpers::secure_strcmp(field.Key, codec.Keys[index++].data()) || !output->UInt32(*value))
+                    {
                         return false;
+                    }
                 }
                 return true;
             }
@@ -85,16 +99,22 @@ namespace ZEngine::Cook
             {
                 const auto& codec = *static_cast<NumericCodec*>(context);
                 if (version != 1 || !input || !output)
+                {
                     return false;
+                }
                 auto     candidate = *input;
                 uint32_t count     = 0;
                 if (!candidate.UInt32(count) || count > codec.Keys.size() || candidate.Remaining() != 4 * count)
+                {
                     return false;
+                }
                 for (uint32_t i = 0; i < count; ++i)
                 {
                     uint32_t value = 0;
                     if (!candidate.UInt32(value) || !output->Add(codec.Keys[i].data(), value))
+                    {
                         return false;
+                    }
                 }
                 *input = candidate;
                 return true;
@@ -107,12 +127,16 @@ namespace ZEngine::Cook
             {
                 const auto& codec = *static_cast<NumericCodec*>(context);
                 if (version != 1 || !output || !input.IsMap() || input.size() > codec.Keys.size())
+                {
                     return false;
+                }
                 for (size_t i = 0; i < input.size(); ++i)
                 {
                     uint32_t value = 0;
                     if (!ECS::ReadSceneYAMLUInt(ECS::FindSceneYAMLField(input, codec.Keys[i].data()), value) || !output->Add(codec.Keys[i].data(), value))
+                    {
                         return false;
+                    }
                 }
                 return true;
             }
@@ -138,7 +162,9 @@ namespace ZEngine::Cook
             {
                 const auto* value = scene.GetComponent<LongStringComponent>(entity);
                 if (!value || !output)
+                {
                     return false;
+                }
                 const auto end = std::find(std::begin(value->Value), std::end(value->Value), '\0');
                 return end != std::end(value->Value) && output->Add("value", ECS::SceneStringValue{value->Value, static_cast<uint32_t>(end - value->Value)});
             }
@@ -146,10 +172,14 @@ namespace ZEngine::Cook
             {
                 const auto* text = Value(payload);
                 if (!text)
+                {
                     return false;
+                }
                 LongStringComponent component = {};
                 if (Helpers::secure_strncpy(component.Value, sizeof(component.Value), text->Data, text->Size) != Helpers::MEMORY_OP_SUCCESS)
+                {
                     return false;
+                }
                 scene.AddComponent<LongStringComponent>(entity, component);
                 return true;
             }
@@ -161,12 +191,16 @@ namespace ZEngine::Cook
             static bool Decode(void*, uint32_t version, ECS::SceneBinaryReader* input, ECS::SceneValueWriter* output, ECS::SceneDiagnostics*)
             {
                 if (version != 1 || !input || !output)
+                {
                     return false;
+                }
                 auto                     candidate = *input;
                 uint32_t                 size      = 0;
                 std::span<const uint8_t> bytes     = {};
                 if (!candidate.UInt32(size) || size > 4096 || !candidate.Bytes(size, bytes) || candidate.Remaining() || std::find(bytes.begin(), bytes.end(), uint8_t(0)) != bytes.end() || !output->Add("value", ECS::SceneStringValue{reinterpret_cast<cstring>(bytes.data()), size}))
+                {
                     return false;
+                }
                 *input = candidate;
                 return true;
             }
@@ -178,7 +212,9 @@ namespace ZEngine::Cook
             {
                 const auto node = ECS::FindSceneYAMLField(input, "value");
                 if (version != 1 || !output || !input.IsMap() || input.size() != 1 || !node.IsScalar())
+                {
                     return false;
+                }
                 const auto text = node.Scalar();
                 return text.size() <= 4096 && text.find('\0') == std::string_view::npos && output->Add("value", ECS::SceneStringValue{text.data(), static_cast<uint32_t>(text.size())});
             }
@@ -206,7 +242,9 @@ namespace ZEngine::Cook
             VFS::VFSResult<size_t> Read(uint64_t offset, Core::Containers::ArrayView<uint8_t> output) const override
             {
                 if (offset > Size())
+                {
                     return VFS::VFSResult<size_t>::Fail(VFS::VFSError::Corrupted);
+                }
                 const size_t count = static_cast<size_t>(std::min<uint64_t>(output.size(), Size() - offset));
                 size_t       done  = 0;
                 if (offset < Prefix.size())
@@ -235,8 +273,12 @@ namespace ZEngine::Cook
                     uint64_t         id     = Entities - index;
                     constexpr size_t digits = sizeof("  - uuid: \"20000000-0000-0000-0000-") - 1;
                     for (size_t i = 0; i < 12; ++i, id >>= 4)
+                    {
                         if (digits + 11 - i >= within && digits + 11 - i - within < copied)
+                        {
                             output[done + digits + 11 - i - within] = "0123456789abcdef"[id & 15];
+                        }
+                    }
                     offset += copied;
                     done   += copied;
                 }
@@ -283,12 +325,16 @@ namespace ZEngine::Cook
                 const auto word = [&](size_t at) {
                     uint32_t value = 0;
                     for (size_t i = 0; i < 4; ++i)
+                    {
                         value |= uint32_t(bytes[at + i]) << (8 * i);
+                    }
                     return value;
                 };
                 const auto corrupt = VFS::VFSResult<void>::Fail(VFS::VFSError::Corrupted);
                 if (Calls != 1 || bytes.size() < ECS::SceneBinaryFormat::HeaderBytes)
+                {
                     return corrupt;
+                }
                 const size_t     table            = ECS::SceneBinaryFormat::HeaderBytes + word(48) + ECS::SceneGridBinaryBytes + ECS::SceneSkyBinaryBytes;
                 constexpr size_t key_bytes        = sizeof("DenseName00") - 1;
                 const size_t     components       = size_t(Entities) * ComponentsPerEntity;
@@ -297,7 +343,9 @@ namespace ZEngine::Cook
                 const size_t     expected_payload = NumericFields ? components * (key_bytes + 4 + 4 * NumericFields) - 4 * (NumericFields - FirstFields) : components * (key_bytes + 4 + ScalarBytes);
                 if (word(0) != ECS::SceneBinaryFormat::Magic || word(4) != ECS::SceneBinaryFormat::Version || word(8) != ECS::SceneBinaryFormat::HeaderBytes || word(12) != ECS::SceneBinaryFormat::LittleEndianMark || word(16) || word(20) != ECS::SceneDocument::SchemaVersion || word(24) != bytes.size() || word(28) != ECS::SceneBinaryFormat::Checksum({bytes.data(), bytes.size()}) || word(52) != Entities || word(56) != components || word(60) || data > bytes.size() || bytes.size() - data != expected_payload ||
                     !std::equal(UUID.as_bytes().begin(), UUID.as_bytes().end(), reinterpret_cast<const std::byte*>(bytes.data() + 32)))
+                {
                     return corrupt;
+                }
                 for (uint32_t i = 0; i < Entities; ++i)
                 {
                     const size_t row = table + size_t(i) * ECS::SceneBinaryFormat::EntityBytes;
@@ -305,10 +353,14 @@ namespace ZEngine::Cook
                     {
                         const uint8_t expected = b == 0 ? 0x20 : b < 10 ? 0 : uint8_t(uint64_t(i + 1) >> ((15 - b) * 8));
                         if (bytes[row + b] != expected)
+                        {
                             return corrupt;
+                        }
                     }
                     if (word(row + 16) != i * ComponentsPerEntity || word(row + 20) != ComponentsPerEntity)
+                    {
                         return corrupt;
+                    }
                 }
                 for (size_t i = 0; i < components; ++i)
                 {
@@ -319,29 +371,43 @@ namespace ZEngine::Cook
                         const size_t key     = data + i * (key_bytes + 4 + 4 * NumericFields) - (i ? 4 * (NumericFields - FirstFields) : 0);
                         const size_t payload = key + key_bytes;
                         if (word(row) != key || word(row + 4) != key_bytes || word(row + 8) != 1 || word(row + 12) != payload || word(row + 16) != 4 + 4 * fields || word(payload) != fields || !std::equal(bytes.begin() + key, bytes.begin() + payload, "DenseFields"))
+                        {
                             return corrupt;
+                        }
                         for (size_t field = 0; field < fields; ++field)
+                        {
                             if (word(payload + 4 + 4 * field) != field)
+                            {
                                 return corrupt;
+                            }
+                        }
                         continue;
                     }
                     const size_t key     = data + i * (key_bytes + 4 + ScalarBytes);
                     const size_t payload = key + key_bytes;
                     if (word(row) != key || word(row + 4) != key_bytes || word(row + 8) != 1 || word(row + 12) != payload || word(row + 16) != 4 + ScalarBytes || word(payload) != ScalarBytes)
+                    {
                         return corrupt;
+                    }
                     for (size_t b = 0; b < key_bytes; ++b)
                     {
                         const size_t  component = i % ComponentsPerEntity;
                         const uint8_t expected  = b < key_bytes - 2 ? "DenseName"[b] : uint8_t('0' + (b == key_bytes - 2 ? component / 10 : component % 10));
                         if (bytes[key + b] != expected)
+                        {
                             return corrupt;
+                        }
                     }
                     if (!std::all_of(bytes.begin() + payload + 4, bytes.begin() + payload + 4 + ScalarBytes, [](uint8_t value) { return value == 'x'; }))
+                    {
                         return corrupt;
+                    }
                 }
                 Core::Hash::SHA256 hash = {};
                 if (hash.Update(bytes).Failed() || hash.Finalize(&Digest).Failed())
+                {
                     return corrupt;
+                }
                 Bytes = bytes.size();
                 return VFS::VFSResult<void>::Ok();
             }
@@ -357,7 +423,9 @@ namespace ZEngine::Cook
             {
                 ++Calls;
                 if (bytes.size() > Bytes.size() - Count)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                }
                 (void) Helpers::secure_memcpy(Bytes.data() + Count, Bytes.size() - Count, bytes.data(), bytes.size());
                 Count += bytes.size();
                 return VFS::VFSResult<void>::Ok();
@@ -443,7 +511,9 @@ namespace ZEngine::Cook
             const auto append = [&](cstring text) {
                 const size_t count = Helpers::secure_strlen(text);
                 if (count > ComponentRow.size() - used)
+                {
                     return false;
+                }
                 (void) Helpers::secure_memcpy(ComponentRow.data() + used, ComponentRow.size() - used, text, count);
                 used += count;
                 return true;
@@ -541,7 +611,9 @@ namespace ZEngine::Cook
                 const auto execute = [&](DenseSink& sink, CookSceneOutput& output) {
                     CookSceneCodec codec(Budget, registry);
                     if (encoding)
+                    {
                         return codec.Encode(DenseInput(), SceneUUID, CookTarget::DesktopVulkanLE64, sink, &output, nullptr);
+                    }
                     ECS::SceneDocument document = {};
                     const auto         read     = codec.Read(DenseInput(), &document, nullptr);
                     if (read.Succeeded())
@@ -810,9 +882,13 @@ namespace ZEngine::Cook
             Dense.Configure(512);
             ASSERT_FALSE(HasFatalFailure());
             if (failure == 0)
+            {
                 --Limits.SceneLimits.MaxComponentsPerEntity;
+            }
             else if (failure == 2)
+            {
                 Limits.SceneLimits.MaxScalarBytes = 126;
+            }
             ExpectDenseRefusal(registry, failure == 3 ? VFS::VFSError::Corrupted : VFS::VFSError::SizeLimitExceeded, failure == 3 ? CookDiagnosticCode::InvalidScene : CookDiagnosticCode::BudgetExceeded);
             Limits.SceneLimits = original;
             ExpectDrained();
@@ -847,13 +923,21 @@ namespace ZEngine::Cook
                 Dense.Configure(original.MaxEntities + (failure == 4 ? 1 : 0));
                 ASSERT_FALSE(HasFatalFailure());
                 if (failure == 0)
+                {
                     --Limits.SceneLimits.MaxEntities;
+                }
                 else if (failure == 1)
+                {
                     --Limits.SceneLimits.MaxCollectionItems;
+                }
                 else if (failure == 2)
+                {
                     Limits.SceneLimits.MaxNodes = EmptyNodes + 5 * Dense.Entities - 1;
+                }
                 else if (failure == 3)
+                {
                     Limits.SceneLimits.MaxDecodedBytes = ZKilo(64);
+                }
                 for (const bool encoding : {false, true})
                 {
                     SCOPED_TRACE(encoding);
@@ -923,7 +1007,9 @@ namespace ZEngine::Cook
             SCOPED_TRACE(encoding);
             const auto execute = [&](BinarySink& sink, CookSceneOutput& output) {
                 if (encoding)
+                {
                     return Encode(sink, output);
+                }
                 CookSceneCodec     codec(Budget, Schemas);
                 ECS::SceneDocument document = {};
                 const auto         read     = codec.Read(SceneInput(), &document, nullptr);
@@ -943,7 +1029,9 @@ namespace ZEngine::Cook
             EXPECT_GT(peak, Capture.Size());
             EXPECT_LT(peak, Capture.Size() + ZMega(1));
             if (encoding)
+            {
                 ExpectBinary(first, expected, output);
+            }
             ResetBudget(peak - 1);
             BinarySink refused = {};
             output             = canonical;
@@ -958,7 +1046,9 @@ namespace ZEngine::Cook
             ASSERT_TRUE(execute(exact, output).Succeeded());
             EXPECT_EQ(Budget.Statistics().PeakBytes, peak);
             if (encoding)
+            {
                 ExpectBinary(exact, expected, output);
+            }
             ExpectDrained();
             std::printf("Source-cap scene %s: %llu input bytes, %zu binary bytes, %llu modeled working bytes\n", encoding ? "encode" : "read", static_cast<unsigned long long>(Capture.Size()), expected.Count, static_cast<unsigned long long>(peak));
         }
@@ -982,7 +1072,9 @@ namespace ZEngine::Cook
                 const auto allocations = Native.AllocationCount();
                 auto       error       = VFS::VFSError::SizeLimitExceeded;
                 if (failure == 0)
+                {
                     --Limits.SceneLimits.MaxFileBytes;
+                }
                 else if (failure == 2)
                 {
                     Capture.Chunk      = 997;
@@ -1020,7 +1112,9 @@ namespace ZEngine::Cook
                     EXPECT_EQ(Capture.Reads, 0u);
                 }
                 else if (failure == 2)
+                {
                     EXPECT_GT(Capture.MaxReadEnd, Capture.Size() - 997);
+                }
             }
             Limits.SceneLimits.MaxFileBytes = ZMega(32);
             ExpectDrained();

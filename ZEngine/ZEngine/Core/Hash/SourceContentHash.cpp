@@ -8,7 +8,9 @@ namespace ZEngine::Core::Hash
     VFS::VFSResult<void> SourceContentHash::Update(Containers::ArrayView<const uint8_t> bytes) noexcept
     {
         if (m_finalized || (bytes.size() && !bytes.data()))
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+        }
         size_t offset = 0;
         while (offset < bytes.size())
         {
@@ -34,7 +36,9 @@ namespace ZEngine::Core::Hash
     VFS::VFSResult<void> SourceContentHash::Finalize(uint64_t* output) noexcept
     {
         if (!output || m_finalized)
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+        }
         *output     = m_count ? rapidhash_withSeed(m_partial.data(), m_count, m_hash) : m_hash;
         m_finalized = true;
         return VFS::VFSResult<void>::Ok();

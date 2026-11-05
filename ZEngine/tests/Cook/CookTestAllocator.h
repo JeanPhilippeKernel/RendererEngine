@@ -104,15 +104,23 @@ namespace ZEngine::Cook::Tests
         {
             ++Allocations;
             if (Failure != Core::VFS::VFSError::OK)
+            {
                 return Core::VFS::VFSResult<void*>::Fail(Failure);
+            }
             if (!bytes || !alignment || (alignment & (alignment - 1)) || alignment > DEFAULT_ALIGNMENT || category >= CookMemoryCategory::Count)
+            {
                 return Core::VFS::VFSResult<void*>::Fail(Core::VFS::VFSError::InvalidPath);
+            }
             if (bytes > BlockBytes)
+            {
                 return Core::VFS::VFSResult<void*>::Fail(Core::VFS::VFSError::SizeLimitExceeded);
+            }
             for (size_t i = 0; i < Charges.size(); ++i)
             {
                 if (Charges[i].IsActive())
+                {
                     continue;
+                }
                 const auto charged = Ledger.TryCharge(bytes, category, &Charges[i]);
                 return charged.Failed() ? Core::VFS::VFSResult<void*>::Fail(charged.Error()) : Core::VFS::VFSResult<void*>::Ok(Bytes[i]);
             }
@@ -122,7 +130,9 @@ namespace ZEngine::Cook::Tests
         void Free(void* pointer) noexcept override
         {
             if (!pointer)
+            {
                 return;
+            }
             for (size_t i = 0; i < Charges.size(); ++i)
             {
                 if (pointer == Bytes[i])
@@ -151,7 +161,9 @@ namespace ZEngine::Cook::Tests
         Core::VFS::VFSResult<size_t> AllocationFootprint(size_t bytes, size_t alignment, CookMemoryCategory category) const noexcept override
         {
             if (!bytes || !alignment || (alignment & (alignment - 1)) || alignment > DEFAULT_ALIGNMENT || category >= CookMemoryCategory::Count)
+            {
                 return Core::VFS::VFSResult<size_t>::Fail(Core::VFS::VFSError::InvalidPath);
+            }
             return Core::VFS::VFSResult<size_t>::Ok(bytes);
         }
     };

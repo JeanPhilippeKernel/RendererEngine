@@ -87,7 +87,9 @@ namespace ZEngine::Cook
             ASSERT_TRUE((encoding ? Encode(first) : Inspect(inspection)).Succeeded());
             EXPECT_EQ(Native.AllocationCount(), allocations + 1);
             if (encoding)
+            {
                 EXPECT_EQ(first.Bytes, Expected.Size());
+            }
             else
             {
                 EXPECT_STREQ(inspection.Format(), "zematerial-v1-json");
@@ -326,7 +328,9 @@ namespace ZEngine::Cook
             {
                 Configure(limits.MaxVertices, indices);
                 if (Measure(&Workspace).Succeeded())
+                {
                     break;
+                }
             }
             ASSERT_GT(Workspace, Limits.MaxDecodedAssetBytes - 64);
             ASSERT_LE(Workspace, Limits.MaxDecodedAssetBytes);
@@ -440,12 +444,14 @@ namespace ZEngine::Cook
         {
             source.Chunk = chunk;
             for (size_t offset = 0; offset <= sizeof(expected); ++offset)
+            {
                 for (size_t count = 0; count <= sizeof(expected) - offset; ++count)
                 {
                     Core::Containers::FixedArray<uint8_t, sizeof(expected)> bytes = {};
                     ASSERT_TRUE(ReadCookCapturedRange(source, offset, {bytes.data(), count}).Succeeded());
                     EXPECT_TRUE(std::equal(bytes.data(), bytes.data() + count, expected + offset));
                 }
+            }
         }
         source.PatchOffset                                            = 4;
         source.Patch                                                  = {20, 21, 22, 23};

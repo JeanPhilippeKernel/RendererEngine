@@ -47,7 +47,9 @@ namespace ZEngine::Core::Memory
         m_growth_current          = other.m_growth_current;
         m_growth_initial_size     = other.m_growth_initial_size;
         if (m_owns_commit_tracker && m_commit_tracker)
+        {
             m_commit_tracker->Owner = this;
+        }
 
         other.m_memory              = nullptr;
         other.m_total_size          = 0;
@@ -115,12 +117,18 @@ namespace ZEngine::Core::Memory
         static Region At(ArenaAllocator& arena, size_t offset)
         {
             if (offset < arena.m_growth_initial_size || !arena.m_growth_first)
+            {
                 return {arena.m_memory, 0, arena.m_growth_initial_size};
+            }
             auto* chunk = arena.m_growth_current;
             if (!chunk || offset < chunk->Offset)
+            {
                 chunk = arena.m_growth_first;
+            }
             while (chunk->Next && offset >= chunk->Next->Offset)
+            {
                 chunk = chunk->Next;
+            }
             return {reinterpret_cast<uint8_t*>(chunk + 1), chunk->Offset, chunk->Capacity, chunk};
         }
 
@@ -185,9 +193,13 @@ namespace ZEngine::Core::Memory
                     }
                     next = new (memory) ArenaGrowthChunk{.Offset = arena.m_reserved_size, .Capacity = capacity};
                     if (region.Chunk)
+                    {
                         region.Chunk->Next = next;
+                    }
                     else
+                    {
                         arena.m_growth_first = next;
+                    }
                     arena.m_reserved_size  += capacity;
                     arena.m_committed_size += capacity;
                 }
@@ -208,26 +220,36 @@ namespace ZEngine::Core::Memory
             {
                 region = {arena.m_memory, 0, arena.m_growth_initial_size};
                 for (auto* chunk = arena.m_growth_first; !contains(region) && chunk; chunk = chunk->Next)
+                {
                     region = {reinterpret_cast<uint8_t*>(chunk + 1), chunk->Offset, chunk->Capacity, chunk};
+                }
             }
             if (!contains(region) || address % alignment != 0)
+            {
                 return nullptr;
+            }
             const size_t offset = address - reinterpret_cast<uintptr_t>(region.Memory);
             if (old_size > region.Capacity - offset || region.Offset + offset > arena.m_current_offset || old_size > arena.m_current_offset - region.Offset - offset)
+            {
                 return nullptr;
+            }
             if (region.Offset + offset == arena.m_previous_offset && new_size <= region.Capacity - offset)
             {
                 const auto start = std::min(old_size, new_size);
                 const auto bytes = std::max(old_size, new_size) - start;
                 if (bytes)
+                {
                     Helpers::secure_memset(region.Memory + offset + start, 0, bytes, bytes);
+                }
                 arena.m_current_offset = region.Offset + offset + new_size;
                 ClearAllocationFailure(&arena);
                 return old_memory;
             }
             void* memory = arena.Allocate(new_size, alignment);
             if (memory)
+            {
                 Helpers::secure_memcpy(memory, new_size, old_memory, std::min(old_size, new_size));
+            }
             return memory;
         }
 
@@ -286,7 +308,9 @@ namespace ZEngine::Core::Memory
     size_t ArenaAllocator::AllocationTrackingBytes() const noexcept
     {
         if (!m_owns_commit_tracker || !m_commit_tracker)
+        {
             return 0;
+        }
         size_t rounded = 0;
         return RoundUpToPage(m_commit_tracker->AllocationBytes, m_mem_page_size, &rounded) ? rounded : std::numeric_limits<size_t>::max();
     }
@@ -294,10 +318,14 @@ namespace ZEngine::Core::Memory
     bool ArenaAllocator::RetainedStorage(ArenaRetainedStorage* output) const noexcept
     {
         if (!output || !m_memory || m_is_borrowed || !m_commit_tracker || !m_commit_tracker->Owner || !m_mem_page_size)
+        {
             return false;
+        }
         size_t tracking = 0;
         if (!RoundUpToPage(m_commit_tracker->AllocationBytes, m_mem_page_size, &tracking) || m_commit_tracker->PageCount > SIZE_MAX / m_mem_page_size)
+        {
             return false;
+        }
         *output = {m_commit_tracker, m_commit_tracker->CommittedBytes, tracking, m_commit_tracker->PageCount * m_mem_page_size, m_commit_tracker->Owner};
         return true;
     }
@@ -305,19 +333,29 @@ namespace ZEngine::Core::Memory
     bool ArenaAllocator::RetainsStorage(const void* pointer, size_t bytes) const noexcept
     {
         if (!pointer || !bytes || !m_memory || m_is_borrowed || !m_commit_tracker || !m_mem_page_size || m_commit_tracker->PageCount > SIZE_MAX / m_mem_page_size)
+        {
             return false;
+        }
         const auto root    = reinterpret_cast<uintptr_t>(m_memory) - m_root_offset;
         const auto address = reinterpret_cast<uintptr_t>(pointer);
         if (address < root)
+        {
             return false;
+        }
         const auto offset   = address - root;
         const auto capacity = m_commit_tracker->PageCount * m_mem_page_size;
         if (offset >= capacity || bytes > capacity - offset)
+        {
             return false;
+        }
         const auto last = (offset + bytes - 1) / m_mem_page_size;
         for (size_t page = offset / m_mem_page_size; page <= last; ++page)
+        {
             if (!m_commit_tracker->CommittedPages[page])
+            {
                 return false;
+            }
+        }
         return true;
     }
 
@@ -487,7 +525,9 @@ namespace ZEngine::Core::Memory
     bool ArenaAllocator::InitializeGrowingBorrowed(void* memory, size_t initial_bytes, size_t max_bytes, IAllocationRoute& route, cstring owner_name)
     {
         if (max_bytes < initial_bytes || !InitializeBorrowed(memory, initial_bytes, owner_name))
+        {
             return false;
+        }
         m_total_size          = max_bytes;
         m_growth_initial_size = initial_bytes;
         m_growth_route        = &route;
@@ -544,7 +584,9 @@ namespace ZEngine::Core::Memory
             return nullptr;
         }
         if (ArenaGrowth::Enabled(*a))
+        {
             return ArenaGrowth::Allocate(*a, size, alignment);
+        }
 
         uintptr_t current_ptr  = (uintptr_t) a->m_memory + (uintptr_t) a->m_current_offset;
         uintptr_t offset       = Helpers::memory_align(current_ptr, alignment);
@@ -610,7 +652,9 @@ namespace ZEngine::Core::Memory
             return Allocate(new_size, alignment);
         }
         if (m_growth_route)
+        {
             return ArenaGrowth::Resize(*this, old_memory, old_size, new_size, alignment);
+        }
         const uintptr_t base    = reinterpret_cast<uintptr_t>(m_memory);
         const uintptr_t address = reinterpret_cast<uintptr_t>(old_memory);
         if (!m_memory || address < base || address - base > m_current_offset || old_size > m_current_offset - (address - base) || address % alignment != 0)
@@ -730,18 +774,26 @@ namespace ZEngine::Core::Memory
     bool PoolAllocator::TryInitialize(Arena* arena, size_t size, size_t chk_size, size_t alignment)
     {
         if (!arena || !alignment || (alignment & (alignment - 1)))
+        {
             return false;
+        }
         // Every free chunk contains a pointer, even when the caller's objects
         // themselves only require byte alignment.
         alignment = std::max(alignment, alignof(PoolFreeNode));
         if (chk_size > SIZE_MAX - (alignment - 1))
+        {
             return false;
+        }
         chk_size = Helpers::memory_align_size_t(chk_size, alignment);
         if (chk_size < sizeof(PoolFreeNode) || size < chk_size)
+        {
             return false;
+        }
         auto* storage = static_cast<uint8_t*>(arena->Allocate(size, alignment));
         if (!storage)
+        {
             return false;
+        }
         memory     = storage;
         total_size = size;
         chunk_size = chk_size;
@@ -779,7 +831,9 @@ namespace ZEngine::Core::Memory
 #ifndef NDEBUG
         // O(free-list length) double-free check — debug builds only.
         for (const PoolFreeNode* n = head; n != nullptr; n = n->Next)
+        {
             ZENGINE_VALIDATE_ASSERT(n != ptr, "PoolAllocator::Free: double-free detected")
+        }
 #endif
 
         // Placement new: begins the PoolFreeNode object lifetime at the chunk's address

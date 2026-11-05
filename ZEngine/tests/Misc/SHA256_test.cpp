@@ -59,7 +59,9 @@ namespace ZEngine::Core::Hash
         ASSERT_EQ(Helpers::secure_memset(buffer, 'a', sizeof(buffer), sizeof(buffer)), Helpers::MEMORY_OP_SUCCESS);
         SHA256 stream = {};
         for (uint32_t i = 0; i < 1000; ++i)
+        {
             ASSERT_TRUE(stream.Update(buffer).Succeeded());
+        }
         Digest256 digest = {};
         ASSERT_TRUE(stream.Finalize(&digest).Succeeded());
         EXPECT_STREQ(digest.Hex().data(), "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
@@ -70,7 +72,9 @@ namespace ZEngine::Core::Hash
         SHA256                               stream = {};
         Containers::FixedArray<uint8_t, 129> stale  = {};
         for (auto& byte : stale)
+        {
             byte = 0xa5;
+        }
         for (const size_t previous_length : {0u, 1u, 55u, 56u, 63u, 64u, 65u, 127u, 128u, 129u})
         {
             for (bool finalize_previous : {false, true})
@@ -81,7 +85,9 @@ namespace ZEngine::Core::Hash
                     ASSERT_TRUE(stream.Update({stale.data(), previous_length}).Succeeded());
                     Digest256 previous = {};
                     if (finalize_previous)
+                    {
                         ASSERT_TRUE(stream.Finalize(&previous).Succeeded());
+                    }
                     stream.Reset();
                     EXPECT_EQ(stream.BytesWritten(), 0u);
                     const auto length = Helpers::secure_strlen(vector.Input);

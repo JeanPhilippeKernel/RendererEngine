@@ -29,13 +29,19 @@ namespace ZEngine::Cook::Tests
         {
             ++Reads;
             if (offset >= ReadFailureAt)
+            {
                 return Core::VFS::VFSResult<size_t>::Fail(ReadError);
+            }
             if (Overreport)
+            {
                 return Core::VFS::VFSResult<size_t>::Ok(destination.size() + 1);
+            }
             const uint64_t end   = std::min<uint64_t>(Bytes.size(), EOFAt);
             const size_t   count = offset >= end ? 0 : std::min({destination.size(), ReadLimit, static_cast<size_t>(end - offset)});
             if (count)
+            {
                 (void) Helpers::secure_memcpy(destination.data(), destination.size(), Bytes.data() + offset, count);
+            }
             return Core::VFS::VFSResult<size_t>::Ok(count);
         }
         Core::VFS::VFSResult<size_t> Write(Core::Containers::ArrayView<const uint8_t>, uint64_t) override
@@ -51,7 +57,9 @@ namespace ZEngine::Cook::Tests
         {
             ++Stats;
             if (StatError != Core::VFS::VFSError::OK && (!StatFailureAt || StatFailureAt == Stats))
+            {
                 return Core::VFS::VFSResult<Core::VFS::VFSFileStat>::Fail(StatError);
+            }
             return Core::VFS::VFSResult<Core::VFS::VFSFileStat>::Ok({.SizeBytes = Stats > 1 && ChangedSize != UINT64_MAX ? ChangedSize : Bytes.size(), .IsDirectory = Directory || (Stats > 1 && ChangedDirectory)});
         }
         Core::VFS::VFSResult<void> Flush() override
@@ -92,7 +100,9 @@ namespace ZEngine::Cook::Tests
             EXPECT_LT(Count, 16u);
             EXPECT_LE(bytes.size(), sizeof(Entry::Bytes));
             if (Count >= 16 || bytes.size() > sizeof(Entry::Bytes))
+            {
                 return UINT32_MAX;
+            }
             const uint32_t     index  = Count++;
             auto&              entry  = Entries[index];
             Core::Hash::SHA256 hash   = {};
@@ -101,7 +111,9 @@ namespace ZEngine::Cook::Tests
             EXPECT_TRUE(hash.Finalize(&digest).Succeeded());
             EXPECT_TRUE(MakeCookObjectDescriptor(digest, bytes.size(), extension, &entry.Object).Succeeded());
             if (bytes.size())
+            {
                 (void) Helpers::secure_memcpy(entry.Bytes, sizeof(entry.Bytes), bytes.data(), bytes.size());
+            }
             entry.File.Bytes = {entry.Bytes, bytes.size()};
             return index;
         }
@@ -117,7 +129,9 @@ namespace ZEngine::Cook::Tests
                     {
                         auto& entry = store.Entries[i];
                         if (entry.Object.Path != path)
+                        {
                             continue;
+                        }
                         ++entry.Opens;
                         entry.File.Stats = 0;
                         return entry.OpenError != Core::VFS::VFSError::OK ? Core::VFS::VFSResult<Core::VFS::IVFSFile*>::Fail(entry.OpenError) : Core::VFS::VFSResult<Core::VFS::IVFSFile*>::Ok(entry.NullHandle ? nullptr : &entry.File);

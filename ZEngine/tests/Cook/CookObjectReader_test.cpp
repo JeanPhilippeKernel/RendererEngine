@@ -62,7 +62,9 @@ namespace ZEngine::Cook
             ASSERT_TRUE(Allocator.Ledger.Initialize(ZKilo(4)).Succeeded());
             uint8_t bytes[128] = {};
             for (uint32_t i = 0; i < sizeof(bytes); ++i)
+            {
                 bytes[i] = static_cast<uint8_t>(i);
+            }
             Object = Store.Entries[Store.Add(bytes, "png")].Object;
         }
         void TearDown() override
@@ -260,9 +262,13 @@ namespace ZEngine::Cook
         {
             const auto verify = [&]() {
                 if (entry == 0)
+                {
                     return VerifyCookObjectFile(Store.Entries[0].File, Object, Stream, Allocator);
+                }
                 if (entry == 1)
+                {
                     return VerifyCookStagedObject(Store.Reader(), Object.Path, Object, Stream, Allocator);
+                }
                 const auto result = Verify();
                 EXPECT_TRUE(result.Failed() || result.Value());
                 return result.Failed() ? VFS::VFSResult<void>::Fail(result.Error()) : VFS::VFSResult<void>::Ok();
@@ -415,7 +421,9 @@ namespace ZEngine::Cook
         file.ReadLimit  = 2;
         ASSERT_EQ(file.ReadAll(Stream).Value(), sizeof(Stream));
         for (size_t i = 0; i < sizeof(Stream); ++i)
+        {
             EXPECT_EQ(Stream[i], i);
+        }
     }
 
     TEST(CookObjectRootReaderTest, MemoryPublicationAndReadRootsRetainRoutingAfterContextShutdown)

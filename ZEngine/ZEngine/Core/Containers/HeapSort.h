@@ -30,9 +30,13 @@ namespace ZEngine::Core::Containers
         {
             state.Child = state.Root * 2 + 1;
             if (state.Child + 1 < state.HeapCount && before(values[state.Child], values[state.Child + 1]))
+            {
                 ++state.Child;
+            }
             if (!before(state.Value, values[state.Child]))
+            {
                 break;
+            }
             values[state.Root] = std::move(values[state.Child]);
             state.Root         = state.Child;
         }
@@ -61,14 +65,18 @@ namespace ZEngine::Core::Containers
     void HeapPush(ArrayView<T> values, HeapSortState<T>& state, const Before& before)
     {
         if (values.size() < 2)
+        {
             return;
+        }
         state.Root  = values.size() - 1;
         state.Value = std::move(values[state.Root]);
         while (state.Root)
         {
             state.Child = (state.Root - 1) / 2;
             if (!before(values[state.Child], state.Value))
+            {
                 break;
+            }
             values[state.Root] = std::move(values[state.Child]);
             state.Root         = state.Child;
         }
@@ -79,7 +87,9 @@ namespace ZEngine::Core::Containers
     void HeapPop(ArrayView<T> values, HeapSortState<T>& state, const Before& before)
     {
         if (values.size() < 2)
+        {
             return;
+        }
         state.HeapCount         = values.size() - 1;
         state.Value             = std::move(values[state.HeapCount]);
         values[state.HeapCount] = std::move(values[0]);
@@ -94,12 +104,16 @@ namespace ZEngine::Core::Containers
     void HeapSort(ArrayView<T> values, HeapSortState<T>& state, const Before& before)
     {
         if (values.size() < 2)
+        {
             return;
+        }
         // Bottom-up heap construction, then extraction into the sorted suffix.
         // One held value fills the final hole instead of swapping large records
         // at every level. Queue operations share the exact same implementation.
         HeapMake(values, state, before);
         while (state.HeapCount > 1)
+        {
             HeapPop<T>({values.data(), state.HeapCount}, state, before);
+        }
     }
 } // namespace ZEngine::Core::Containers

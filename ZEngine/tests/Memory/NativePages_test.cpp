@@ -29,7 +29,9 @@ namespace ZEngine::Core::Memory::Tests
             mach_port_t                    object = MACH_PORT_NULL;
             const auto                     result = mach_vm_region(mach_task_self(), &region, &bytes, VM_REGION_BASIC_INFO_64, reinterpret_cast<vm_region_info_t>(&info), &count, &object);
             if (object != MACH_PORT_NULL)
+            {
                 mach_port_deallocate(mach_task_self(), object);
+            }
             return result == KERN_INVALID_ADDRESS || (result == KERN_SUCCESS && region > target);
 #elif defined(__linux__)
             unsigned char residency = 0;
@@ -57,7 +59,9 @@ namespace ZEngine::Core::Memory::Tests
             ~NativeObject() override
             {
                 if (Destructions)
+                {
                     ++*Destructions;
+                }
             }
         };
     } // namespace

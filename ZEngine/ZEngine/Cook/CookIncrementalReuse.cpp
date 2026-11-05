@@ -15,13 +15,21 @@ namespace ZEngine::Cook
         CookDiagnosticCode ObjectFailureCode(VFS::VFSError error)
         {
             if (error == VFS::VFSError::Corrupted || error == VFS::VFSError::NotAFile)
+            {
                 return CookDiagnosticCode::CorruptObject;
+            }
             if (error == VFS::VFSError::SizeLimitExceeded)
+            {
                 return CookDiagnosticCode::BudgetExceeded;
+            }
             if (error == VFS::VFSError::OutOfMemory)
+            {
                 return CookDiagnosticCode::AllocationFailed;
+            }
             if (error == VFS::VFSError::Unsupported)
+            {
                 return CookDiagnosticCode::UnsupportedBackend;
+            }
             return CookDiagnosticCode::IOFailure;
         }
 
@@ -33,7 +41,9 @@ namespace ZEngine::Cook
         VFS::VFSError CheckObject(const CookObjectDescriptor& object, cstring extension, uint64_t limit)
         {
             if (!IsCookObjectDescriptorValid(object, extension))
+            {
                 return VFS::VFSError::Corrupted;
+            }
             return object.Size > limit ? VFS::VFSError::SizeLimitExceeded : VFS::VFSError::OK;
         }
     } // namespace
@@ -47,7 +57,9 @@ namespace ZEngine::Cook
     {
         static_assert(std::is_trivially_destructible_v<CookAssetResult> && std::is_trivially_destructible_v<CookSceneResult> && std::is_trivially_destructible_v<VerifiedObject>);
         if (m_allocator)
+        {
             m_allocator->Free(m_block);
+        }
         m_allocator   = nullptr;
         m_block       = nullptr;
         m_input       = {};
@@ -66,49 +78,75 @@ namespace ZEngine::Cook
     {
         static_assert(alignof(CookAssetResult) <= DEFAULT_ALIGNMENT && alignof(CookSceneResult) <= DEFAULT_ALIGNMENT && alignof(VerifiedObject) <= DEFAULT_ALIGNMENT);
         if (m_block || !input.Graph || !input.Graph->IsFinalized() || !input.Graph->SceneCount() || !input.Limits || ValidateCookLimits(*input.Limits).Failed() || !stream.data() || !stream.size() || !input.Reader.Open || !input.Reader.CloseChecked)
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+        }
         if (input.Recipe.Revision != CookRecipeRevision || !CookTargetKey(input.Recipe.Target))
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::Unsupported);
+        }
         Digest256  settings = {};
         const auto hashed   = ComputeCookSettingsKey(input.Recipe.Target, &settings);
         if (hashed.Failed())
+        {
             return hashed;
+        }
         if (input.Recipe.SettingsKey != settings)
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+        }
         const auto& graph = *input.Graph;
         if (graph.NodeCount() > input.Limits->MaxAssets || graph.SceneCount() > input.Limits->MaxScenes || graph.EdgeCount() > input.Limits->MaxEdges || graph.ReferenceCount() > input.Limits->MaxReferenceOccurrences)
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+        }
         for (uint32_t i = 0; i < graph.NodeCount(); ++i)
         {
             const auto& node   = *graph.Node(i);
             const auto* format = FindCookAssetFormat(node.Format);
             if (!format || format->Kind != node.Identity.Kind || format->Revision != node.AdapterRevision)
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::Unsupported);
+            }
         }
         const CookManifest* previous = input.Previous;
         if (previous && previous->IsValid())
         {
             if (previous->Recipe().Revision > input.Recipe.Revision || previous->Recipe().Target != input.Recipe.Target)
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::Unsupported);
+            }
             if (previous->Recipe().Revision != input.Recipe.Revision || previous->Recipe().SettingsKey != input.Recipe.SettingsKey)
+            {
                 previous = nullptr;
+            }
         }
         else
+        {
             previous = nullptr;
+        }
         // Validated hard caps bound these additions and the power-of-two table.
         const uint32_t capacity       = graph.NodeCount() + graph.SceneCount();
         uint32_t       index_capacity = 1;
         while (index_capacity < 2 * capacity)
+        {
             index_capacity *= 2;
+        }
         Detail::CookStorageLayout layout = {};
         size_t                    assets = 0, scenes = 0, asset_states = 0, scene_states = 0, closure = 0, objects = 0, index = 0;
         if (!layout.Add<CookAssetResult>(graph.NodeCount(), &assets) || !layout.Add<CookSceneResult>(graph.SceneCount(), &scenes) || !layout.Add<State>(graph.NodeCount(), &asset_states) || !layout.Add<State>(graph.SceneCount(), &scene_states) || !layout.Add<uint32_t>(size_t(2) * graph.NodeCount(), &closure) || !layout.Add<VerifiedObject>(capacity, &objects) || !layout.Add<uint32_t>(index_capacity, &index))
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+        }
         const auto allocation = allocator.Allocate(layout.Size(), DEFAULT_ALIGNMENT, CookMemoryCategory::StagingManifest);
         if (allocation.Failed())
+        {
             return VFS::VFSResult<void>::Fail(allocation.Error());
+        }
         if (!allocation.Value())
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::OutOfMemory);
+        }
         if (reinterpret_cast<uintptr_t>(allocation.Value()) % DEFAULT_ALIGNMENT)
         {
             allocator.Free(allocation.Value());
@@ -142,9 +180,13 @@ namespace ZEngine::Cook
             new (m_scene_state + i) State{};
         }
         for (uint32_t i = 0; i < m_closure.size(); ++i)
+        {
             new (m_closure.data() + i) uint32_t{};
+        }
         for (uint32_t i = 0; i < m_index_capacity; ++i)
+        {
             new (m_index + i) uint32_t(CookGraphInvalidIndex);
+        }
         return VFS::VFSResult<void>::Ok();
     }
 
@@ -165,7 +207,9 @@ namespace ZEngine::Cook
                     }
                 }
                 else
+                {
                     (void) m_input.Graph->Describe(index, code, message, &diagnostic);
+                }
             }
             diagnostic.Stage      = CookStage::Encode;
             diagnostic.Code       = code;
@@ -174,7 +218,9 @@ namespace ZEngine::Cook
             diagnostic.Severity   = severity;
             diagnostic.Underlying = error;
             if (object)
+            {
                 diagnostic.Source = object->Path;
+            }
             (void) diagnostic.SetMessage(message);
         }
         return error;
@@ -184,21 +230,29 @@ namespace ZEngine::Cook
     {
         const size_t length = Helpers::secure_strlen(extension);
         if (!length || length >= sizeof(VerifiedObject::Extension))
+        {
             return VFS::VFSResult<bool>::Fail(VFS::VFSError::Unsupported);
+        }
         const uint64_t seed = rapidhash(extension, length);
         uint32_t       slot = static_cast<uint32_t>(rapidhash_withSeed(object.Digest.Bytes.data(), object.Digest.Bytes.size(), seed)) & (m_index_capacity - 1);
         while (m_index[slot] != CookGraphInvalidIndex)
         {
             const auto& entry = m_objects[m_index[slot]];
             if (entry.Digest == object.Digest && Helpers::secure_strcmp(entry.Extension, extension) == 0)
+            {
                 return entry.Size == object.Size ? VFS::VFSResult<bool>::Ok(true) : VFS::VFSResult<bool>::Fail(VFS::VFSError::Corrupted);
+            }
             slot = (slot + 1) & (m_index_capacity - 1);
         }
         if (m_object_count == m_object_capacity)
+        {
             return VFS::VFSResult<bool>::Fail(VFS::VFSError::SizeLimitExceeded);
+        }
         const auto verified = VerifyCookObject(m_input.Reader, object, extension, m_stream, *m_allocator);
         if (verified.Failed() || !verified.Value())
+        {
             return verified;
+        }
         auto* entry   = new (m_objects + m_object_count) VerifiedObject{};
         entry->Digest = object.Digest;
         entry->Size   = object.Size;
@@ -219,10 +273,16 @@ namespace ZEngine::Cook
         const auto edges    = m_input.Graph->Dependencies(index);
         const auto previous = m_input.Previous->Dependencies(previous_asset);
         if (edges.size() != previous.size())
+        {
             return false;
+        }
         for (size_t i = 0; i < edges.size(); ++i)
+        {
             if (m_input.Graph->Slot(edges[i]) != previous[i].Slot || m_input.Graph->Node(edges[i].Child)->Identity != previous[i].Identity || !PreviousAssetMatches(edges[i].Child))
+            {
                 return false;
+            }
+        }
         return true;
     }
 
@@ -230,16 +290,26 @@ namespace ZEngine::Cook
     {
         const auto fail = [&](CookDiagnosticCode code, VFS::VFSError error, cstring message, const CookObjectDescriptor* object = nullptr) { return VFS::VFSResult<CookReuseDecision>::Fail(Failure(diagnostics, index, false, code, error, message, object)); };
         if (!m_block || index >= m_asset_count)
+        {
             return fail(CookDiagnosticCode::InvalidRequest, VFS::VFSError::InvalidPath, "Reuse requires an initialized owner and a valid asset index.");
+        }
         if (Ready(m_asset_state[index]))
+        {
             return VFS::VFSResult<CookReuseDecision>::Ok(CookReuseDecision::Ready);
+        }
         for (const auto& edge : m_input.Graph->Dependencies(index))
+        {
             if (!Ready(m_asset_state[edge.Child]))
+            {
                 return fail(CookDiagnosticCode::MissingDependency, VFS::VFSError::NotFound, "Prepare assets in leaf-first order, after verifying or installing every child.");
+            }
+        }
         Digest256  key   = {};
         const auto keyed = ComputeCookAssetInputKey(*m_allocator, *m_input.Graph, index, m_input.Recipe, AssetResults(), &key);
         if (keyed.Failed())
+        {
             return fail(KeyFailureCode(keyed.Error(), CookDiagnosticCode::InvalidAsset), keyed.Error(), "Cannot compute the asset input key.");
+        }
         const auto& node     = *m_input.Graph->Node(index);
         const auto* previous = !m_input.ForceRebuild && m_input.Previous ? m_input.Previous->FindAsset(node.Identity) : nullptr;
         if (previous && previous->Format->Revision == node.AdapterRevision && Core::Containers::StringView(previous->Format->Key) == node.Format && previous->Result.InputKey == key && PreviousDependenciesMatch(index, static_cast<uint32_t>(previous - m_input.Previous->Assets().data())))
@@ -247,10 +317,14 @@ namespace ZEngine::Cook
             const uint64_t limit = node.Identity.Kind == CookAssetKind::Material ? std::min(m_input.Limits->MaxMaterialBytes, m_input.Limits->MaxEncodedAssetBytes) : m_input.Limits->MaxEncodedAssetBytes;
             const auto     shape = CheckObject(previous->Result.Object, previous->Format->Extension, limit);
             if (shape != VFS::VFSError::OK)
+            {
                 return fail(ObjectFailureCode(shape), shape, "Cached asset descriptor exceeds a limit or is inconsistent.", &previous->Result.Object);
+            }
             const auto verified = Verify(previous->Result.Object, previous->Format->Extension);
             if (verified.Failed())
+            {
                 return fail(ObjectFailureCode(verified.Error()), verified.Error(), "Cannot verify cached asset bytes; existing corrupt objects must not be overwritten.", &previous->Result.Object);
+            }
             if (verified.Value())
             {
                 m_assets[index]      = previous->Result;
@@ -267,16 +341,24 @@ namespace ZEngine::Cook
     {
         const auto fail = [&](CookDiagnosticCode code, VFS::VFSError error, cstring message, const CookObjectDescriptor* object = nullptr) { return VFS::VFSResult<CookReuseDecision>::Fail(Failure(diagnostics, index, true, code, error, message, object)); };
         if (!m_block || index >= m_scene_count)
+        {
             return fail(CookDiagnosticCode::InvalidRequest, VFS::VFSError::InvalidPath, "Reuse requires an initialized owner and a valid scene index.");
+        }
         if (m_scene_state[index] != State::Empty && m_scenes[index].SourceDigest != source_digest)
+        {
             return fail(CookDiagnosticCode::InputChanged, VFS::VFSError::Corrupted, "A prepared scene cannot be rebound to different captured source bytes.");
+        }
         if (Ready(m_scene_state[index]))
+        {
             return VFS::VFSResult<CookReuseDecision>::Ok(CookReuseDecision::Ready);
+        }
         Digest256                                   key     = {};
         Core::Containers::ArrayView<const uint32_t> closure = {};
         const auto                                  keyed   = ComputeCookSceneInputKey(*m_allocator, *m_input.Graph, index, source_digest, m_input.Recipe, AssetResults(), m_closure, &key, &closure);
         if (keyed.Failed())
+        {
             return fail(KeyFailureCode(keyed.Error(), keyed.Error() == VFS::VFSError::NotFound ? CookDiagnosticCode::MissingDependency : CookDiagnosticCode::InvalidScene), keyed.Error(), "Cannot prepare a scene before all assets in its closure are ready.");
+        }
         const auto& scene    = *m_input.Graph->Scene(index);
         const auto* previous = !m_input.ForceRebuild && m_input.Previous && m_input.Previous->Recipe().SchemaKey == m_input.Recipe.SchemaKey ? m_input.Previous->FindScene(scene.UUID) : nullptr;
         bool        eligible = previous && previous->Result.SourceDigest == source_digest && previous->Result.InputKey == key;
@@ -286,11 +368,15 @@ namespace ZEngine::Cook
             const auto old_roots = m_input.Previous->Roots(static_cast<uint32_t>(previous - m_input.Previous->Scenes().data()));
             eligible             = roots.size() == old_roots.size();
             for (size_t i = 0; eligible && i < roots.size(); ++i)
+            {
                 eligible = m_input.Graph->Node(roots[i])->Identity == old_roots[i];
+            }
             for (uint32_t node : closure)
             {
                 if (!eligible)
+                {
                     break;
+                }
                 const auto* asset = m_input.Previous->FindAsset(m_input.Graph->Node(node)->Identity);
                 if (!PreviousAssetMatches(node) || !PreviousDependenciesMatch(node, static_cast<uint32_t>(asset - m_input.Previous->Assets().data())))
                 {
@@ -303,10 +389,14 @@ namespace ZEngine::Cook
         {
             const auto shape = CheckObject(previous->Result.Object, CookSceneObjectExtension, m_input.Limits->SceneLimits.MaxFileBytes);
             if (shape != VFS::VFSError::OK)
+            {
                 return fail(ObjectFailureCode(shape), shape, "Cached scene descriptor exceeds a limit or is inconsistent.", &previous->Result.Object);
+            }
             const auto verified = Verify(previous->Result.Object, CookSceneObjectExtension);
             if (verified.Failed())
+            {
                 return fail(ObjectFailureCode(verified.Error()), verified.Error(), "Cannot verify cached scene bytes; existing corrupt objects must not be overwritten.", &previous->Result.Object);
+            }
             if (verified.Value())
             {
                 m_scenes[index]      = previous->Result;
@@ -323,20 +413,28 @@ namespace ZEngine::Cook
     {
         const auto fail = [&](CookDiagnosticCode code, VFS::VFSError error, cstring message) { return VFS::VFSResult<void>::Fail(Failure(diagnostics, index, scene, code, error, message, &object)); };
         if (!m_block || index >= (scene ? m_scene_count : m_asset_count))
+        {
             return fail(CookDiagnosticCode::InvalidRequest, VFS::VFSError::InvalidPath, "Installing an object requires an initialized owner and a valid index.");
+        }
         auto& state  = scene ? m_scene_state[index] : m_asset_state[index];
         auto& result = scene ? m_scenes[index].Object : m_assets[index].Object;
         if (Ready(state))
+        {
             return object == result ? VFS::VFSResult<void>::Ok() : fail(CookDiagnosticCode::InvalidRequest, VFS::VFSError::InvalidPath, "A ready result cannot be replaced by a different object.");
+        }
         if (state != State::Keyed)
+        {
             return fail(CookDiagnosticCode::InvalidRequest, VFS::VFSError::InvalidPath, "Prepare the input key before accepting an installed object.");
+        }
         const auto*    node      = scene ? nullptr : m_input.Graph->Node(index);
         const auto*    format    = node ? FindCookAssetFormat(node->Format) : nullptr;
         const cstring  extension = scene ? CookSceneObjectExtension : format->Extension;
         const uint64_t limit     = scene ? m_input.Limits->SceneLimits.MaxFileBytes : node->Identity.Kind == CookAssetKind::Material ? std::min(m_input.Limits->MaxEncodedAssetBytes, m_input.Limits->MaxMaterialBytes) : m_input.Limits->MaxEncodedAssetBytes;
         const auto     shape     = CheckObject(object, extension, limit);
         if (shape != VFS::VFSError::OK)
+        {
             return fail(ObjectFailureCode(shape), shape, "Installed object descriptor exceeds a limit or is inconsistent.");
+        }
         const auto verified = Verify(object, extension);
         if (verified.Failed() || !verified.Value())
         {
@@ -391,13 +489,23 @@ namespace ZEngine::Cook
     bool CookIncrementalReuse::AllReady() const noexcept
     {
         if (!m_block)
+        {
             return false;
+        }
         for (uint32_t i = 0; i < m_asset_count; ++i)
+        {
             if (!Ready(m_asset_state[i]))
+            {
                 return false;
+            }
+        }
         for (uint32_t i = 0; i < m_scene_count; ++i)
+        {
             if (!Ready(m_scene_state[i]))
+            {
                 return false;
+            }
+        }
         return true;
     }
 } // namespace ZEngine::Cook

@@ -31,7 +31,9 @@ namespace ZEngine::Cook
         Core::Containers::StringView CopyDependencyText(char*& cursor, Core::Containers::StringView text)
         {
             if (!text.size())
+            {
                 return {};
+            }
             Helpers::secure_memcpy(cursor, text.size() + 1, text.data(), text.size());
             cursor[text.size()] = '\0';
             const Core::Containers::StringView result(cursor, text.size());
@@ -77,21 +79,31 @@ namespace ZEngine::Cook
     bool CookDependencySlotBefore(Core::Containers::StringView a, Core::Containers::StringView b) noexcept
     {
         if (!a.size() || !b.size())
+        {
             return a.size() < b.size();
+        }
         return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), [](char left, char right) { return static_cast<uint8_t>(left) < static_cast<uint8_t>(right); });
     }
 
     bool IsCookDependencySlotValid(CookAssetKind parent, CookAssetKind child, Core::Containers::StringView slot) noexcept
     {
         if (!slot.data())
+        {
             return false;
+        }
         if (parent == CookAssetKind::Material)
+        {
             return child == CookAssetKind::Texture && (slot == "albedo" || slot == "emissive" || slot == "normal" || slot == "opacity" || slot == "specular");
+        }
         if (parent != CookAssetKind::Mesh || child != CookAssetKind::Material || slot.size() <= 19 || Core::Containers::StringView(slot.data(), 10) != "submeshes/" || Core::Containers::StringView(slot.data() + slot.size() - 9, 9) != "/material")
+        {
             return false;
+        }
         const Core::Containers::StringView number(slot.data() + 10, slot.size() - 19);
         if (number.size() > 1 && number[0] == '0')
+        {
             return false;
+        }
         uint32_t   index  = 0;
         const auto parsed = std::from_chars(number.data(), number.data() + number.size(), index);
         return parsed.ec == std::errc{} && parsed.ptr == number.data() + number.size();
@@ -105,8 +117,12 @@ namespace ZEngine::Cook
     const CookAssetFormat* FindCookAssetFormat(Core::Containers::StringView key) noexcept
     {
         for (const auto& format : Formats)
+        {
             if (key == format.Key)
+            {
                 return &format;
+            }
+        }
         return nullptr;
     }
 
@@ -146,7 +162,9 @@ namespace ZEngine::Cook
         if (m_dependencies)
         {
             for (size_t i = 0; i < m_count; ++i)
+            {
                 m_dependencies[i].~CookDependency();
+            }
             m_allocator->Free(m_dependencies);
         }
         m_allocator    = nullptr;
@@ -161,20 +179,30 @@ namespace ZEngine::Cook
     {
         const auto* format = FindCookAssetFormat(format_key);
         if (!format || (dependencies.size() && !dependencies.data()))
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+        }
         if (dependencies.size() > std::numeric_limits<uint32_t>::max() || dependencies.size() > SIZE_MAX / sizeof(CookDependency))
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+        }
         size_t bytes = dependencies.size() * sizeof(CookDependency);
         for (size_t i = 0; i < dependencies.size(); ++i)
         {
             const auto& dependency = dependencies[i];
             if (!dependency.Identity.IsValid() || !dependency.Slot.size() || dependency.Slot.size() >= 128 || !Helpers::IsValidUTF8(dependency.Slot.data(), dependency.Slot.size(), false) || (i && !CookDependencySlotBefore(dependencies[i - 1].Slot, dependency.Slot)))
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::Corrupted);
+            }
             if (dependency.SourcePath.size() && ParseCookInputPath(dependency.SourcePath).Failed())
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+            }
             const size_t text_bytes = dependency.Slot.size() + 1 + (dependency.SourcePath.size() ? dependency.SourcePath.size() + 1 : 0);
             if (text_bytes > SIZE_MAX - bytes)
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+            }
             bytes += text_bytes;
         }
         CookAssetInspection pending = {};
@@ -182,9 +210,13 @@ namespace ZEngine::Cook
         {
             const auto allocation = allocator.Allocate(bytes, alignof(CookDependency), CookMemoryCategory::Codecs);
             if (allocation.Failed())
+            {
                 return VFS::VFSResult<void>::Fail(allocation.Error());
+            }
             if (!allocation.Value())
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::OutOfMemory);
+            }
             if (reinterpret_cast<uintptr_t>(allocation.Value()) % alignof(CookDependency))
             {
                 allocator.Free(allocation.Value());
@@ -211,15 +243,21 @@ namespace ZEngine::Cook
     VFS::VFSResult<void> CookAdapterRegistry::Initialize(Core::Containers::ArrayView<const CookAdapterFns> entries)
     {
         if (m_initialized || entries.size() != m_entries.size() || !entries.data())
+        {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+        }
         Core::Containers::FixedArray<CookAdapterFns, 4> pending = {};
         for (const auto& entry : entries)
         {
             if (!CookAssetKindKey(entry.Kind) || !entry.Revision || !entry.Inspect || !entry.Encode)
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+            }
             const auto index = static_cast<size_t>(entry.Kind) - 1;
             if (pending[index].Kind != CookAssetKind::Unknown)
+            {
                 return VFS::VFSResult<void>::Fail(VFS::VFSError::AlreadyExists);
+            }
             pending[index] = entry;
         }
         m_entries     = pending;
@@ -236,27 +274,37 @@ namespace ZEngine::Cook
     VFS::VFSResult<void> ResolveCookDependency(CookInputLease& lease, const CookDependency& dependency, CookAssetCatalogEntry* output, CookDiagnostics* diagnostics)
     {
         if (!output || lease.State() != CookInputState::Active || !dependency.Identity.IsValid() || !dependency.Slot.size() || dependency.Slot.size() >= 128 || !Helpers::IsValidUTF8(dependency.Slot.data(), dependency.Slot.size(), false))
+        {
             return DependencyFailure(dependency, diagnostics, CookDiagnosticCode::InvalidRequest, VFS::VFSError::InvalidPath);
+        }
         VFS::VFSRelativePath logical = {};
         if (dependency.SourcePath.size())
         {
             const auto parsed = ParseCookInputPath(dependency.SourcePath);
             if (parsed.Failed())
+            {
                 return DependencyFailure(dependency, diagnostics, CookDiagnosticCode::InvalidPath, parsed.Error());
+            }
             logical = parsed.Value().Logical;
             if (parsed.Value().Context.IsValid())
             {
                 const auto mapped = lease.MapContextPath(parsed.Value().Context, &logical, diagnostics);
                 if (mapped.Failed())
+                {
                     return DependencyFailure(dependency, diagnostics, DependencyErrorCode(mapped.Error()), mapped.Error());
+                }
             }
         }
         CookAssetCatalogEntry pending = {};
         const auto            found   = lease.FindAsset(dependency.Identity, &pending, diagnostics);
         if (found.Failed())
+        {
             return DependencyFailure(dependency, diagnostics, DependencyErrorCode(found.Error()), found.Error());
+        }
         if (logical.IsValid() && pending.Artifact != logical)
+        {
             return DependencyFailure(dependency, diagnostics, CookDiagnosticCode::IdentityConflict, VFS::VFSError::Corrupted);
+        }
         *output = pending;
         return VFS::VFSResult<void>::Ok();
     }

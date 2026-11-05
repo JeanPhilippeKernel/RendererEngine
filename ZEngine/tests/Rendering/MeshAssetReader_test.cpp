@@ -85,7 +85,9 @@ protected:
         const auto open = VFS.Open(Path, VFSOpenFlags::Read);
         EXPECT_TRUE(open.Succeeded());
         if (open.Failed())
+        {
             return {};
+        }
         const auto size = open.Value()->Size();
         EXPECT_TRUE(size.Succeeded());
         std::vector<uint8_t> result(size.Value());
@@ -151,10 +153,14 @@ protected:
     {
         size_t offset = NamesCount() + 4;
         for (const auto& name : Hierarchy.Names)
+        {
             offset += 8 + (name.size() ? name.size() + 1 : 0);
+        }
         offset += 4;
         for (const auto& name : Hierarchy.MaterialNames)
+        {
             offset += 8 + (name.size() ? name.size() + 1 : 0);
+        }
         return offset;
     }
 
@@ -175,12 +181,18 @@ protected:
             auto& self = *static_cast<ByteProbe*>(context);
             ++self.Reads;
             if (self.Error != VFSError::OK)
+            {
                 return VFSResult<size_t>::Fail(self.Error);
+            }
             if (self.Overreport)
+            {
                 return VFSResult<size_t>::Ok(output.size() + 1);
+            }
             const size_t size = !self.Data || offset >= self.Data->size() ? 0 : std::min({output.size(), self.Data->size() - static_cast<size_t>(offset), self.Chunk});
             if (size)
+            {
                 ZEngine::Helpers::secure_memcpy(output.data(), output.size(), self.Data->data() + offset, size);
+            }
             return VFSResult<size_t>::Ok(size);
         }
     };
@@ -231,17 +243,29 @@ TEST_F(MeshAssetReaderTest, LayoutMeasurementNeverSubstitutesForGeometryMapOrUTF
     {
         auto bytes = original;
         if (malformed == 0)
+        {
             Set(bytes, 24 + 8, std::numeric_limits<float>::quiet_NaN());
+        }
         if (malformed == 1)
+        {
             Set(bytes, NamesCount() + 4 + 8, uint8_t(0xc0));
+        }
         if (malformed == 2)
+        {
             Set(bytes, NodeNamesMap() + 8 + 8, uint32_t(0)); // Duplicate node-name key.
+        }
         if (malformed == 3)
+        {
             Set(bytes, SubMeshesCount() + 8 + offsetof(AssetSubMesh, StreamOffset), uint32_t(1));
+        }
         if (malformed == 4)
+        {
             Set(bytes, SubMeshesCount() + 8 + offsetof(AssetSubMesh, IndexStreamOffset), uint32_t(1));
+        }
         if (malformed == 5)
+        {
             Set(bytes, SubMeshesCount() + 8 + offsetof(AssetSubMesh, TotalByteSize), uint32_t(0));
+        }
         ByteProbe probe    = {&bytes};
         size_t    capacity = 0;
         ASSERT_TRUE(MeasureMeshAssetReadWorkspace(probe.View(), &capacity, ID).Succeeded());
@@ -270,11 +294,17 @@ TEST_F(MeshAssetReaderTest, BorrowedByteSourcesAcceptShortReadsAndPreserveReadFa
     {
         ByteProbe probe = {&bytes};
         if (malformed == 0)
+        {
             probe.Chunk = 0;
+        }
         if (malformed == 1)
+        {
             probe.Overreport = true;
+        }
         if (malformed == 2)
+        {
             probe.Error = VFSError::PermissionDenied;
+        }
         size_t     capacity = 12345;
         const auto expected = malformed == 2 ? VFSError::PermissionDenied : VFSError::Corrupted;
         EXPECT_EQ(MeasureMeshAssetReadWorkspace(probe.View(), &capacity, ID).Error(), expected);
@@ -678,7 +708,9 @@ TEST_F(MeshAssetReaderTest, DeepHierarchyValidationIsIterativeAndBounded)
     Hierarchy.NodeNames.clear();
     Hierarchy.NodeMeshes.clear();
     for (uint32_t i = 0; i < count; ++i)
+    {
         AddNode(Hierarchy, i ? int(i) - 1 : -1, int(i));
+    }
     Hierarchy.NodeMeshes.insert(count - 1, 0);
     ASSERT_TRUE(Cook());
     ASSERT_TRUE(Read().Succeeded());
@@ -696,7 +728,9 @@ TEST_F(MeshAssetReaderTest, CorruptInputStressNeverPublishesPartialOutputOrGrows
         auto           bytes = original;
         const uint32_t edits = random() % 4 + 1;
         for (uint32_t edit = 0; edit < edits; ++edit)
+        {
             bytes[random() % bytes.size()] ^= uint8_t(random() % 255 + 1);
+        }
         Write(bytes);
         const auto         scratch   = BeginTempArena(&DecodeArena);
         AssetMesh          mesh      = {};

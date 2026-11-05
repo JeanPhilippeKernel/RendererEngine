@@ -67,10 +67,14 @@ namespace
         bool                          Observe(const SceneValue& value)
         {
             if (value.Fields().empty())
+            {
                 return false;
+            }
             ++Calls;
             if (!First)
+            {
                 First = value.Fields().data();
+            }
             return First == value.Fields().data();
         }
         static void Register(void* opaque, const SceneComponentSchema& schema)
@@ -171,7 +175,9 @@ protected:
         scene.ForEachEntity([&](EntityID entity) {
             const auto* identity = scene.GetComponent<UUIDComponent>(entity);
             if (identity && identity->Value == uuid)
+            {
                 result = entity;
+            }
         });
         return result;
     }
@@ -310,7 +316,9 @@ TEST_F(SceneDocumentTest, SortingShuffledComponentRecordsCannotAliasOrReplaceAno
     auto       old       = root["scene"]["entities"][0]["components"];
     auto       shuffled  = YAMLStorage.Make(SceneYAML::NodeType::Map);
     for (const auto key : {"TransformComponent", "NameComponent", "MeshComponent"})
+    {
         ASSERT_TRUE(YAMLStorage.Set(shuffled, key, old[key]));
+    }
     ASSERT_TRUE(YAMLStorage.Set(root["scene"]["entities"][0], "components", shuffled));
     ASSERT_TRUE(Parse(EmitTestYAML(root)));
     EXPECT_EQ(Emit(), canonical);
@@ -334,6 +342,7 @@ TEST_F(SceneDocumentTest, EntityAndComponentSortRefusalsPreserveThePriorSourceAn
     constexpr size_t entity_bytes    = sizeof(ZEngine::Core::Containers::HeapSortState<SceneDocumentDetail::EntityRecord>) + sizeof(ZEngine::Core::Memory::WorkingMemoryCharge);
     static_assert(component_bytes != entity_bytes);
     for (const bool from_binary : {false, true})
+    {
         for (const size_t refused : {component_bytes, entity_bytes})
         {
             SCOPED_TRACE(from_binary);
@@ -361,6 +370,7 @@ TEST_F(SceneDocumentTest, EntityAndComponentSortRefusalsPreserveThePriorSourceAn
             }
             EXPECT_EQ(route.Blocks, 0u);
         }
+    }
 }
 
 TEST(SceneTreeWalkTest, ExactDepthAndNodeLimitsIncludeKeysButNotLeafFrames)
@@ -386,9 +396,13 @@ TEST(SceneTreeWalkTest, ExactDepthAndNodeLimitsIncludeKeysButNotLeafFrames)
         count        = 0;
         auto smaller = limits;
         if (depth_limit)
+        {
             --smaller.MaxDepth;
+        }
         else
+        {
             --smaller.MaxNodes;
+        }
         EXPECT_FALSE(SceneDocumentDetail::CountCapturedNodes(value, smaller, count, 1, &failure));
         EXPECT_EQ(failure, SceneDiagnosticCode::LimitExceeded);
     }
@@ -413,7 +427,9 @@ TEST(SceneTreeWalkTest, WideForwardTraversalHasOneReservationAndNoAllocation)
         const auto sequence = storage.Make(SceneYAML::NodeType::Sequence);
         const auto scalar   = storage.Scalar("shared leaf");
         for (uint32_t i = 0; i < 65536; ++i)
+        {
             ASSERT_TRUE(storage.Append(sequence, scalar));
+        }
         const auto          attempts   = route.Attempts;
         const auto          arena_used = storage.Allocator()->m_current_offset;
         uint32_t            count      = 0;
@@ -485,12 +501,18 @@ TEST(SceneTreeWalkTest, NestedDuplicatesAndInvalidScalarsKeepFailureClassificati
         // Normal construction already rejects NUL. Corrupt owned text here
         // specifically to exercise the walk's defensive validation.
         if (invalid == 1 || invalid == 2)
+        {
             const_cast<char*>((invalid == 1 ? key : scalar).Scalar().data())[1] = '\0';
+        }
         if (invalid == 0)
+        {
             ASSERT_TRUE(storage.AppendField(map, storage.Scalar("key"), storage.Make(SceneYAML::NodeType::Null)));
+        }
         SceneDocumentLimits limits = {};
         if (invalid >= 3)
+        {
             limits.MaxScalarBytes = invalid == 3 ? 2 : 4;
+        }
         uint32_t            count   = 0;
         SceneDiagnosticCode failure = SceneDiagnosticCode::None;
         EXPECT_FALSE(SceneDocumentDetail::CountCapturedNodes(root, limits, count, 1, &failure, true));
@@ -586,6 +608,7 @@ TEST_F(SceneDocumentTest, FieldAndGraphPrincipalRefusalsPreserveSourceAndBinaryD
     ASSERT_NE(graph_bytes, SceneDocumentDetail::SceneFieldScratchWorkingBytes());
     EXPECT_EQ(probe.Blocks, 0u);
     for (const bool from_binary : {false, true})
+    {
         for (const size_t refused : {SceneDocumentDetail::SceneFieldScratchWorkingBytes(), graph_bytes})
         {
             SCOPED_TRACE(from_binary);
@@ -599,11 +622,14 @@ TEST_F(SceneDocumentTest, FieldAndGraphPrincipalRefusalsPreserveSourceAndBinaryD
             EXPECT_EQ(route.Live, 0u);
             EXPECT_EQ(route.Blocks, 0u);
             if (from_binary && refused == SceneDocumentDetail::SceneFieldScratchWorkingBytes())
+            {
                 EXPECT_EQ(route.Attempts, 0u);
+            }
             EXPECT_TRUE(Diagnostics.HasError(SceneDiagnosticCode::LimitExceeded));
             EXPECT_EQ(Document.Settings(), original);
             EXPECT_EQ(Emit(), canonical);
         }
+    }
 }
 
 TEST_F(SceneDocumentTest, BinaryFieldAndLayoutExactBudgetPreservesMeasuredSizeOutputAndArenaOnRefusal)
@@ -612,6 +638,7 @@ TEST_F(SceneDocumentTest, BinaryFieldAndLayoutExactBudgetPreservesMeasuredSizeOu
     ASSERT_TRUE(Capture());
     size_t required = 0;
     for (const bool encoding : {false, true})
+    {
         for (uint32_t attempt = 0; attempt < 3; ++attempt)
         {
             ZEngine::Tests::SceneTestAllocationRoute route     = {};
@@ -625,7 +652,9 @@ TEST_F(SceneDocumentTest, BinaryFieldAndLayoutExactBudgetPreservesMeasuredSizeOu
                 EXPECT_EQ(encoding ? BinarySceneCodec::Encode(Document, Schemas, &Memory.MainArena, &encoded, &Diagnostics) : BinarySceneCodec::Measure(Document, Schemas, &measured, &Diagnostics), attempt == 2);
             }
             if (attempt == 0)
+            {
                 required = route.Required;
+            }
             EXPECT_GT(required, SceneDocumentDetail::SceneFieldScratchWorkingBytes());
             EXPECT_EQ(route.Required, required);
             EXPECT_EQ(route.Live, 0u);
@@ -638,8 +667,11 @@ TEST_F(SceneDocumentTest, BinaryFieldAndLayoutExactBudgetPreservesMeasuredSizeOu
                 EXPECT_EQ(Memory.MainArena.m_current_offset, used);
             }
             else
+            {
                 EXPECT_EQ(route.Peak, required);
+            }
         }
+    }
 }
 
 TEST_F(SceneDocumentTest, ReferenceFieldBudgetRefusesBeforeVisitorsAndDrainsAfterRetry)
@@ -648,6 +680,7 @@ TEST_F(SceneDocumentTest, ReferenceFieldBudgetRefusesBeforeVisitorsAndDrainsAfte
     Source.AddComponent<MeshComponent>(entity, {AssetUUID, 31});
     ASSERT_TRUE(Capture());
     for (const bool all : {false, true})
+    {
         for (const bool refused : {true, false})
         {
             ZEngine::Tests::SceneTestAllocationRoute route = {};
@@ -681,6 +714,7 @@ TEST_F(SceneDocumentTest, ReferenceFieldBudgetRefusesBeforeVisitorsAndDrainsAfte
             EXPECT_EQ(route.Attempts, 0u);
             EXPECT_EQ(Diagnostics.HasError(SceneDiagnosticCode::LimitExceeded), refused);
         }
+    }
 }
 
 TEST_F(SceneDocumentTest, CaptureHonorsNodeDepthScalarAndCollectionBudgetsBeforeRetainingWholeScene)
@@ -1038,7 +1072,9 @@ TEST_F(SceneDocumentTest, RepeatedConcurrentEmissionReadsOnlyImmutableOwnedPaylo
         {
             std::string output;
             if (!Document.Emit(&output, &diagnostics) || output != expected)
+            {
                 return false;
+            }
         }
         return true;
     };
@@ -1066,7 +1102,9 @@ TEST_F(SceneDocumentTest, ReverseCreatedDeepHierarchyRoundTripsWithoutRecursiveP
         entities.push_back(entity);
     }
     for (uint32_t i = 0; i + 1 < count; ++i)
+    {
         Source.AddComponent<ParentComponent>(entities[i], {entities[i + 1]});
+    }
     ASSERT_TRUE(Capture());
     const auto source = Emit();
     ASSERT_TRUE(Parse(source));
@@ -1105,7 +1143,9 @@ TEST(SceneSettingsComparisonTest, GridComparesEveryAuthoredFieldExactlyButIgnore
     EXPECT_TRUE(EqualSceneGridSettings(original, {}));
     check([](auto& v) { v.Enabled = !v.Enabled; });
     for (uint32_t i = 0; i < 3; ++i)
+    {
         check([&](auto& v) { v.Origin[i] += 1.f; });
+    }
     check([](auto& v) { v.Orientation.x += .1f; });
     check([](auto& v) { v.Orientation.y += .1f; });
     check([](auto& v) { v.Orientation.z += .1f; });
@@ -1176,31 +1216,53 @@ TEST(SceneGridBinaryTest, EncoderRejectsInvalidValuesAndStorageWithoutWritingAny
 {
     ZEngine::Core::Containers::FixedArray<std::byte, SceneGridBinaryBytes + 1> storage = {};
     for (auto& byte : storage)
+    {
         byte = std::byte{0x5a};
+    }
     const auto sentinel = storage;
     EXPECT_FALSE(EncodeSceneGridBinary({}, {nullptr, SceneGridBinaryBytes}));
     for (size_t size = 0; size <= storage.size(); ++size)
+    {
         if (size != SceneGridBinaryBytes)
+        {
             EXPECT_FALSE(EncodeSceneGridBinary({}, {storage.data(), size}));
+        }
+    }
     for (uint32_t fault = 0; fault < 8; ++fault)
     {
         SceneGridSettings value = {};
         if (fault == 0)
+        {
             value.Origin.x = std::numeric_limits<float>::infinity();
+        }
         if (fault == 1)
+        {
             value.Orientation = {0.f, 0.f, 0.f, 0.f};
+        }
         if (fault == 2)
+        {
             value.BaseSpacing = 0.f;
+        }
         if (fault == 3)
+        {
             value.MajorLineEvery = 0;
+        }
         if (fault == 4)
+        {
             value.MaxLOD = 17;
+        }
         if (fault == 5)
+        {
             value.Labels = SceneGridLabels(2);
+        }
         if (fault == 6)
+        {
             value.MinorColor[2] = -1.f;
+        }
         if (fault == 7)
+        {
             value.FadeRadius = std::numeric_limits<float>::quiet_NaN();
+        }
         EXPECT_FALSE(EncodeSceneGridBinary(value, {storage.data(), SceneGridBinaryBytes}));
         EXPECT_TRUE(storage == sentinel);
     }
@@ -1230,19 +1292,29 @@ TEST(SceneGridBinaryTest, DecoderRejectsEveryTruncationAndMalformedScalarWithout
         auto     bytes   = valid;
         uint32_t invalid = 0x7fc00000u; // non-finite float, or invalid enum/flag
         if (word == 0 || word == 1 || word == 31)
+        {
             invalid = 2;
+        }
         if (word == 10)
+        {
             invalid = 0; // major cadence
+        }
         if (word == 30)
+        {
             invalid = 17; // maximum LOD
+        }
         for (uint32_t i = 0; i < 4; ++i)
+        {
             bytes[word * 4 + i] = std::byte((invalid >> (8 * i)) & 0xffu);
+        }
         EXPECT_FALSE(DecodeSceneGridBinary(bytes, output)) << word;
         preserved();
     }
     auto bytes = valid;
     for (uint32_t i = 20; i < 36; ++i)
+    {
         bytes[i] = std::byte{};
+    }
     EXPECT_FALSE(DecodeSceneGridBinary(bytes, output));
     preserved();
 }
@@ -1301,7 +1373,9 @@ TEST_F(SceneDocumentTest, EnumeratesOwnedMeshReferencesWithoutCreatingOrMutating
         [](void* context, const SceneReference& reference) {
             auto& result = *static_cast<References*>(context);
             if (reference.Kind != SceneReferenceKind::Asset)
+            {
                 return false;
+            }
             result.UUID = reference.UUID;
             ++result.Count;
             return true;
@@ -1353,7 +1427,9 @@ TEST_F(SceneDocumentTest, DocumentReferencesPreserveTypesAndPerEntityProvenanceW
         [](void* opaque, const SceneReferenceOccurrence& occurrence) {
             const auto index = (*static_cast<size_t*>(opaque))++;
             if (index > 3)
+            {
                 return false;
+            }
             EXPECT_EQ(occurrence.EntityUUID, index < 2 ? FirstUUID : SecondUUID);
             const auto& reference = occurrence.Reference;
             EXPECT_EQ(reference.Kind, index == 3 ? SceneReferenceKind::Entity : SceneReferenceKind::Asset);

@@ -38,7 +38,9 @@ namespace ZEngine::Importers::AssetCodec
         {
             input.seekg(0, std::ios::end);
             if (!input.good())
+            {
                 return false;
+            }
 
             const std::streamoff expected_file_size = static_cast<std::streamoff>(header.HeaderByteSize) + static_cast<std::streamoff>(header.BufferByteSize);
             return input.tellg() == expected_file_size;
@@ -48,44 +50,64 @@ namespace ZEngine::Importers::AssetCodec
     VFSResult<VFSPath> MakeOutputPath(const char* directory, const char* filename)
     {
         if (!filename || !filename[0])
+        {
             return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+        }
         auto dir = VFSPath::Parse(directory);
         if (dir.Failed())
+        {
             return VFSResult<VFSPath>::Fail(dir.Error());
+        }
         auto path = dir.Value().Append(filename);
         if (path.Failed())
+        {
             return path;
+        }
         if (path.Value().Parent() != dir.Value())
+        {
             return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+        }
         // Cooked assets also receive a .meta sidecar.
         constexpr size_t metadata_suffix_size = sizeof(".meta") - 1;
         if (path.Value().Length() + metadata_suffix_size >= MAX_FILE_PATH_COUNT)
+        {
             return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+        }
         // Account for the unique temporary sibling, even when the destination
         // has a shorter name. Check without generating a UUID or touching VFS.
         auto temporary = dir.Value().Append(".00000000-0000-0000-0000-000000000000.tmp");
         if (temporary.Failed())
+        {
             return temporary;
+        }
         return path;
     }
 
     VFSResult<VFSPath> ValidateImportConfiguration(const ImportConfiguration& config)
     {
         if (!config.VFS)
+        {
             return VFSResult<VFSPath>::Fail(VFSError::Unsupported);
+        }
         auto mesh_path = MakeOutputPath(config.OutputAssetsPath.c_str(), config.OutputAssetFile.c_str());
         if (mesh_path.Failed())
+        {
             return mesh_path;
+        }
         if (config.Options.ImportMaterials)
         {
             auto materials = MakeOutputPath(config.OutputMaterialPath.c_str(), config.AssetName.c_str());
             if (materials.Failed())
+            {
                 return materials;
+            }
             if (config.Options.ImportTextures)
             {
                 auto textures = MakeOutputPath(config.OutputTextureFilesPath.c_str(), config.AssetName.c_str());
                 if (textures.Failed())
+                {
                     return textures;
+                }
             }
         }
         return mesh_path;
@@ -94,39 +116,57 @@ namespace ZEngine::Importers::AssetCodec
     static VFSResult<VFSPath> PrepareOutputPath(Core::VFS::IVFSContext* vfs, VFSResult<VFSPath> path)
     {
         if (!vfs)
+        {
             return VFSResult<VFSPath>::Fail(VFSError::Unsupported);
+        }
         if (path.Failed())
+        {
             return path;
+        }
         const auto dir    = path.Value().Parent();
         auto       create = vfs->CreateDir(dir);
         if (create.Failed() && create.Error() != VFSError::AlreadyExists)
+        {
             return VFSResult<VFSPath>::Fail(create.Error());
+        }
         return path;
     }
 
     void ReportPublishedArtifact(const ImportConfiguration& config, AssetFileType type, const VFSPath& path)
     {
         if (config.OnArtifactPublished && path.IsValid())
+        {
             config.OnArtifactPublished(config.ArtifactContext, type, path.CStr());
+        }
     }
 
     VFSResult<void> CopyTextureFiles(ArrayView<AssetTexture> textures, const ImportConfiguration& config)
     {
         if (textures.size() == 0)
+        {
             return VFSResult<void>::Ok();
+        }
         if (!config.VFS)
+        {
             return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
         auto directory = MakeOutputPath(config.OutputTextureFilesPath.c_str(), config.AssetName.c_str());
         if (directory.Failed())
+        {
             return VFSResult<void>::Fail(directory.Error());
+        }
         auto create = config.VFS->CreateDir(directory.Value());
         if (create.Failed() && create.Error() != VFSError::AlreadyExists)
+        {
             return create;
+        }
         for (size_t index = 0; index < textures.size(); ++index)
         {
             auto& texture = textures[index];
             if (texture.Path.empty())
+            {
                 return VFSResult<void>::Fail(VFSError::InvalidPath);
+            }
             const std::filesystem::path source_path(texture.Path.c_str());
             const auto                  source = source_path.is_absolute() ? source_path : std::filesystem::path(config.InputBaseAssetFilePath.empty() ? "" : config.InputBaseAssetFilePath.c_str()) / source_path;
             std::ifstream               input(source, std::ios::binary | std::ios::ate);
@@ -137,16 +177,22 @@ namespace ZEngine::Importers::AssetCodec
             }
             const auto size = input.tellg();
             if (size <= 0)
+            {
                 return VFSResult<void>::Fail(VFSError::IOError);
+            }
             std::vector<uint8_t> bytes(static_cast<size_t>(size));
             input.seekg(0, std::ios::beg);
             if (!input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size)))
+            {
                 return VFSResult<void>::Fail(VFSError::IOError);
+            }
             // Source basenames are not unique (e.g. two folders with albedo.png).
             const auto output_name = fmt::format("{}_{}{}", source.stem().string(), index, source.extension().string());
             auto       destination = MakeOutputPath(directory.Value().CStr(), output_name.c_str());
             if (destination.Failed())
+            {
                 return VFSResult<void>::Fail(destination.Error());
+            }
             auto write = Core::VFS::WriteFileAtomically(*config.VFS, destination.Value(), {bytes.data(), bytes.size()});
             if (write.Failed())
             {
@@ -164,7 +210,9 @@ namespace ZEngine::Importers::AssetCodec
     static VFSResult<void> WriteVFS(Core::VFS::IVFSContext* vfs, const VFSPath& out_path, const std::string& data)
     {
         if (!vfs)
+        {
             return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
         const auto* bytes = reinterpret_cast<const uint8_t*>(data.data());
         return Core::VFS::WriteFileAtomically(*vfs, out_path, {bytes, data.size()});
     }
@@ -173,9 +221,13 @@ namespace ZEngine::Importers::AssetCodec
     {
         auto meta = Core::VFS::MetaFileIO::Read(ctx, path);
         if (meta.Succeeded())
+        {
             id = meta.Value().AssetUUID;
+        }
         else if (meta.Error() != VFSError::NotFound && meta.Error() != VFSError::Corrupted)
+        {
             return VFSResult<void>::Fail(meta.Error());
+        }
         return VFSResult<void>::Ok();
     }
 
@@ -183,7 +235,9 @@ namespace ZEngine::Importers::AssetCodec
     {
         auto path = PrepareOutputPath(config.VFS, MakeOutputPath(config.OutputAssetsPath.c_str(), config.OutputAssetFile.c_str()));
         if (path.Failed())
+        {
             return VFSResult<AssetImporterOutput>::Fail(path.Error());
+        }
         const auto&        mesh_path = path.Value();
 
         std::ostringstream buf(std::ios::binary);
@@ -202,12 +256,16 @@ namespace ZEngine::Importers::AssetCodec
         uint32_t name_count = static_cast<uint32_t>(hierarchies.Names.size());
         WriteBinary(buf, name_count);
         for (const auto& name : hierarchies.Names)
+        {
             WriteBinaryString(buf, name);
+        }
 
         uint32_t mat_name_count = static_cast<uint32_t>(hierarchies.MaterialNames.size());
         WriteBinary(buf, mat_name_count);
         for (const auto& name : hierarchies.MaterialNames)
+        {
             WriteBinaryString(buf, name);
+        }
 
         WriteBinaryHashMap(buf, hierarchies.NodeNames);
         WriteBinaryHashMap(buf, hierarchies.NodeMeshes);
@@ -215,7 +273,9 @@ namespace ZEngine::Importers::AssetCodec
 
         auto write = WriteVFS(config.VFS, mesh_path, buf.str());
         if (write.Failed())
+        {
             return VFSResult<AssetImporterOutput>::Fail(write.Error());
+        }
 
         ReportPublishedArtifact(config, AssetFileType::MESH, mesh_path);
 
@@ -233,26 +293,36 @@ namespace ZEngine::Importers::AssetCodec
     {
         auto directory = MakeOutputPath(config.OutputMaterialPath.c_str(), config.AssetName.c_str());
         if (directory.Failed())
+        {
             return directory;
+        }
         return MakeOutputPath(directory.Value().CStr(), MaterialOutputFilename(material, index).c_str());
     }
 
     VFSResult<void> SynchronizeTextureMetadata(Core::Memory::ArenaAllocator* arena, ArrayView<AssetTexture> textures, ArrayView<AssetMaterial> materials, const ImportConfiguration& config, const char* importer)
     {
         if (!config.VFS)
+        {
             return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
         for (size_t t = 0; t < textures.size(); ++t)
         {
             auto& texture = textures[t];
             auto  path    = VFSPath::Parse(texture.Path.c_str());
             if (path.Failed())
+            {
                 return VFSResult<void>::Fail(path.Error());
+            }
             auto hash = Core::VFS::MetaFileIO::ComputeHash(*config.VFS, path.Value());
             if (hash.Failed())
+            {
                 return VFSResult<void>::Fail(hash.Error());
+            }
             auto meta = Core::VFS::MetaFileIO::GetOrCreate(*config.VFS, path.Value(), importer, hash.Value());
             if (meta.Failed())
+            {
                 return VFSResult<void>::Fail(meta.Error());
+            }
 
             const auto original_uuid = texture.TextureUUID;
             texture.TextureUUID      = meta.Value().AssetUUID;
@@ -280,7 +350,9 @@ namespace ZEngine::Importers::AssetCodec
     {
         auto path = PrepareOutputPath(config.VFS, MaterialOutputPath(material, config, material_index));
         if (path.Failed())
+        {
             return VFSResult<AssetImporterOutput>::Fail(path.Error());
+        }
         const auto& mat_path = path.Value();
 
         auto        tex_obj  = [](const uuids::uuid& uuid, const Core::Containers::String& path) {
@@ -293,11 +365,13 @@ namespace ZEngine::Importers::AssetCodec
         nlohmann::json j;
         j["material_version"] = MATERIAL_FILE_VERSION;
         if (config.MaterialSourcePath && config.MaterialSourceImporter)
+        {
             j["source_material"] = {
                 {    "path",     config.MaterialSourcePath},
                 {"importer", config.MaterialSourceImporter},
                 {   "index",                material_index}
             };
+        }
         j["name"]                 = material.Name.empty() ? "" : material.Name.c_str();
         j["uuid"]                 = uuids::to_string(material.MaterialUUID);
         j["textures"]["albedo"]   = tex_obj(material.AlbedoTexUUID, material.AlbedoTexPath);
@@ -316,7 +390,9 @@ namespace ZEngine::Importers::AssetCodec
 
         auto write                = WriteVFS(config.VFS, mat_path, j.dump(4));
         if (write.Failed())
+        {
             return VFSResult<AssetImporterOutput>::Fail(write.Error());
+        }
 
         ReportPublishedArtifact(config, AssetFileType::MATERIAL, mat_path);
 
@@ -326,11 +402,15 @@ namespace ZEngine::Importers::AssetCodec
     VFSResult<AssetImporterOutput> SerializeTextureAssetFiles(Core::Memory::ArenaAllocator* /*arena*/, ArrayView<AssetTexture> textures, const ImportConfiguration& config)
     {
         if (config.AssetName.empty())
+        {
             return VFSResult<AssetImporterOutput>::Fail(VFSError::InvalidPath);
+        }
         std::string asset_tex_filename = fmt::format("{}.zetextures", config.AssetName.c_str());
         auto        path               = PrepareOutputPath(config.VFS, MakeOutputPath(config.OutputAssetsPath.c_str(), asset_tex_filename.c_str()));
         if (path.Failed())
+        {
             return VFSResult<AssetImporterOutput>::Fail(path.Error());
+        }
         const auto&        tex_path = path.Value();
 
         std::ostringstream buf(std::ios::binary);
@@ -346,7 +426,9 @@ namespace ZEngine::Importers::AssetCodec
 
         auto write = WriteVFS(config.VFS, tex_path, buf.str());
         if (write.Failed())
+        {
             return VFSResult<AssetImporterOutput>::Fail(write.Error());
+        }
 
         ReportPublishedArtifact(config, AssetFileType::TEXTURES, tex_path);
 
@@ -357,34 +439,46 @@ namespace ZEngine::Importers::AssetCodec
     {
         const auto result = ReadMeshAssetFile(arena, asset_file, &mesh, &hierarchies);
         if (result.Failed())
+        {
             ZENGINE_CORE_WARN("[AssetCodec] Mesh read failed (VFS error {}): {}", static_cast<uint32_t>(result.Error()), asset_file ? asset_file : "<null>")
+        }
     }
 
     void DeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material)
     {
         if (!secure_strlen(asset_file))
+        {
             return;
+        }
         std::ifstream in(asset_file);
         if (!in.is_open())
+        {
             return;
+        }
 
         std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         in.close();
 
         auto j = nlohmann::json::parse(content, nullptr, /*allow_exceptions=*/false);
         if (j.is_discarded())
+        {
             return;
+        }
 
         auto read_str = [&](const char* key, Core::Containers::String& out) {
             if (j.contains(key) && j[key].is_string())
+            {
                 out.init(arena, j[key].get<std::string>().c_str());
+            }
         };
         auto read_uuid = [&](const nlohmann::json& node, const char* key, uuids::uuid& out) {
             if (node.contains(key) && node[key].is_string())
             {
                 auto parsed = uuids::uuid::from_string(node[key].get<std::string>());
                 if (parsed.has_value())
+                {
                     out = parsed.value();
+                }
             }
         };
         auto read_color = [&](const char* key, float* dst, int n) {
@@ -392,20 +486,28 @@ namespace ZEngine::Importers::AssetCodec
             {
                 const auto& arr = j[key];
                 for (int i = 0; i < n && i < (int) arr.size(); ++i)
+                {
                     if (arr[i].is_number())
+                    {
                         dst[i] = arr[i].get<float>();
+                    }
+                }
             }
         };
         auto read_tex = [&](const char* slot, uuids::uuid& uuid_out, Core::Containers::String& path_out) {
             if (!j.contains("textures") || !j["textures"].contains(slot))
+            {
                 return;
+            }
             const auto& t = j["textures"][slot];
             read_uuid(t, "uuid", uuid_out);
             if (t.contains("path") && t["path"].is_string())
             {
                 auto s = t["path"].get<std::string>();
                 if (!s.empty())
+                {
                     path_out.init(arena, s.c_str());
+                }
             }
         };
 
@@ -426,20 +528,26 @@ namespace ZEngine::Importers::AssetCodec
         // cutoff or zero alpha: the original mode cannot be recovered reliably.
         material.AlphaMode = Rendering::Materials::AlphaMode::Legacy;
         if (j.contains("alpha_mode") && j["alpha_mode"].is_string())
+        {
             material.AlphaMode = Rendering::Materials::ParseAlphaMode(j["alpha_mode"].get<std::string>());
+        }
         if (j.contains("alpha_cutoff") && j["alpha_cutoff"].is_number())
         {
             const float cutoff = j["alpha_cutoff"].get<float>();
             // glTF requires a nonnegative cutoff, but does not cap it at one.
             if (std::isfinite(cutoff) && cutoff >= 0.f)
+            {
                 material.Factors[2] = cutoff;
+            }
         }
     }
 
     void DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>& textures)
     {
         if (!secure_strlen(asset_file))
+        {
             return;
+        }
         std::ifstream in(asset_file, std::ios::binary);
         if (!in.is_open())
         {
@@ -471,7 +579,9 @@ namespace ZEngine::Importers::AssetCodec
     bool ReadAssetMeshFileHeader(const char* asset_file, AssetMeshFileHeader& header)
     {
         if (!asset_file || !asset_file[0])
+        {
             return false;
+        }
         std::ifstream in(asset_file, std::ios::binary);
         if (!in.is_open())
         {
@@ -481,7 +591,9 @@ namespace ZEngine::Importers::AssetCodec
 
         AssetMeshFileHeader candidate = {};
         if (!ReadBinary(in, candidate.MagicNumber) || !ReadBinary(in, candidate.Version) || candidate.MagicNumber != ZEMESH_MAGIC || candidate.Version != ASSET_FILE_VERSION || !ReadBinary(in, candidate.Id) || candidate.Id.is_nil())
+        {
             return false;
+        }
         header = candidate;
         return true;
     }
@@ -501,12 +613,16 @@ namespace ZEngine::Importers::AssetCodec
     {
         if (header.MagicNumber != ZENVMAP_MAGIC || header.Version != ENVIRONMENT_MAP_FILE_VERSION || header.HeaderByteSize != sizeof(EnvironmentMapFileHeader) || header.ImporterVersion == 0 || header.FaceWidth == 0 || header.FaceWidth != header.FaceHeight || header.FaceWidth > ENVIRONMENT_MAP_MAX_FACE_SIZE || header.Channel != 4 || header.LayerCount != 6 || header.MipCount != GetEnvironmentMapFullMipCount(header.FaceWidth) || header.ColorSpace != static_cast<uint32_t>(EnvironmentMapColorSpace::LinearScene) ||
             header.Orientation != static_cast<uint32_t>(EnvironmentMapOrientation::RendererCanonical) || header.MipPolicy != static_cast<uint32_t>(EnvironmentMapMipPolicy::GenerateOnGpu) || !std::isfinite(header.Exposure) || header.Exposure <= 0.0f)
+        {
             return false;
+        }
 
         constexpr uint64_t k_bytes_per_pixel = sizeof(float) * 4;
         const uint64_t     face_pixels       = static_cast<uint64_t>(header.FaceWidth) * static_cast<uint64_t>(header.FaceHeight);
         if (face_pixels > std::numeric_limits<uint64_t>::max() / header.LayerCount || face_pixels * header.LayerCount > std::numeric_limits<uint64_t>::max() / k_bytes_per_pixel)
+        {
             return false;
+        }
         return header.BufferByteSize == face_pixels * header.LayerCount * k_bytes_per_pixel;
     }
 
@@ -519,23 +635,33 @@ namespace ZEngine::Importers::AssetCodec
     {
         std::ifstream in(zenvmap_file, std::ios::binary);
         if (!in.is_open())
+        {
             return false;
+        }
 
         EnvironmentMapFileHeader header{};
         in.read(reinterpret_cast<char*>(&header), sizeof(header));
         if (!in.good() || !IsEnvironmentMapFileHeaderValid(header))
+        {
             return false;
+        }
 
         if (!HasExactEnvironmentMapFileSize(in, header))
+        {
             return false;
+        }
 
         in.seekg(static_cast<std::streamoff>(header.HeaderByteSize), std::ios::beg);
         Rendering::Buffers::Bitmap cubemap = Rendering::Buffers::Bitmap::Create(static_cast<int>(header.FaceWidth), static_cast<int>(header.FaceHeight), static_cast<int>(header.LayerCount), static_cast<int>(header.Channel), Rendering::Buffers::BitmapFormat::Float, Rendering::Buffers::BitmapType::CubeMap);
         if (!cubemap.Buffer)
+        {
             return false;
+        }
         in.read(reinterpret_cast<char*>(cubemap.Buffer), static_cast<std::streamsize>(header.BufferByteSize));
         if (!in.good())
+        {
             return false;
+        }
 
         out_cubemap = std::move(cubemap);
         return true;
@@ -545,7 +671,9 @@ namespace ZEngine::Importers::AssetCodec
     {
         std::ifstream in(zenvmap_file, std::ios::binary);
         if (!in.is_open())
+        {
             return false;
+        }
         in.read(reinterpret_cast<char*>(&out_header), sizeof(EnvironmentMapFileHeader));
         return in.good() && IsEnvironmentMapFileHeaderValid(out_header) && HasExactEnvironmentMapFileSize(in, out_header);
     }
@@ -553,7 +681,9 @@ namespace ZEngine::Importers::AssetCodec
     Core::VFS::VFSResult<void> SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap, const EnvironmentMapCookMetadata& metadata)
     {
         if (cubemap.Type != Rendering::Buffers::BitmapType::CubeMap || cubemap.Width <= 0 || cubemap.Width != cubemap.Height || cubemap.Width > static_cast<int>(ENVIRONMENT_MAP_MAX_FACE_SIZE) || cubemap.Channel != 4 || cubemap.Layers != 6 || cubemap.Format != Rendering::Buffers::BitmapFormat::Float || !cubemap.Buffer || !std::isfinite(metadata.Exposure) || metadata.Exposure <= 0.0f || metadata.ImporterVersion == 0)
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
 
         // Build .tmp path for atomic write
         char        tmp_buf[MAX_FILE_PATH_COUNT] = {};
@@ -567,7 +697,9 @@ namespace ZEngine::Importers::AssetCodec
 
         auto               open_result = ctx.Open(tmp_path, Core::VFS::VFSOpenFlags::Write | Core::VFS::VFSOpenFlags::Create | Core::VFS::VFSOpenFlags::Truncate);
         if (open_result.Failed())
+        {
             return Core::VFS::VFSResult<void>::Fail(open_result.Error());
+        }
 
         Core::VFS::IVFSFile*     file = open_result.Value();
 
@@ -589,7 +721,9 @@ namespace ZEngine::Importers::AssetCodec
             .BufferByteSize  = static_cast<uint64_t>(cubemap.BufferSize),
         };
         if (!IsEnvironmentMapFileHeaderValid(header))
+        {
             return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+        }
 
         const auto* hdr_bytes  = reinterpret_cast<const uint8_t*>(&header);
         auto        w1         = file->Write({hdr_bytes, sizeof(header)}, 0);
@@ -600,11 +734,17 @@ namespace ZEngine::Importers::AssetCodec
         ctx.Close(file);
 
         if (w1.Failed())
+        {
             return Core::VFS::VFSResult<void>::Fail(w1.Error());
+        }
         if (w2.Failed())
+        {
             return Core::VFS::VFSResult<void>::Fail(w2.Error());
+        }
         if (flush.Failed())
+        {
             return Core::VFS::VFSResult<void>::Fail(flush.Error());
+        }
 
         return ctx.Rename(tmp_path, out_path);
     }

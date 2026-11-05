@@ -283,7 +283,9 @@ namespace ZEngine::Core::VFS
     VFSResult<IVFSFile*> VFSZipBackend::Open(const VFSPath& relative_path, VFSOpenFlags flags)
     {
         if (HasFlag(flags, VFSOpenFlags::AllowReplace))
+        {
             return VFSResult<IVFSFile*>::Fail(VFSError::Unsupported);
+        }
         if (HasFlag(flags, VFSOpenFlags::Write) || HasFlag(flags, VFSOpenFlags::Append))
         {
             return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);

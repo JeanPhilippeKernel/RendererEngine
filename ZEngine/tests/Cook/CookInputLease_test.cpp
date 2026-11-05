@@ -51,17 +51,27 @@ namespace ZEngine::Cook
             Core::VFS::VFSResult<void> AcquireState(CookInputLease* output, CookInputState initial)
             {
                 if (!output || !Owner)
+                {
                     return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::InvalidPath);
+                }
                 if (Leased || output->IsValid())
+                {
                     return Core::VFS::VFSResult<void>::Fail(Core::VFS::VFSError::AlreadyExists);
+                }
                 const auto acquired = Owner->TryAcquireRead(&ReadLease);
                 if (acquired.Failed())
+                {
                     return acquired;
+                }
                 const auto bound = BindLease(*this, output, initial);
                 if (bound.Failed())
+                {
                     ReadLease.Reset();
+                }
                 else
+                {
                     Leased = true;
+                }
                 return bound;
             }
             Core::VFS::VFSResult<void> MapContextPath(const Core::VFS::VFSPath&, Core::VFS::VFSRelativePath* output, CookDiagnostics*) override
@@ -95,7 +105,9 @@ namespace ZEngine::Cook
                     return Core::VFS::VFSResult<void>::Ok();
                 }
                 if (diagnostics)
+                {
                     diagnostics->Add({.Stage = CookStage::Capture, .Code = SealError == Core::VFS::VFSError::Corrupted ? CookDiagnosticCode::InputChanged : CookDiagnosticCode::IOFailure, .Underlying = SealError});
+                }
                 return Core::VFS::VFSResult<void>::Fail(SealError);
             }
             void Release() noexcept override
@@ -127,7 +139,9 @@ namespace ZEngine::Cook
         EXPECT_EQ(lease.Capture({}, nullptr, &diagnostics).Error(), Core::VFS::VFSError::InvalidPath);
         EXPECT_EQ(diagnostics.ErrorCount, 3u);
         for (size_t i = 0; i < diagnostics.Count; ++i)
+        {
             EXPECT_EQ(diagnostics.Entries[i].Code, CookDiagnosticCode::InvalidRequest);
+        }
         lease.Reset();
         lease.Reset();
     }
@@ -286,15 +300,25 @@ namespace ZEngine::Cook
         {
             source.Entry = valid;
             if (invalid == 0)
+            {
                 source.Entry.Identity = {};
+            }
             if (invalid == 1)
+            {
                 source.Entry.Artifact = {};
+            }
             if (invalid == 2)
+            {
                 source.Entry.Metadata = source.Entry.Artifact;
+            }
             if (invalid == 3)
+            {
                 source.Entry.EnvironmentSource = original;
+            }
             if (invalid == 4)
+            {
                 source.Entry.Metadata = {};
+            }
             EXPECT_EQ(lease.FindAsset(identity, &found, nullptr).Error(), Core::VFS::VFSError::InvalidPath);
             EXPECT_EQ(found.Identity, previous.Identity);
             EXPECT_EQ(found.Artifact, previous.Artifact);

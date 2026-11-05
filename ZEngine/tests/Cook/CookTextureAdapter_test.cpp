@@ -41,18 +41,26 @@ namespace ZEngine::Cook
                 (void) hash.Update({Bytes.data(), Bytes.size()});
                 (void) hash.Finalize(&digest);
                 if (WrongDigest)
+                {
                     digest.Bytes[0] ^= 1;
+                }
                 return digest;
             }
             VFS::VFSResult<size_t> Read(uint64_t offset, Core::Containers::ArrayView<uint8_t> output) const override
             {
                 if (++Reads == FailAt)
+                {
                     return VFS::VFSResult<size_t>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 if (Overreport)
+                {
                     return VFS::VFSResult<size_t>::Ok(output.size() + 1);
+                }
                 const size_t count = offset >= Bytes.size() ? 0 : std::min({output.size(), Bytes.size() - static_cast<size_t>(offset), Chunk});
                 if (count)
+                {
                     Helpers::secure_memcpy(output.data(), output.size(), Bytes.data() + offset, count);
+                }
                 return VFS::VFSResult<size_t>::Ok(count);
             }
         };
@@ -66,7 +74,9 @@ namespace ZEngine::Cook
             VFS::VFSResult<void> Write(Core::Containers::ArrayView<const uint8_t> bytes) override
             {
                 if (++Calls == FailAt)
+                {
                     return VFS::VFSResult<void>::Fail(VFS::VFSError::PermissionDenied);
+                }
                 Bytes.insert(Bytes.end(), bytes.begin(), bytes.end());
                 return VFS::VFSResult<void>::Ok();
             }
@@ -299,17 +309,25 @@ namespace ZEngine::Cook
                     const int height = static_cast<int>(vertical ? length : 1);
                     Capture.Bytes.clear();
                     if (!format)
+                    {
                         // RGB keeps PNG's two filter scanlines plus inflate/
                         // RGBA conversion inside this fixture's 256 KiB pool.
                         ASSERT_NE(stbi_write_png_to_func(AppendImage, &Capture.Bytes, width, height, 3, pixels.data(), width * 3), 0);
+                    }
                     else if (format == 1)
+                    {
                         ASSERT_NE(stbi_write_bmp_to_func(AppendImage, &Capture.Bytes, width, height, 4, pixels.data()), 0);
+                    }
                     else
+                    {
                         ASSERT_NE(stbi_write_tga_to_func(AppendImage, &Capture.Bytes, width, height, 4, pixels.data()), 0);
+                    }
                     Limits.MaxEncodedAssetBytes = Capture.Bytes.size();
                     Limits.MaxDecodedAssetBytes = uint64_t(length) * 4;
                     if (length == maximum)
+                    {
                         ExpectRoundTrip(!format ? "image-png" : format == 1 ? "image-bmp" : "image-tga");
+                    }
                     else
                     {
                         CookAssetInspection result = {};
@@ -345,11 +363,17 @@ namespace ZEngine::Cook
         {
             Capture.Bytes.clear();
             if (!format)
+            {
                 ASSERT_NE(stbi_write_jpg_to_func(AppendImage, &Capture.Bytes, 1, 1, 3, pixels, 90), 0);
+            }
             else if (format == 1)
+            {
                 ASSERT_NE(stbi_write_bmp_to_func(AppendImage, &Capture.Bytes, 1, 1, 3, pixels), 0);
+            }
             else
+            {
                 ASSERT_NE(stbi_write_tga_to_func(AppendImage, &Capture.Bytes, 1, 1, 3, pixels), 0);
+            }
             const auto complete = Capture.Bytes;
             for (size_t length = 0; length < complete.size(); ++length)
             {

@@ -72,7 +72,9 @@ namespace ZEngine::Cook
             {
                 const uint32_t index = ChargeCalls++;
                 if (index < Requests.size())
+                {
                     Requests[index] = {bytes, Inner->Statistics().LiveBytes};
+                }
                 return category == CookMemoryCategory::StagingManifest && FixedFailure != VFS::VFSError::OK && (FixedFailAt == UINT32_MAX || FixedFailAt == ChargeCalls) ? VFS::VFSResult<void>::Fail(FixedFailure) : Inner->TryCharge(bytes, category, output);
             }
             VFS::VFSResult<void*> Allocate(size_t bytes, size_t alignment, CookMemoryCategory category) noexcept override
@@ -106,7 +108,9 @@ namespace ZEngine::Cook
                     const size_t count   = std::min(producer.Bytes.size() - offset, producer.Chunk);
                     const auto   written = sink.Write(producer.Bytes.subspan(offset, count));
                     if (written.Failed() && !producer.IgnoreSinkFailure)
+                    {
                         return written;
+                    }
                     offset += count;
                 }
                 return producer.Error == VFS::VFSError::OK ? VFS::VFSResult<void>::Ok() : VFS::VFSResult<void>::Fail(producer.Error);
@@ -205,7 +209,9 @@ namespace ZEngine::Cook
             ASSERT_TRUE(Graph.AddScene(PackageUUID(100), PackageRelative("scenes/main.yaml")).Succeeded());
             ASSERT_TRUE(Graph.AddRoot(0, {CookAssetKind::Material, PackageUUID(2)}, {}, "Test", "material").Succeeded());
             if (shared)
+            {
                 ASSERT_TRUE(Graph.AddRoot(0, {CookAssetKind::Texture, PackageUUID(3)}, {}, "Test", "texture").Succeeded());
+            }
             ASSERT_TRUE(Graph.BeginDiscovery().Succeeded());
             MaterialIndex             = Graph.Find({CookAssetKind::Material, PackageUUID(2)});
             const CookDependency edge = {
@@ -225,7 +231,9 @@ namespace ZEngine::Cook
             TextureIndex = Graph.Find(edge.Identity);
             ASSERT_TRUE(Graph.SetInspection(TextureIndex, 1, CookAssetInspectionView{"image-png"}).Succeeded());
             if (shared)
+            {
                 ASSERT_TRUE(Graph.SetInspection(Graph.Find({CookAssetKind::Texture, PackageUUID(3)}), 1, CookAssetInspectionView{"image-png"}).Succeeded());
+            }
             ASSERT_TRUE(Graph.Finalize(nullptr).Succeeded());
         }
         CookPublicationInput Input(bool force = false)
@@ -256,7 +264,9 @@ namespace ZEngine::Cook
             const auto opened = Backend.Inner->Open(PackagePath("/output/manifest.json"), VFS::VFSOpenFlags::Read);
             EXPECT_TRUE(opened.Succeeded());
             if (opened.Failed())
+            {
                 return {};
+            }
             const auto  size = opened.Value()->Size().Value();
             std::string bytes(static_cast<size_t>(size), '\0');
             EXPECT_EQ(opened.Value()->ReadAll({reinterpret_cast<uint8_t*>(bytes.data()), bytes.size()}).Value(), size);
@@ -391,7 +401,9 @@ namespace ZEngine::Cook
                 {
                     Start(phase != 3);
                     if (phase >= 2)
+                    {
                         Encode();
+                    }
                 }
                 const auto previous    = Result;
                 const auto live        = Parent.Statistics().LiveBytes;
@@ -421,9 +433,13 @@ namespace ZEngine::Cook
                 EXPECT_EQ(Diagnostics.Entries[0].Code, error == VFS::VFSError::Unsupported ? CookDiagnosticCode::UnsupportedBackend : error == VFS::VFSError::OutOfMemory ? CookDiagnosticCode::AllocationFailed : CookDiagnosticCode::BudgetExceeded);
                 Allocator.FixedFailure = VFS::VFSError::OK;
                 if (phase)
+                {
                     EXPECT_EQ(Publisher.PublishManifest(Workspace, &Result, nullptr).Error(), error);
+                }
                 else
+                {
                     EXPECT_FALSE(Root.Exists(PackageRelative(CookWriterLockName)).Value());
+                }
                 EXPECT_EQ(Manifest(), original);
                 ASSERT_TRUE(Publisher.Reset().Succeeded());
                 Faults = {};
@@ -559,7 +575,9 @@ namespace ZEngine::Cook
         for (const bool changed : {false, true})
         {
             if (changed)
+            {
                 TextureBytes[0] ^= 4;
+            }
             for (const auto error : {VFS::VFSError::Unsupported, VFS::VFSError::OutOfMemory, VFS::VFSError::SizeLimitExceeded})
             {
                 Start(changed);
@@ -1027,7 +1045,9 @@ namespace ZEngine::Cook
             SCOPED_TRACE(failure);
             Start();
             if (failure)
+            {
                 Encode();
+            }
             const auto previous    = Result;
             const auto workspace   = failure == 2 ? Core::Containers::ArrayView<uint32_t>{nullptr, 3} : failure == 3 ? Core::Containers::ArrayView<uint32_t>{Workspace, 2} : Core::Containers::ArrayView<uint32_t>{Workspace};
             const auto charges     = Allocator.ChargeCalls;

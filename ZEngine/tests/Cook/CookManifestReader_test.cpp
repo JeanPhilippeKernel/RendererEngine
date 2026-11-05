@@ -31,7 +31,9 @@ namespace ZEngine::Cook
                 {"uuid", uuid}
             };
             if (slot)
+            {
                 value["slot"] = slot;
+            }
             return value;
         }
 
@@ -65,10 +67,14 @@ namespace ZEngine::Cook
         {
             std::string text = R"({"manifest_version":1,"recipe_revision":1,"extra":)";
             for (uint32_t i = 1; i < containers; ++i)
+            {
                 text += i % 2 ? R"({"child":)" : "[";
+            }
             text += leaf;
             for (uint32_t i = containers; i > 1; --i)
+            {
                 text += (i - 1) % 2 ? R"(,"sibling":false})" : ",null,true]";
+            }
             return text + R"(,"tail":[{},[],null,true,false,0,"done"]})";
         }
 
@@ -90,7 +96,9 @@ namespace ZEngine::Cook
             {
                 LastChargeBytes = bytes;
                 if (++ChargeCalls == RefuseChargeAt)
+                {
                     return VFS::VFSResult<void>::Fail(ChargeFailure);
+                }
                 // Inject ledger pressure only around the selected reservation;
                 // later phases regain their normal budget. No allocation/hook
                 // inside production code and no per-charge trace storage.
@@ -100,10 +108,14 @@ namespace ZEngine::Cook
                     const auto available = bytes - (OneByteShort ? 1 : 0);
                     const auto remaining = BoundaryLedger->RemainingBytes();
                     if (remaining < available)
+                    {
                         return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
+                    }
                     const auto padded = BoundaryLedger->TryCharge(remaining - available, category, &pressure);
                     if (padded.Failed())
+                    {
                         return padded;
+                    }
                 }
                 return Backing->TryCharge(bytes, category, output);
             }
@@ -111,7 +123,9 @@ namespace ZEngine::Cook
             VFS::VFSResult<void*> Allocate(size_t bytes, size_t alignment, CookMemoryCategory category) noexcept override
             {
                 if (++Calls == FailAt)
+                {
                     return VFS::VFSResult<void*>::Fail(Failure);
+                }
                 return Backing->Allocate(bytes, alignment, category);
             }
             void Free(void* pointer) noexcept override
@@ -226,6 +240,7 @@ namespace ZEngine::Cook
         const auto* previous = Manifest.Scenes().data();
         const auto  live     = Allocator.Statistics().LiveBytes;
         for (auto error : {VFS::VFSError::SizeLimitExceeded, VFS::VFSError::OutOfMemory, VFS::VFSError::Unsupported})
+        {
             for (uint32_t seam = 1; seam <= requiredCharges; ++seam)
             {
                 SCOPED_TRACE(seam);
@@ -238,6 +253,7 @@ namespace ZEngine::Cook
                 ASSERT_EQ(Diagnostics.Count, 1u);
                 EXPECT_EQ(Diagnostics.Entries[0].Code, error == VFS::VFSError::Unsupported ? CookDiagnosticCode::UnsupportedBackend : error == VFS::VFSError::SizeLimitExceeded ? CookDiagnosticCode::BudgetExceeded : CookDiagnosticCode::AllocationFailed);
             }
+        }
         Routed.RefuseChargeAt = UINT32_MAX;
         ASSERT_EQ(Read(Tests::ManifestGolden).Value(), CookManifestReadStatus::Valid);
         EXPECT_EQ(Allocator.Statistics().LiveBytes, live);
@@ -254,6 +270,7 @@ namespace ZEngine::Cook
         const auto* previous = Manifest.Scenes().data();
         const auto  live     = Allocator.Statistics().LiveBytes;
         for (const auto error : {VFS::VFSError::SizeLimitExceeded, VFS::VFSError::OutOfMemory, VFS::VFSError::Unsupported})
+        {
             for (uint32_t seam = 1; seam <= required; ++seam)
             {
                 SCOPED_TRACE(seam);
@@ -269,6 +286,7 @@ namespace ZEngine::Cook
                 ASSERT_EQ(Diagnostics.Count, 1u);
                 EXPECT_EQ(Diagnostics.Entries[0].Code, error == VFS::VFSError::Unsupported ? CookDiagnosticCode::UnsupportedBackend : error == VFS::VFSError::OutOfMemory ? CookDiagnosticCode::AllocationFailed : CookDiagnosticCode::BudgetExceeded);
             }
+        }
         Routed.RefuseChargeAt = UINT32_MAX;
         EXPECT_EQ(Read({text.data(), text.size()}).Value(), CookManifestReadStatus::Valid);
         EXPECT_EQ(Allocator.Statistics().LiveBytes, live);
@@ -286,6 +304,7 @@ namespace ZEngine::Cook
         const auto live        = Allocator.Statistics().LiveBytes;
         Routed.BoundaryLedger  = &Allocator.Ledger;
         for (uint32_t seam = 1; seam <= required; ++seam)
+        {
             for (const bool short_budget : {true, false})
             {
                 SCOPED_TRACE(seam);
@@ -315,6 +334,7 @@ namespace ZEngine::Cook
                 ASSERT_EQ(Manifest.Dependencies(1).size(), 2u);
                 EXPECT_TRUE(Manifest.Dependencies(1)[0].Slot == "albedo");
             }
+        }
         Routed.BoundaryChargeAt = UINT32_MAX;
     }
 
@@ -408,9 +428,13 @@ namespace ZEngine::Cook
             const auto bytes  = Core::Containers::ArrayView<const uint8_t>(reinterpret_cast<const uint8_t*>(text.data()), text.size());
             const auto result = Detail::CheckCookManifestSyntax(bytes, CookTarget::DesktopVulkanLE64, Routed, &Diagnostics, buffer);
             if (length == 4097)
+            {
                 EXPECT_EQ(result.Error(), VFS::VFSError::SizeLimitExceeded);
+            }
             else
+            {
                 EXPECT_TRUE(result.Succeeded());
+            }
             EXPECT_EQ(guarded[0], 'L');
             EXPECT_EQ(guarded[sizeof(guarded) - 1], 'R');
             EXPECT_EQ(Allocator.Statistics().LiveBytes, 0u);
@@ -424,6 +448,7 @@ namespace ZEngine::Cook
         guarded[sizeof(guarded) - 1] = 'R';
         const auto buffer            = Core::Containers::ArrayView<char>(guarded + 1, 4097);
         for (uint32_t depth = 1; depth <= 17; ++depth)
+        {
             for (cstring leaf : {"0", "null", "false", "\"escaped\\u00e9\""})
             {
                 SCOPED_TRACE(depth);
@@ -451,12 +476,14 @@ namespace ZEngine::Cook
                 EXPECT_EQ(guarded[sizeof(guarded) - 1], 'R');
                 EXPECT_EQ(Allocator.Statistics().LiveBytes, 0u);
             }
+        }
     }
 
     TEST_F(CookManifestReaderTest, IterativeSyntaxWalkRetainsRootAndAssetRolesAcrossUnknownContainers)
     {
         char buffer[4097] = {};
         for (bool incompatible : {false, true})
+        {
             for (bool reverse : {false, true})
             {
                 const cstring     nested = R"("ignored":{"assets":[{"adapter_revision":999,"format":"unknown","kind":"unknown"}],"manifest_version":2,"target":"bad","recipe_revision":999})";
@@ -479,6 +506,7 @@ namespace ZEngine::Cook
                 }
                 EXPECT_EQ(Allocator.Statistics().LiveBytes, 0u);
             }
+        }
     }
 
     TEST_F(CookManifestReaderTest, DeepSyntaxFailuresPreserveTheExistingLedgerAndDrainTraversalState)
@@ -607,7 +635,9 @@ namespace ZEngine::Cook
         ledger["scenes"][0]["source"]              = "scenes/é.yaml";
         ledger["assets"][2]["dependencies"]        = JSON::array();
         for (const auto slot : slots)
+        {
             ledger["assets"][2]["dependencies"].push_back(IdentityJSON("material", MaterialUUID, std::string(slot.data(), slot.size()).c_str()));
+        }
         auto  ordered      = nlohmann::ordered_json::parse(ledger.dump());
         auto& dependencies = ordered["assets"][2]["dependencies"];
         for (size_t index = 0; index < dependencies.size(); ++index)
@@ -617,11 +647,15 @@ namespace ZEngine::Cook
             // overwrite it. Reusing one slot also exercises short keys following
             // long keys without retaining stale terminators.
             if (index % 2 == 0)
+            {
                 record["slot"] = dependencies[index]["slot"];
+            }
             record["uuid"] = MaterialUUID;
             record["kind"] = "material";
             if (index % 2)
+            {
                 record["slot"] = dependencies[index]["slot"];
+            }
             dependencies[index] = std::move(record);
         }
         auto text = ordered.dump(-1, ' ', true);
@@ -630,7 +664,9 @@ namespace ZEngine::Cook
         std::fill(text.begin(), text.end(), 'X');
         ASSERT_EQ(Manifest.Dependencies(2).size(), std::size(slots));
         for (size_t index = 0; index < std::size(slots); ++index)
+        {
             EXPECT_TRUE(Manifest.Dependencies(2)[index].Slot == slots[index]);
+        }
         EXPECT_EQ(Routed.Calls, accepted_allocations);
         EXPECT_EQ(Allocator.Allocations - Allocator.Frees, 1u);
 
@@ -703,15 +739,25 @@ namespace ZEngine::Cook
             auto document          = FullLedger();
             document["unexpected"] = true;
             if (variation == 0)
+            {
                 document["assets"][1]["format"] = "zematerial-v2-json";
+            }
             if (variation == 1)
+            {
                 document["assets"][1]["adapter_revision"] = 2;
+            }
             if (variation == 2)
+            {
                 document["assets"][1]["kind"] = "future-kind";
+            }
             if (variation == 3)
+            {
                 document["recipe_revision"] = 2;
+            }
             if (variation == 4)
+            {
                 document["target"] = "mobile-astc";
+            }
             EXPECT_EQ(ReadJSON(document).Error(), VFS::VFSError::Unsupported);
             ASSERT_EQ(Diagnostics.Count, 1u);
             EXPECT_EQ(Diagnostics.Entries[0].Code, variation == 4 ? CookDiagnosticCode::UnsupportedTarget : CookDiagnosticCode::UnsupportedVersion);
@@ -767,7 +813,9 @@ namespace ZEngine::Cook
             EXPECT_EQ(Diagnostics.Entries[0].Code, CookDiagnosticCode::InvalidManifest);
         }
         for (cstring text : {"{}", "[]", "1", "{\"manifest_version\":true}", "{\"manifest_version\":-1}", "{\"manifest_version\":4294967296}"})
+        {
             EXPECT_EQ(Read(text).Error(), VFS::VFSError::Unsupported);
+        }
     }
 
     TEST_F(CookManifestReaderTest, SemanticGraphFailuresAreRebuildsWithoutRetainedCleanupPaths)
@@ -777,27 +825,49 @@ namespace ZEngine::Cook
             SCOPED_TRACE(variation);
             auto document = FullLedger();
             if (variation == 0)
+            {
                 document["assets"].erase(0); // Missing reachable environment.
+            }
             if (variation == 1)
+            {
                 document["scenes"][0]["roots"].erase(0); // Unreachable environment record.
+            }
             if (variation == 2)
+            {
                 document["assets"][1]["uuid"] = EnvironmentUUID; // UUID collision across kinds.
+            }
             if (variation == 2)
+            {
                 document["assets"][2]["dependencies"][0]["uuid"] = EnvironmentUUID;
+            }
             if (variation == 3)
+            {
                 document["assets"][1]["dependencies"][1] = document["assets"][1]["dependencies"][0];
+            }
             if (variation == 4)
+            {
                 std::swap(document["assets"][1], document["assets"][2]);
+            }
             if (variation == 5)
+            {
                 document["scenes"][0]["roots"].push_back(document["scenes"][0]["roots"][1]);
+            }
             if (variation == 6)
+            {
                 document["assets"][2]["dependencies"][0]["slot"] = "submeshes/01/material";
+            }
             if (variation == 7)
+            {
                 document["assets"][1]["dependencies"][0]["kind"] = "mesh";
+            }
             if (variation == 7)
+            {
                 document["assets"][1]["dependencies"][0]["uuid"] = MeshUUID;
+            }
             if (variation == 8)
+            {
                 document["assets"][3]["object"]["path"] = "objects/" + std::string(64, 'a') + ".png";
+            }
             ExpectRebuild(document);
         }
     }
@@ -849,6 +919,7 @@ namespace ZEngine::Cook
         ASSERT_TRUE(Read(Tests::ManifestGolden).Succeeded());
         scene = Manifest.Scenes().data();
         for (const auto error : {VFS::VFSError::OutOfMemory, VFS::VFSError::SizeLimitExceeded})
+        {
             for (uint32_t call = 1; call <= calls; ++call)
             {
                 SCOPED_TRACE(call);
@@ -862,6 +933,7 @@ namespace ZEngine::Cook
                 ASSERT_EQ(Diagnostics.Count, 1u);
                 EXPECT_EQ(Diagnostics.Entries[0].Code, error == VFS::VFSError::OutOfMemory ? CookDiagnosticCode::AllocationFailed : CookDiagnosticCode::BudgetExceeded);
             }
+        }
         Routed.FailAt = UINT32_MAX;
     }
 
@@ -912,7 +984,9 @@ namespace ZEngine::Cook
     {
         JSON extra = JSON::object();
         for (uint32_t i = 0; i < 2048; ++i)
+        {
             extra["key" + std::to_string(i)] = i;
+        }
         auto document     = GoldenJSON();
         document["extra"] = extra;
         ExpectRebuild(document);

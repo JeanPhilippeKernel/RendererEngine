@@ -30,7 +30,9 @@ namespace ZEngine::Core::Serialization
         {
             bytes = std::max(bytes, size_t(1));
             if (bytes > std::numeric_limits<size_t>::max() - sizeof(AllocationHeader))
+            {
                 return false;
+            }
             capacity = sizeof(AllocationHeader) + bytes;
             return true;
         }
@@ -56,10 +58,14 @@ namespace ZEngine::Core::Serialization
     {
         size_t capacity = 0;
         if (!Capacity(bytes, capacity))
+        {
             return nullptr;
+        }
         void* memory = CurrentRoute ? CurrentRoute->Allocate(capacity) : std::malloc(capacity);
         if (!memory)
+        {
             return nullptr;
+        }
         auto* header = new (memory) AllocationHeader{.Owner = CurrentRoute, .Bytes = capacity};
         return header + 1;
     }
@@ -67,15 +73,21 @@ namespace ZEngine::Core::Serialization
     void* ReallocateYAML(void* pointer, size_t bytes)
     {
         if (!pointer)
+        {
             return AllocateYAML(bytes);
+        }
         size_t capacity = 0;
         if (!Capacity(bytes, capacity))
+        {
             return nullptr;
+        }
         auto* header = Header(pointer);
         auto* owner  = header->Owner;
         void* memory = owner ? owner->Reallocate(header, header->Bytes, capacity) : std::realloc(header, capacity);
         if (!memory)
+        {
             return nullptr;
+        }
         header = new (memory) AllocationHeader{.Owner = owner, .Bytes = capacity};
         return header + 1;
     }
@@ -83,14 +95,20 @@ namespace ZEngine::Core::Serialization
     void FreeYAML(void* pointer)
     {
         if (!pointer)
+        {
             return;
+        }
         auto* header = Header(pointer);
         auto* owner  = header->Owner;
         header->~AllocationHeader();
         if (owner)
+        {
             owner->Free(header);
+        }
         else
+        {
             std::free(header);
+        }
     }
 } // namespace ZEngine::Core::Serialization
 
@@ -112,10 +130,14 @@ extern "C" void ZEngineYAMLFree(void* pointer)
 extern "C" char* ZEngineYAMLDuplicate(const char* text)
 {
     if (!text)
+    {
         return nullptr;
+    }
     const size_t bytes = std::strlen(text) + 1;
     auto*        copy  = static_cast<char*>(ZEngineYAMLAllocate(bytes));
     if (copy)
+    {
         std::copy_n(text, bytes, copy);
+    }
     return copy;
 }
