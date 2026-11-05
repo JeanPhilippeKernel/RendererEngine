@@ -50,7 +50,7 @@ namespace ZEngine::Core::VFS
         Count = 0;
     }
 
-    VFSMountTable::VFSMountTable()  = default;
+    VFSMountTable::VFSMountTable() : m_state() {}
     VFSMountTable::~VFSMountTable() = default;
 
     void VFSMountTable::Initialize(Memory::ArenaAllocator*, size_t)

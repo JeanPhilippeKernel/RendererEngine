@@ -99,7 +99,8 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<void>                                 WriteFile(const VFSPath& path, Core::Containers::ArrayView<const uint8_t> data);
 
     private:
-        Helpers::Ref<VFSMemoryStorage> m_storage = {};
+        // Initialize out of line, where the intrusive pointee is complete.
+        Helpers::Ref<VFSMemoryStorage> m_storage;
     };
 
 } // namespace ZEngine::Core::VFS

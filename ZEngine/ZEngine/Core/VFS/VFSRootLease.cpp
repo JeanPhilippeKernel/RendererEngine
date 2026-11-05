@@ -27,7 +27,7 @@ namespace ZEngine::Core::VFS
         m_retired = true;
     }
 
-    VFSRootLease::VFSRootLease() noexcept = default;
+    VFSRootLease::VFSRootLease() noexcept : m_mounts() {}
     VFSRootLease::~VFSRootLease()
     {
         Reset();

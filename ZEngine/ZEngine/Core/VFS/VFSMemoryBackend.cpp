@@ -1206,7 +1206,7 @@ namespace ZEngine::Core::VFS
         return VFSResult<void>::Fail(VFSError::InvalidPath);
     }
 
-    VFSMemoryBackend::VFSMemoryBackend() = default;
+    VFSMemoryBackend::VFSMemoryBackend() : m_storage() {}
     VFSMemoryBackend::~VFSMemoryBackend()
     {
         if (m_storage)

@@ -12,7 +12,7 @@ namespace ZEngine
     {
         namespace VFS
         {
-            struct AssetRegistry;
+            class AssetRegistry;
         }
     } // namespace Core
 } // namespace ZEngine

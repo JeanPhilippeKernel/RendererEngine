@@ -169,8 +169,9 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<void>            AcquireChildRoot(const VFSRelativePath&, VFSRootLease*, VFSRootAccess);
         Helpers::Scope<IVFSRootOperations>       m_operations = {};
         VFSWorkingMemoryReservation              m_memory     = {};
-        Helpers::Ref<VFSMountState>              m_mounts     = {};
-        uint32_t                                 m_pin        = UINT32_MAX;
+        // Initialize out of line, where the intrusive pointee is complete.
+        Helpers::Ref<VFSMountState>              m_mounts;
+        uint32_t                                 m_pin = UINT32_MAX;
     };
 
     // Private inheritance exposes no create/remove/rename/write authority and

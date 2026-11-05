@@ -51,7 +51,8 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<void>           AcquireRoot(const VFSPath&, VFSRootLease*, VFSRootAccess access, IVFSWorkingMemoryBudget*);
         [[nodiscard]] size_t                    FindMount(const VFSPath&) const;
 
-        Helpers::Ref<VFSMountState>             m_state = {};
+        // Initialize out of line, where the intrusive pointee is complete.
+        Helpers::Ref<VFSMountState>             m_state;
         mutable std::shared_mutex               m_mutex = {};
     };
 
