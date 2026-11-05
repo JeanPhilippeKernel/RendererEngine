@@ -48,8 +48,13 @@ namespace ZEngine::Core::VFS
 
         struct NativeFunctions
         {
-            decltype(&::NtCreateFile)          Create        = nullptr;
-            decltype(&::RtlNtStatusToDosError) StatusToError = nullptr;
+            // The desktop SDK omits this export and most native information
+            // classes. Keep the documented ntdll ABI without a kernel header.
+            using SetInformationFn                            = NTSTATUS(NTAPI*)(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, ULONG);
+
+            decltype(&::NtCreateFile)          Create         = nullptr;
+            SetInformationFn                   SetInformation = nullptr;
+            decltype(&::RtlNtStatusToDosError) StatusToError  = nullptr;
 
             bool                               Initialize()
             {
@@ -60,9 +65,10 @@ namespace ZEngine::Core::VFS
                 {
                     return false;
                 }
-                Create        = reinterpret_cast<decltype(Create)>(GetProcAddress(module, "NtCreateFile"));
-                StatusToError = reinterpret_cast<decltype(StatusToError)>(GetProcAddress(module, "RtlNtStatusToDosError"));
-                return Create && StatusToError;
+                Create         = reinterpret_cast<decltype(Create)>(GetProcAddress(module, "NtCreateFile"));
+                SetInformation = reinterpret_cast<decltype(SetInformation)>(GetProcAddress(module, "NtSetInformationFile"));
+                StatusToError  = reinterpret_cast<decltype(StatusToError)>(GetProcAddress(module, "RtlNtStatusToDosError"));
+                return Create && SetInformation && StatusToError;
             }
 
             VFSResult<void> Open(HANDLE parent, const wchar_t* name, size_t length, ACCESS_MASK access, ULONG share, ULONG disposition, ULONG kind, NativeHandle& output) const
@@ -101,6 +107,45 @@ namespace ZEngine::Core::VFS
                 }
                 output.Reset(handle);
                 return VFSResult<void>::Ok();
+            }
+
+            VFSResult<void> Rename(HANDLE file, HANDLE parent, const wchar_t* name, size_t length, bool replace) const
+            {
+                if (!SetInformation || !StatusToError)
+                {
+                    return VFSResult<void>::Fail(VFSError::Unsupported);
+                }
+                if (!name || !length || length >= VFS_MAX_PATH)
+                {
+                    return VFSResult<void>::Fail(VFSError::InvalidPath);
+                }
+                // Native FileRenameInformation is a counted leaf relative to
+                // RootDirectory. The Win32 wrapper can convert the name through
+                // DOS-path resolution, which must not participate in routing.
+                struct NativeRenameInformation
+                {
+                    BOOLEAN ReplaceIfExists = FALSE;
+                    HANDLE  RootDirectory   = nullptr;
+                    ULONG   FileNameLength  = 0;
+                    WCHAR   FileName[1]     = {};
+                };
+                static_assert(offsetof(NativeRenameInformation, RootDirectory) == offsetof(FILE_RENAME_INFO, RootDirectory));
+                static_assert(offsetof(NativeRenameInformation, FileNameLength) == offsetof(FILE_RENAME_INFO, FileNameLength));
+                static_assert(offsetof(NativeRenameInformation, FileName) == offsetof(FILE_RENAME_INFO, FileName));
+                alignas(NativeRenameInformation) uint8_t storage[sizeof(NativeRenameInformation) + VFS_MAX_PATH * sizeof(wchar_t)] = {};
+                auto*                                    rename                                                                    = new (storage) NativeRenameInformation{};
+                rename->ReplaceIfExists                                                                                            = replace ? TRUE : FALSE;
+                rename->RootDirectory                                                                                              = parent;
+                rename->FileNameLength                                                                                             = static_cast<ULONG>(length * sizeof(wchar_t));
+                (void) Helpers::secure_memcpy(storage + offsetof(NativeRenameInformation, FileName), sizeof(storage) - offsetof(NativeRenameInformation, FileName), name, rename->FileNameLength);
+                IO_STATUS_BLOCK io          = {};
+                // FileRenameInformation is native information class 10. Use its
+                // 32-bit ABI value, not the SDK's truncated enum (only class 1).
+                constexpr ULONG information = 10;
+                // Include the complete fixed header, even for a one-character
+                // leaf whose counted payload ends before the struct's padding.
+                const auto      status      = SetInformation(file, &io, storage, static_cast<ULONG>(sizeof(NativeRenameInformation) + rename->FileNameLength), information);
+                return status < 0 ? VFSResult<void>::Fail(Detail::NativeWindowsError(StatusToError(status))) : VFSResult<void>::Ok();
             }
         };
 
@@ -786,18 +831,12 @@ namespace ZEngine::Core::VFS
             {
                 return closed_target;
             }
-            alignas(FILE_RENAME_INFO) uint8_t storage[offsetof(FILE_RENAME_INFO, FileName) + VFS_MAX_PATH * sizeof(wchar_t)] = {};
-            auto*                             rename                                                                         = new (storage) FILE_RENAME_INFO{};
-            rename->ReplaceIfExists                                                                                          = replace ? TRUE : FALSE;
-            rename->RootDirectory                                                                                            = target.Directory.Value;
-            rename->FileNameLength                                                                                           = static_cast<DWORD>(target.Length * sizeof(wchar_t));
-            (void) Helpers::secure_memcpy(storage + offsetof(FILE_RENAME_INFO, FileName), sizeof(storage) - offsetof(FILE_RENAME_INFO, FileName), target.Leaf, rename->FileNameLength);
             // One handle-relative filesystem rename, never copy/delete or an
             // existence-check replacement fallback. The destination is a leaf.
-            const auto renamed = SetFileInformationByHandle(source_handle.Value, FileRenameInfo, storage, static_cast<DWORD>(offsetof(FILE_RENAME_INFO, FileName) + rename->FileNameLength));
-            if (!renamed)
+            const auto renamed = Functions.Rename(source_handle.Value, target.Directory.Value, target.Leaf, target.Length, replace);
+            if (renamed.Failed())
             {
-                return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+                return renamed;
             }
             // Commit is the rename itself. A successful publication must not be
             // reported failed merely because this metadata handle's close fails.

@@ -636,7 +636,7 @@ namespace ZEngine::Cook::Tests
                 EXPECT_EQ(Diagnostics.Entries[0].Code, CookDiagnosticCode::OutputBusy);
                 return;
             }
-            ASSERT_TRUE(cooked.Succeeded());
+            ASSERT_TRUE(cooked.Succeeded()) << "Cook failed (VFS " << static_cast<uint32_t>(cooked.Error()) << "; writes " << Faults.Writes << ", reads " << Faults.Reads << ", object renames " << Faults.ObjectRenames << ", manifest renames " << Faults.ManifestRenames << ").";
             EXPECT_EQ(result.SceneCount, 1u);
             EXPECT_EQ(result.AssetCount, 4u);
             EXPECT_EQ(result.ObjectCount, 5u);

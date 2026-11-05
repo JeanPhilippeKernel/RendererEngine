@@ -454,6 +454,48 @@ namespace ZEngine::Tests
         EXPECT_TRUE(std::filesystem::is_empty(Directory.Path() / "original"));
     }
 
+    TEST_F(VFSDiskRootLeaseTest, RelativeRenameKeepsRetainedRootAndReplacementSemantics)
+    {
+        ASSERT_TRUE(Root.CreateDirExclusive(Relative("from")).Succeeded());
+        ASSERT_TRUE(Root.CreateDirExclusive(Relative("to")).Succeeded());
+        std::error_code error = {};
+        std::filesystem::rename(Directory.Path() / "output", Directory.Path() / "original", error);
+        ASSERT_FALSE(error);
+        ASSERT_TRUE(std::filesystem::create_directory(Directory.Path() / "output", error));
+
+        // Exercise both the minimum native rename buffer and a UTF-16
+        // surrogate pair. Neither destination is relative to the process CWD.
+        const auto source = Relative("from/a");
+        for (const auto name : {"to/b", reinterpret_cast<cstring>(u8"to/資料_𠮷")})
+        {
+            SCOPED_TRACE(name);
+            const auto target = Relative(name);
+            ASSERT_TRUE(VFS::WriteFileAtomically(Root, source, {OldContent, sizeof(OldContent)}).Succeeded());
+            const auto installed = Root.RenameNoReplace(source, target);
+            ASSERT_TRUE(installed.Succeeded()) << static_cast<uint32_t>(installed.Error());
+            EXPECT_FALSE(Root.Exists(source).Value());
+            ExpectBytes(Root, target, {OldContent, sizeof(OldContent)});
+            ASSERT_TRUE(VFS::WriteFileAtomically(Root, source, {NewContent, sizeof(NewContent)}).Succeeded());
+            EXPECT_EQ(Root.RenameNoReplace(source, target).Error(), VFS::VFSError::AlreadyExists);
+            ExpectBytes(Root, source, {NewContent, sizeof(NewContent)});
+            ExpectBytes(Root, target, {OldContent, sizeof(OldContent)});
+
+            const auto reader = Root.Open(target, VFS::VFSOpenFlags::Read | VFS::VFSOpenFlags::AllowReplace);
+            ASSERT_TRUE(reader.Succeeded());
+            const auto replaced = Root.Rename(source, target);
+            uint8_t    bytes[8] = {};
+            const auto read     = reader.Value()->ReadAll({bytes, sizeof(bytes)});
+            const auto closed   = Root.CloseChecked(reader.Value());
+            ASSERT_TRUE(replaced.Succeeded()) << static_cast<uint32_t>(replaced.Error());
+            ASSERT_TRUE(read.Succeeded());
+            EXPECT_EQ(read.Value(), sizeof(OldContent));
+            EXPECT_EQ(Helpers::secure_memcmp(bytes, sizeof(bytes), OldContent, sizeof(OldContent), sizeof(OldContent)), 0);
+            EXPECT_TRUE(closed.Succeeded());
+            ExpectBytes(Root, target, {NewContent, sizeof(NewContent)});
+        }
+        EXPECT_TRUE(std::filesystem::is_empty(Directory.Path() / "output"));
+    }
+
 #if !defined(_WIN32)
     TEST_F(VFSDiskRootLeaseTest, SymlinkComponentsAndLeafTargetsAreNeverFollowed)
     {
