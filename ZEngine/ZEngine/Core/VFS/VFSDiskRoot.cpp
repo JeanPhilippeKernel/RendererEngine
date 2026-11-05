@@ -397,7 +397,11 @@ namespace ZEngine::Core::VFS
         std::mutex                                        FileMutex        = {};
         VFSRootAccess                                     Access           = VFSRootAccess::ReadOnly;
 
-        VFSPublicationCapabilities                        Capabilities() const override
+        // Direct initialization avoids GCC 13's ICE lowering the aggregate
+        // default member initializer for this polymorphic inline file pool.
+        VFSDiskRoot() : Files() {}
+
+        VFSPublicationCapabilities Capabilities() const override
         {
             return RootCapabilities;
         }

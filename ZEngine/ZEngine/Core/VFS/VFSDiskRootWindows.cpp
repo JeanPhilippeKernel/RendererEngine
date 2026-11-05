@@ -333,12 +333,12 @@ namespace ZEngine::Core::VFS
             if (!GetFileInformationByHandleEx(handle, FileNameInfo, &name, sizeof(name)))
             {
                 const auto error = GetLastError();
-                return error == ERROR_MORE_DATA ? VFSResult<bool>::Ok(false) : VFSResult<bool>::Fail(Detail::NativeWindowsError(error));
+                return error == ERROR_MORE_DATA || error == ERROR_INSUFFICIENT_BUFFER ? VFSResult<bool>::Ok(false) : VFSResult<bool>::Fail(Detail::NativeWindowsError(error));
             }
             return VFSResult<bool>::Ok(name.Length == sizeof(wchar_t) && name.Name[0] == L'\\');
         }
 
-        VFSResult<void> OpenParentByIdentity(HANDLE handle, uint64_t volume, NativeHandle& output)
+        VFSResult<void> OpenParentByIdentity(HANDLE handle, uint64_t volume, FILE_ID_TYPE identity_type, NativeHandle& output)
         {
             NativeHandle directory = {};
             const auto   reopened  = ReopenDirectory(handle, directory);
@@ -370,9 +370,25 @@ namespace ZEngine::Core::VFS
             }
             FILE_ID_DESCRIPTOR descriptor = {};
             descriptor.dwSize             = sizeof(descriptor);
-            descriptor.Type               = ExtendedFileIdType;
-            descriptor.ExtendedFileId     = parent_id;
-            const auto parent             = OpenFileById(handle, &descriptor, DirectoryAccess, SharedMetadata, nullptr, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
+            descriptor.Type               = identity_type;
+            if (identity_type == FileIdType)
+            {
+                // NTFS uses the full 64-bit file reference, including its
+                // sequence number. The extended descriptor is for ReFS; do
+                // not silently truncate a non-NTFS identity to make it fit.
+                uint64_t high = 0;
+                (void) Helpers::secure_memcpy(&high, sizeof(high), parent_id.Identifier + sizeof(descriptor.FileId), sizeof(high));
+                if (high)
+                {
+                    return VFSResult<void>::Fail(VFSError::Corrupted);
+                }
+                (void) Helpers::secure_memcpy(&descriptor.FileId, sizeof(descriptor.FileId), parent_id.Identifier, sizeof(descriptor.FileId));
+            }
+            else
+            {
+                descriptor.ExtendedFileId = parent_id;
+            }
+            const auto parent = OpenFileById(handle, &descriptor, DirectoryAccess, SharedMetadata, nullptr, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
             if (parent == INVALID_HANDLE_VALUE)
             {
                 return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
@@ -391,7 +407,7 @@ namespace ZEngine::Core::VFS
             return VFSResult<void>::Ok();
         }
 
-        VFSResult<bool> AncestorsContain(HANDLE handle, const VFSFileIdentity& identity)
+        VFSResult<bool> AncestorsContain(HANDLE handle, const VFSFileIdentity& identity, FILE_ID_TYPE identity_type)
         {
             NativeHandle current   = {};
             const auto   duplicate = Duplicate(handle, current);
@@ -420,7 +436,7 @@ namespace ZEngine::Core::VFS
                     return VFSResult<bool>::Ok(false);
                 }
                 NativeHandle parent = {};
-                const auto   opened = OpenParentByIdentity(current.Value, own.Value().Volume, parent);
+                const auto   opened = OpenParentByIdentity(current.Value, own.Value().Volume, identity_type, parent);
                 if (opened.Failed())
                 {
                     return VFSResult<bool>::Fail(opened.Error());
@@ -439,7 +455,7 @@ namespace ZEngine::Core::VFS
             return VFSResult<bool>::Fail(VFSError::SizeLimitExceeded);
         }
 
-        VFSResult<void> CheckFilesystem(HANDLE directory)
+        VFSResult<void> CheckFilesystem(HANDLE directory, FILE_ID_TYPE& identity_type)
         {
             // Native local NTFS/ReFS rename and identity semantics are the
             // selected Windows profile. Do not advertise these guarantees for
@@ -454,6 +470,7 @@ namespace ZEngine::Core::VFS
             {
                 return VFSResult<void>::Fail(VFSError::Unsupported);
             }
+            identity_type                    = std::wcscmp(filesystem, L"NTFS") == 0 ? FileIdType : ExtendedFileIdType;
             FILE_REMOTE_PROTOCOL_INFO remote = {};
             if (GetFileInformationByHandleEx(directory, FileRemoteProtocolInfo, &remote, sizeof(remote)))
             {
@@ -491,13 +508,14 @@ namespace ZEngine::Core::VFS
         NativeFunctions                                      Functions        = {};
         NativeHandle                                         Anchor           = {};
         uint64_t                                             Volume           = 0;
+        FILE_ID_TYPE                                         IdentityType     = FileIdType;
         VFSPublicationCapabilities                           RootCapabilities = {};
         Containers::FixedArray<VFSDiskFile, MaxOpenFiles>    Files            = {};
         Containers::FixedArray<bool, MaxOpenFiles>           Used             = {};
         std::mutex                                           FileMutex        = {};
         VFSRootAccess                                        Access           = VFSRootAccess::ReadOnly;
 
-        static VFSResult<Helpers::Scope<IVFSRootOperations>> Create(IVFSRootProvider& provider, const NativeFunctions& functions, NativeHandle& anchor, uint64_t volume, VFSRootAccess access, VFSPublicationCapabilities capabilities)
+        static VFSResult<Helpers::Scope<IVFSRootOperations>> Create(IVFSRootProvider& provider, const NativeFunctions& functions, NativeHandle& anchor, uint64_t volume, FILE_ID_TYPE identity_type, VFSRootAccess access, VFSPublicationCapabilities capabilities)
         {
             using Result = VFSResult<Helpers::Scope<IVFSRootOperations>>;
             Helpers::Scope<VFSDiskRoot> root(new (std::nothrow) VFSDiskRoot());
@@ -509,6 +527,7 @@ namespace ZEngine::Core::VFS
             root->Functions = functions;
             root->Anchor.Reset(anchor.Release());
             root->Volume           = volume;
+            root->IdentityType     = identity_type;
             root->Access           = access;
             root->RootCapabilities = capabilities;
             return Result::Ok(std::move(root));
@@ -530,7 +549,7 @@ namespace ZEngine::Core::VFS
             }
             NativeHandle anchor = {};
             const auto   walked = WalkDirectories(Functions, Anchor.Value, Volume, path.CStr(), path.Length(), false, anchor);
-            return walked.Succeeded() ? Create(*Provider, Functions, anchor, Volume, Access, RootCapabilities) : VFSResult<Helpers::Scope<IVFSRootOperations>>::Fail(walked.Error());
+            return walked.Succeeded() ? Create(*Provider, Functions, anchor, Volume, IdentityType, Access, RootCapabilities) : VFSResult<Helpers::Scope<IVFSRootOperations>>::Fail(walked.Error());
         }
 
         VFSResult<IVFSFile*> Open(const VFSRelativePath& path, VFSOpenFlags flags) override
@@ -662,8 +681,8 @@ namespace ZEngine::Core::VFS
             {
                 return VFSResult<bool>::Ok(false);
             }
-            const auto contained = AncestorsContain(other->Anchor.Value, own.Value());
-            return contained.Failed() || contained.Value() ? contained : AncestorsContain(Anchor.Value, theirs.Value());
+            const auto contained = AncestorsContain(other->Anchor.Value, own.Value(), other->IdentityType);
+            return contained.Failed() || contained.Value() ? contained : AncestorsContain(Anchor.Value, theirs.Value(), IdentityType);
         }
 
         VFSResult<void> CreateDir(const VFSRelativePath& path, bool exclusive) override
@@ -886,12 +905,13 @@ namespace ZEngine::Core::VFS
             {
                 return Result::Fail(walked.Error());
             }
-            const auto supported = CheckFilesystem(root.Value);
+            FILE_ID_TYPE identity_type = FileIdType;
+            const auto   supported     = CheckFilesystem(root.Value, identity_type);
             if (supported.Failed())
             {
                 return Result::Fail(supported.Error());
             }
-            return VFSDiskRoot::Create(*this, Functions, root, own.Value().Identity.Volume, access, {.BackendIdentity = BackendIdentity(), .Guarantees = access == VFSRootAccess::ReadOnly ? VFS_READ_GUARANTEES : VFS_PUBLICATION_GUARANTEES | VFS_READ_GUARANTEES});
+            return VFSDiskRoot::Create(*this, Functions, root, own.Value().Identity.Volume, identity_type, access, {.BackendIdentity = BackendIdentity(), .Guarantees = access == VFSRootAccess::ReadOnly ? VFS_READ_GUARANTEES : VFS_PUBLICATION_GUARANTEES | VFS_READ_GUARANTEES});
         }
     };
 

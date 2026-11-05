@@ -843,6 +843,34 @@ namespace ZEngine::Tests
         EXPECT_FALSE(same.Overlaps(sibling).Value());
     }
 
+    TEST_F(VFSDiskRootLeaseTest, PhysicalOverlapPreservesSiblingAndAncestorIdentityAfterRename)
+    {
+        ASSERT_TRUE(Root.CreateDirExclusive(Relative("branch")).Succeeded());
+        ASSERT_TRUE(Root.CreateDirExclusive(Relative("branch/left")).Succeeded());
+        ASSERT_TRUE(Root.CreateDirExclusive(Relative("branch/right")).Succeeded());
+        VFS::VFSReadRootLease parent = {}, left = {}, right = {};
+        ASSERT_TRUE(Context.AcquireReadRoot(RootPath("/assets/output/branch"), &parent).Succeeded());
+        ASSERT_TRUE(Context.AcquireReadRoot(RootPath("/assets/output/branch/left"), &left).Succeeded());
+        ASSERT_TRUE(Context.AcquireReadRoot(RootPath("/assets/output/branch/right"), &right).Succeeded());
+        const auto expect_overlap = [](const VFS::VFSReadRootLease& first, const VFS::VFSReadRootLease& second, bool expected) {
+            const auto overlap = first.Overlaps(second);
+            ASSERT_TRUE(overlap.Succeeded()) << "Native ancestry check failed (VFS " << static_cast<uint32_t>(overlap.Error()) << ").";
+            EXPECT_EQ(overlap.Value(), expected);
+        };
+        expect_overlap(left, right, false);
+        expect_overlap(right, left, false);
+        expect_overlap(parent, left, true);
+        expect_overlap(right, parent, true);
+
+        // Native anchors, not saved paths, must identify each ancestor. On
+        // Windows this also exercises the filesystem-specific file-ID reopen.
+        ASSERT_TRUE(Root.Rename(Relative("branch"), Relative("moved")).Succeeded());
+        expect_overlap(left, right, false);
+        expect_overlap(right, left, false);
+        expect_overlap(parent, left, true);
+        expect_overlap(right, parent, true);
+    }
+
     TEST_F(VFSDiskRootLeaseTest, ReadLeaseSurvivesFacadeArenaDestructionAndRootPathReplacement)
     {
         ASSERT_TRUE(VFS::WriteFileAtomically(Root, Relative("asset"), {OldContent, sizeof(OldContent)}).Succeeded());

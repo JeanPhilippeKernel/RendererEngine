@@ -555,7 +555,8 @@ namespace ZEngine::Cook::Tests
                 { "assets", &Files,         Path("/assets")},
                 {"envmaps", &Files, Path("/_cache/envmaps")},
             };
-            ASSERT_TRUE(owner.Initialize(Allocator, roots).Succeeded());
+            const auto initialized = owner.Initialize(Allocator, roots);
+            ASSERT_TRUE(initialized.Succeeded()) << "Frozen input root initialization failed (VFS " << static_cast<uint32_t>(initialized.Error()) << ").";
             CookFrozenInputSource source(owner);
             CookAdapterRegistry   adapters    = {};
             const CookAdapterFns  functions[] = {CookEnvironmentAdapter(), CookMaterialAdapter(), CookMeshAdapter(), CookTextureAdapter()};
