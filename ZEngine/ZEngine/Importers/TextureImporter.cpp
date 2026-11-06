@@ -3,7 +3,7 @@
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/ZEngineDef.h>
 
-// stb_image implementation is defined once in RenderResourceManager.cpp.
+// Shared CPU implementation lives in Importers/ImageCodec.cpp.
 #include <stb/stb_image.h>
 
 namespace ZEngine::Importers
@@ -16,7 +16,9 @@ namespace ZEngine::Importers
     bool TextureImporter::CanImport(const char* extension) const
     {
         if (!extension)
+        {
             return false;
+        }
         return Helpers::secure_strcmp(extension, "png") == 0 || Helpers::secure_strcmp(extension, "jpg") == 0 || Helpers::secure_strcmp(extension, "jpeg") == 0 || Helpers::secure_strcmp(extension, "bmp") == 0 || Helpers::secure_strcmp(extension, "tga") == 0 || Helpers::secure_strcmp(extension, "gif") == 0 || Helpers::secure_strcmp(extension, "psd") == 0 || Helpers::secure_strcmp(extension, "pic") == 0;
     }
 
@@ -30,9 +32,13 @@ namespace ZEngine::Importers
         char        native[MAX_FILE_PATH_COUNT] = {};
         const char* working_space               = Managers::AssetManager::Instance() ? Managers::AssetManager::Instance()->CurrentWorkingSpacePath : "";
         if (working_space && working_space[0] != '\0')
+        {
             path.ResolveNative(working_space, native, sizeof(native));
+        }
         else
+        {
             path.ToNative(native, sizeof(native));
+        }
 
         int w = 0, h = 0, ch = 0;
         if (!stbi_info(native, &w, &h, &ch))

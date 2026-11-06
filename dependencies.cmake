@@ -1,5 +1,19 @@
 include(FetchContent)
 
+# Portable streaming SHA-256 for content-addressed cook objects. Exact upstream
+# revision; no platform crypto/runtime dependency and no heap allocation. The
+# inspected upstream source is dual Unlicense/0BSD; use the 0BSD option.
+FetchContent_Declare(
+  ze_sha256
+  GIT_REPOSITORY https://github.com/amosnier/sha-2.git
+  GIT_TAG 565f65009bdd98267361b17d50cddd7c9beb3e6c
+)
+FetchContent_MakeAvailable(ze_sha256)
+add_library(ze_sha256 STATIC ${ze_sha256_SOURCE_DIR}/sha-256.c)
+set_target_properties(ze_sha256 PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+target_include_directories(ze_sha256 PUBLIC ${ze_sha256_SOURCE_DIR})
+install(FILES ${ze_sha256_SOURCE_DIR}/LICENSE.md DESTINATION licenses/sha-2)
+
 # GLFW 3.5 can include both native Linux backends and selects the active one
 # at runtime.  Clear the pre-3.4 cache option so an existing build directory
 # can upgrade without GLFW rejecting its old GLFW_USE_WAYLAND entry.
@@ -74,6 +88,23 @@ function(zengine_make_libyaml_available)
   set(BUILD_TESTING OFF)
   set(BUILD_SHARED_LIBS OFF)
   FetchContent_MakeAvailable(libyaml)
+  # Upstream has no allocator hooks. Wrap just api.c, the single allocation
+  # boundary in pinned 0.2.5, without editing fetched sources or renaming libc
+  # declarations. The bridge lives in yaml itself so standalone consumers work.
+  get_target_property(yaml_sources yaml SOURCES)
+  if(NOT "src/api.c" IN_LIST yaml_sources)
+    message(FATAL_ERROR "libyaml source layout changed; review the checked allocator integration")
+  endif()
+  list(REMOVE_ITEM yaml_sources src/api.c)
+  list(TRANSFORM yaml_sources PREPEND "${libyaml_SOURCE_DIR}/")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CMake/YAMLAPI.c.in"
+    "${libyaml_BINARY_DIR}/EngineYAMLAPI.c" @ONLY)
+  set_property(TARGET yaml PROPERTY SOURCES ${yaml_sources})
+  target_sources(yaml PRIVATE "${libyaml_BINARY_DIR}/EngineYAMLAPI.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ZEngine/ZEngine/Core/Serialization/YAMLAllocation.cpp")
+  target_include_directories(yaml PRIVATE "${libyaml_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ZEngine")
+  target_compile_features(yaml PRIVATE cxx_std_20)
 endfunction()
 zengine_make_libyaml_available()
 
@@ -266,6 +297,31 @@ FetchContent_MakeAvailable(
   fastgltf
   )
 
+if(APPLE)
+  # These dependency targets link only system libraries in this configuration.
+  # Do not inherit the root's absolute install rpath: the frameworks do not need
+  # it, and adding it at install time can exceed their Mach-O header capacity.
+  # Consumers locate the @rpath install IDs through their own loader-relative
+  # paths. Keep fetched sources untouched and configure their real targets.
+  foreach(_system_dependency IN ITEMS freetype vulkan vulkan-framework)
+    if(TARGET ${_system_dependency})
+      set_target_properties(${_system_dependency} PROPERTIES INSTALL_RPATH "")
+    endif()
+  endforeach()
+
+  # Upstream install rules precede these hooks and can edit load commands.
+  foreach(_installed_library IN ITEMS vulkan SPIRV-Tools-shared)
+    if(TARGET ${_installed_library})
+      zengine_sign_installed_target(${_installed_library} "${CMAKE_INSTALL_LIBDIR}")
+    endif()
+  endforeach()
+  foreach(_installed_tool IN ITEMS spirv-cross glslang-standalone spirv-remap)
+    if(TARGET ${_installed_tool})
+      zengine_sign_installed_target(${_installed_tool} "${CMAKE_INSTALL_BINDIR}")
+    endif()
+  endforeach()
+endif()
+
 # TinyEXR's bundled CMake project declares another target named miniz. Fetch
 # only its source instead, then build it against the Miniz target already used
 # by the engine.
@@ -339,6 +395,7 @@ target_link_libraries(External_libs
          meshoptimizer
          freetype
          tlsf
+         ze_sha256
 )
 
 if(ZENGINE_TRACY)

@@ -1,0 +1,8 @@
+#pragma once
+#include <ZEngine/Core/Containers/Strings.h>
+
+namespace ZEngine::Cook::Tests
+{
+    inline const Core::Containers::StringView ManifestGolden        = R"manifest(@COOK_MANIFEST_GOLDEN@)manifest";
+    inline const Core::Containers::StringView ManifestNegativeCases = R"negative(@COOK_MANIFEST_NEGATIVE@)negative";
+} // namespace ZEngine::Cook::Tests

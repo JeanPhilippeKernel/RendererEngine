@@ -90,7 +90,9 @@ namespace Tetragrama
             ZEngine::Core::Containers::FixedArray<wchar_t, VFS_MAX_PATH> native = {};
             const int                                                    count  = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), native.data(), static_cast<int>(native.size()));
             if (count <= 0)
+            {
                 return false;
+            }
             // Native UTF-16 construction avoids locale-dependent conversion
             // and its encoding exceptions in std::filesystem's narrow overload.
             output.assign(native.data(), native.data() + count);
@@ -116,11 +118,19 @@ namespace Tetragrama
             ZEngine::Core::Containers::FixedArray<char, VFS_MAX_PATH> utf8  = {};
             const int                                                 count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, native.data(), static_cast<int>(native.size()), utf8.data(), static_cast<int>(utf8.size() - 1), nullptr, nullptr);
             if (count <= 0)
+            {
                 return false;
+            }
             if (generic)
+            {
                 for (int i = 0; i < count; ++i)
+                {
                     if (utf8[i] == '\\')
+                    {
                         utf8[i] = '/';
+                    }
+                }
+            }
             output.assign(utf8.data(), static_cast<size_t>(count));
 #else
             (void) generic;
@@ -340,8 +350,8 @@ namespace Tetragrama
             SceneDiagnosticError(diagnostics, "Scene name exceeds the source document byte limit");
             return false;
         }
-        SceneDocumentSettings settings = {.UUID = owner.UUID, .Name = std::string(name), .Grid = owner.AuthoredGrid, .Sky = owner.Sky};
-        SceneDocument         document = {};
+        SceneDocumentSettingsView settings = {.UUID = owner.UUID, .Name = name, .Grid = owner.AuthoredGrid, .Sky = owner.Sky};
+        SceneDocument             document = {};
         if (!SceneDocument::Capture(*session.Scene(), settings, schemas, &document, diagnostics))
         {
             return false;

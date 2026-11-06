@@ -1,0 +1,12 @@
+[
+  {"path":"_cache/envmaps/sky.zenvmap","sha256":"fd2fea01f7f4113fdffcb873ee6033a85c64c7cbf99014da302efd65eac73cda","bytes":168},
+  {"path":"assets/material.zematerial","sha256":"fed4e37fa863a27065fc2a89233ce33e8b2e3434b4b694d2396e02394de38854","bytes":726},
+  {"path":"assets/material.zematerial.meta","sha256":"f4cf2b22fcaf5c150c378178cdf6a0ed91d7faafca4ff0267d3207374db0ecff","bytes":91},
+  {"path":"assets/pixel.bmp","sha256":"a24f66ba185313ccdfedd7e7bf7e24a769b9ef19b0d9ca99e7ee05e73fe0e414","bytes":58},
+  {"path":"assets/pixel.bmp.meta","sha256":"4bba82709bada2e919f4c4429bfa407032270db6a7dc083af73c76ebe3c58318","bytes":90},
+  {"path":"assets/sky.hdr","sha256":"5d3ee90c1f09faaf4d02f5f4888a4b530c68a8afeb9ed931c1c501f95f7f504d","bytes":53},
+  {"path":"assets/sky.hdr.meta","sha256":"575c97b55f0fdb30f498c8b1e25a6ce22f54d0bb974f8b36c2d9975c0a913aad","bytes":427},
+  {"path":"assets/triangle.zemesh","sha256":"814d7cc8d3a976a3aa6f32bdc8a3600bf2d87c93b214f6c1e9f37c2071869453","bytes":481},
+  {"path":"assets/triangle.zemesh.meta","sha256":"981ac3f1ab6b511c425b467eef51f0334c479c929a646d1d52933f9bd0a4ab6e","bytes":87},
+  {"path":"scenes/scène_東京.scene","sha256":"15b123bf850bb7760da87c1c111d67ba921181bce75400ca379627ccb445898d","bytes":2746}
+]

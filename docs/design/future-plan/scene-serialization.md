@@ -219,6 +219,11 @@ or pointer-sized memory dumps.
 
 ## 9. Binary cook path
 
+The next orchestration milestone is the
+[scene cooker review proposal](scene-cooker.md) (#718). It specifies imported
+asset closure, incremental keys, and immutable-object/manifest publication;
+this section alone is not a cooker implementation contract.
+
 Cook consumes validated YAML source and produces a runtime artifact:
 
 ~~~text

@@ -10,6 +10,8 @@ not define shipped behavior. Implemented contracts belong in the
 
 - [Production execution plan](../design/execution-plan.md)
 - [Scene serialization](../design/future-plan/scene-serialization.md)
+- [Scene cooker](../design/future-plan/scene-cooker.md)
+- [Scene cooker v1 contracts and wire fixtures](../design/future-plan/scene-cooker-contracts.md)
 - [Editor selection](../design/future-plan/editor-entity-selection.md)
 - [Editor undo / redo](../design/future-plan/editor-undo-redo.md)
 - [Editor play mode](../design/future-plan/editor-play-mode.md)

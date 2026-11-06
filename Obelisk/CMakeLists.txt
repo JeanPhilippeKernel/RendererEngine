@@ -55,6 +55,11 @@ if (TARGET CopyEngineSettings)
     add_dependencies(${TARGET_NAME} CopyEngineSettings)
 endif()
 
-set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
+if(APPLE)
+    set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH "@loader_path/../lib")
+else()
+    set_target_properties(${TARGET_NAME} PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib)
+endif()
 
 install(TARGETS ${TARGET_NAME} DESTINATION bin)
+zengine_sign_installed_target(${TARGET_NAME} bin)

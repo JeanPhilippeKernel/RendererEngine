@@ -251,6 +251,32 @@ namespace ZEngine::Core::Containers
             }
         }
 
+        /// Fallible arena-backed rehash for value-like entries. Existing keys and
+        /// values survive failure. No growth occurs until the new index exists.
+        [[nodiscard]] bool try_reserve(size_type slot_capacity)
+        {
+            static_assert(std::is_trivially_copyable_v<Entry>);
+            if (slot_capacity <= capacity())
+            {
+                return true;
+            }
+            if (m_slab || !m_allocator)
+            {
+                return false;
+            }
+            UnorderedHashMap replacement = {};
+            if (!replacement.try_init(m_allocator, slot_capacity))
+            {
+                return false;
+            }
+            for (const auto& entry : *this)
+            {
+                replacement.insert(entry.first, entry.second);
+            }
+            *this = std::move(replacement);
+            return true;
+        }
+
         iterator begin()
         {
             return {m_entries.data(), 0, capacity()};

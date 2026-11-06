@@ -64,9 +64,13 @@ TEST_F(HashMapTest, CheckedInitializationRoundsCapacityAndReplacesPreviousEntrie
     EXPECT_TRUE(map.empty());
     EXPECT_EQ(map.find(7), nullptr);
     for (int i = 0; i < 16; ++i)
+    {
         map.insert(i, i * 2);
+    }
     for (int i = 0; i < 16; ++i)
+    {
         EXPECT_EQ(*map.find(i), i * 2);
+    }
 }
 
 TEST_F(HashMapTest, CapacityAlwaysPowerOfTwo)
@@ -190,7 +194,9 @@ TEST_F(HashMapTest, ExplicitReserveAndBulkInsert)
     map.reserve(200);
 
     for (int i = 0; i < 100; ++i)
+    {
         map.insert(i, i * 2);
+    }
 
     EXPECT_EQ(map.size(), 100u);
     for (int i = 0; i < 100; ++i)
@@ -231,17 +237,25 @@ TEST_F(HashMapTest, TombstoneReuse_RemoveAllThenReinsert)
     UnorderedHashMap<int, int> map;
     map.init(&manager.MainArena, 64);
     for (int i = 0; i < 20; ++i)
+    {
         map.insert(i, i);
+    }
     for (int i = 0; i < 20; ++i)
+    {
         map.remove(i);
+    }
     EXPECT_EQ(map.size(), 0u);
 
     for (int i = 0; i < 20; ++i)
+    {
         map.insert(i + 100, i + 100);
+    }
 
     EXPECT_EQ(map.size(), 20u);
     for (int i = 0; i < 20; ++i)
+    {
         EXPECT_EQ(*map.find(i + 100), i + 100);
+    }
 }
 
 TEST_F(HashMapTest, DuplicateInsertDoesNotChangeSize)
@@ -271,15 +285,23 @@ TEST_F(HashMapTest, ClearThenReuseMap)
     UnorderedHashMap<int, int> map;
     map.init(&manager.MainArena, 32);
     for (int i = 0; i < 10; ++i)
+    {
         map.insert(i, i);
+    }
     map.clear();
     for (int i = 100; i < 110; ++i)
+    {
         map.insert(i, i * 2);
+    }
     EXPECT_EQ(map.size(), 10u);
     for (int i = 100; i < 110; ++i)
+    {
         EXPECT_EQ(*map.find(i), i * 2);
+    }
     for (int i = 0; i < 10; ++i)
+    {
         EXPECT_FALSE(map.contains(i));
+    }
 }
 
 TEST_F(HashMapTest, IteratorOnEmptyMap)
@@ -288,7 +310,9 @@ TEST_F(HashMapTest, IteratorOnEmptyMap)
     map.init(&manager.MainArena, 16);
     int count = 0;
     for (auto [k, v] : map)
+    {
         ++count;
+    }
     EXPECT_EQ(count, 0);
 }
 
@@ -297,9 +321,13 @@ TEST_F(HashMapTest, IteratorSkipsDeletedSlots)
     UnorderedHashMap<int, int> map;
     map.init(&manager.MainArena, 32);
     for (int i = 0; i < 10; ++i)
+    {
         map.insert(i, i);
+    }
     for (int i = 0; i < 10; i += 2)
+    {
         map.remove(i);
+    }
 
     std::unordered_set<int> seen;
     for (auto [k, v] : map)
@@ -309,7 +337,9 @@ TEST_F(HashMapTest, IteratorSkipsDeletedSlots)
     }
     EXPECT_EQ(seen.size(), 5u);
     for (int i = 1; i < 10; i += 2)
+    {
         EXPECT_TRUE(seen.count(i));
+    }
 }
 
 TEST_F(HashMapTest, CStringKeyContentEquality)
@@ -330,7 +360,9 @@ TEST_F(HashMapTest, LargeBatch_906Entries)
     map.init(&manager.MainArena, 906 * 2 + 16);
 
     for (uint32_t i = 0; i < 906; ++i)
+    {
         map.insert(i, i * 3);
+    }
 
     EXPECT_EQ(map.size(), 906u);
     for (uint32_t i = 0; i < 906; ++i)
@@ -348,7 +380,9 @@ TEST_F(HashMapTest, CollisionCluster_AllHashToSameBucket)
 
     const int stride = 64;
     for (int i = 0; i < 20; ++i)
+    {
         map.insert(i * stride, i);
+    }
 
     for (int i = 0; i < 20; ++i)
     {
@@ -387,4 +421,42 @@ TEST_F(HashMapTest, RemoveHeadOfCollisionChain)
     EXPECT_FALSE(map.contains(0));
     EXPECT_TRUE(map.contains(64));
     EXPECT_EQ(*map.find(64), 6400);
+}
+
+TEST_F(HashMapTest, CheckedReservePreservesLiveKeysAndRemovesTombstones)
+{
+    UnorderedHashMap<uint32_t, uint32_t> map = {};
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 16));
+    for (uint32_t i = 0; i < 10; ++i)
+    {
+        map.insert(i, i * 3);
+    }
+    map.remove(4);
+    ASSERT_TRUE(map.try_reserve(64));
+    EXPECT_EQ(map.capacity(), 64u);
+    EXPECT_EQ(map.size(), 9u);
+    EXPECT_EQ(map.find(4), nullptr);
+    for (uint32_t i = 0; i < 10; ++i)
+    {
+        if (i != 4)
+        {
+            ASSERT_NE(map.find(i), nullptr);
+            EXPECT_EQ(*map.find(i), i * 3);
+        }
+    }
+}
+
+TEST_F(HashMapTest, CheckedReserveFailurePreservesIndexAndArena)
+{
+    UnorderedHashMap<uint32_t, uint32_t> map = {};
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 16));
+    map.insert(7, 21);
+    auto* const value  = map.find(7);
+    const auto  offset = manager.MainArena.m_current_offset;
+    EXPECT_FALSE(map.try_reserve(SIZE_MAX));
+    EXPECT_EQ(manager.MainArena.m_current_offset, offset);
+    EXPECT_EQ(map.capacity(), 16u);
+    EXPECT_EQ(map.find(7), value);
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(*value, 21u);
 }

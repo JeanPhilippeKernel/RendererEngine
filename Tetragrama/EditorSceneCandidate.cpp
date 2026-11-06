@@ -152,7 +152,7 @@ namespace Tetragrama
             render.Instances.push(instance);
         });
 
-        render.Name         = settings->Name.c_str();
+        render.Name         = settings->Name.data(); // NUL-terminated text owned by the retained document.
         render.UUID         = settings->UUID;
         render.AuthoredGrid = settings->Grid;
         render.SyncGridFromAuthored();

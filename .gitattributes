@@ -3,6 +3,11 @@
 ###############################################################################
 * text=auto
 
+# Cooker golden/source snapshots are byte contracts on every checkout host.
+/ZEngine/tests/Cook/Fixtures/*.json text eol=lf
+/ZEngine/tests/Cook/Fixtures/source/**/*.scene text eol=lf
+/ZEngine/tests/Cook/Fixtures/source/**/*.zematerial text eol=lf
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

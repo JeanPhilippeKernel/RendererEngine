@@ -1,0 +1,17 @@
+{
+  "source": {
+    "path": "scenes/scène_東京.scene",
+    "sha256": "4f66d15eaacead72a359fd658bd6fcdca69282a11a35e7dc0038cc9df06ad590",
+    "bytes": 2904
+  },
+  "versions": [
+    {
+      "schema_version": 1,
+      "manifest_sha256": "53fb0471850d4b9209860e07aa1fcc9caa46a9958a2715db14dce154ca789d56"
+    },
+    {
+      "schema_version": 2,
+      "manifest_sha256": "9b760d3c5b1938dcbc6d269ad1d5621a59bfd27b41f7876ba5f98881d7520319"
+    }
+  ]
+}

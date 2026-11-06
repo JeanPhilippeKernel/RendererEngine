@@ -1,4 +1,5 @@
 #include <ZEngine/Core/Containers/FixedArray.h>
+#include <ZEngine/Core/Serialization/YAMLAllocation.h>
 #include <ZEngine/ECS/SceneYAML.h>
 #include <ZEngine/ECS/SceneYAMLReader.h>
 #include <yaml.h>
@@ -14,7 +15,9 @@ namespace ZEngine::ECS
             ~ParserLease()
             {
                 if (Initialized)
+                {
                     yaml_parser_delete(&Parser);
+                }
             }
         };
 
@@ -41,11 +44,19 @@ namespace ZEngine::ECS
                     case YAML_SCALAR_EVENT:
                     {
                         const auto& scalar = event.data.scalar;
-                        if (scalar.anchor || scalar.tag || scalar.length > m_limits.MaxScalarBytes)
+                        if (scalar.anchor || scalar.tag)
+                        {
                             return false;
+                        }
+                        if (scalar.length > m_limits.MaxScalarBytes)
+                        {
+                            return Limit();
+                        }
                         const std::string_view value(reinterpret_cast<const char*>(scalar.value), scalar.length);
                         if (value.find('\0') != std::string_view::npos)
+                        {
                             return false;
+                        }
                         const bool is_null = scalar.style == YAML_PLAIN_SCALAR_STYLE && (value.empty() || value == "~" || value == "null" || value == "Null" || value == "NULL");
                         return Append(is_null ? m_storage.Make(SceneYAML::NodeType::Null) : m_storage.Scalar(value));
                     }
@@ -66,6 +77,10 @@ namespace ZEngine::ECS
             {
                 return m_has_root && m_depth == 0;
             }
+            SceneDiagnosticCode Failure() const
+            {
+                return m_storage.Failure() != SceneDiagnosticCode::None ? m_storage.Failure() : m_failure;
+            }
 
         private:
             struct Frame
@@ -80,15 +95,30 @@ namespace ZEngine::ECS
             uint32_t                                m_depth    = 0;
             uint32_t                                m_nodes    = 0;
             bool                                    m_has_root = false;
+            SceneDiagnosticCode                     m_failure  = SceneDiagnosticCode::InvalidData;
 
-            bool                                    Append(const SceneYAML::Node& node)
+            bool                                    Limit()
             {
-                if (!m_storage.Good() || !node.IsDefined() || ++m_nodes > m_limits.MaxNodes)
+                m_failure = SceneDiagnosticCode::LimitExceeded;
+                return false;
+            }
+
+            bool Append(const SceneYAML::Node& node)
+            {
+                if (!m_storage.Good() || !node.IsDefined())
+                {
                     return false;
+                }
+                if (++m_nodes > m_limits.MaxNodes)
+                {
+                    return Limit();
+                }
                 if (m_depth == 0)
                 {
                     if (m_has_root)
+                    {
                         return false;
+                    }
                     Root.reset(node);
                     m_has_root = true;
                     return true;
@@ -97,19 +127,29 @@ namespace ZEngine::ECS
                 if (parent.Node.IsSequence())
                 {
                     if (++parent.Items > m_limits.MaxCollectionItems)
-                        return false;
+                    {
+                        return Limit();
+                    }
                     return m_storage.Append(parent.Node, node);
                 }
                 else if (!parent.PendingKey.IsDefined())
                 {
-                    if (!node.IsScalar() || ++parent.Items > m_limits.MaxCollectionItems)
+                    if (!node.IsScalar())
+                    {
                         return false;
+                    }
+                    if (++parent.Items > m_limits.MaxCollectionItems)
+                    {
+                        return Limit();
+                    }
                     parent.PendingKey = node;
                 }
                 else
                 {
                     if (!m_storage.AppendField(parent.Node, parent.PendingKey, node))
+                    {
                         return false;
+                    }
                     parent.PendingKey = {};
                 }
                 return true;
@@ -117,11 +157,19 @@ namespace ZEngine::ECS
 
             bool Start(SceneYAML::NodeType::value type, bool flow)
             {
-                if (m_depth >= m_limits.MaxDepth || (m_depth != 0 && m_stack[m_depth - 1].Node.IsMap() && !m_stack[m_depth - 1].PendingKey.IsDefined()))
+                if (m_depth != 0 && m_stack[m_depth - 1].Node.IsMap() && !m_stack[m_depth - 1].PendingKey.IsDefined())
+                {
                     return false;
+                }
+                if (m_depth >= m_limits.MaxDepth)
+                {
+                    return Limit();
+                }
                 const auto node = m_storage.Make(type, flow ? SceneYAML::EmitterStyle::Flow : SceneYAML::EmitterStyle::Block);
                 if (!Append(node))
+                {
                     return false;
+                }
                 m_stack[m_depth++] = {.Node = node};
                 return true;
             }
@@ -129,9 +177,13 @@ namespace ZEngine::ECS
             bool End(SceneYAML::NodeType::value type)
             {
                 if (m_depth == 0 || m_stack[m_depth - 1].Node.Type() != type || m_stack[m_depth - 1].PendingKey.IsDefined())
+                {
                     return false;
+                }
                 if (type == SceneYAML::NodeType::Map && !m_storage.UniqueKeys(m_stack[m_depth - 1].Node))
+                {
                     return false;
+                }
                 --m_depth;
                 return true;
             }
@@ -140,16 +192,27 @@ namespace ZEngine::ECS
 
     bool ReadSceneYAML(std::string_view source, const SceneDocumentLimits& limits, SceneYAML::Node* out, SceneDiagnostics* diagnostics)
     {
-        if (!out || !out->Owner() || !out->Owner()->Good() || source.empty() || source.size() > limits.MaxFileBytes || limits.MaxDepth == 0 || limits.MaxDepth > 32)
+        if (!out || !out->Owner() || !out->Owner()->Good() || limits.MaxDepth == 0 || limits.MaxDepth > 32)
         {
-            SceneDiagnosticError(diagnostics, "Invalid YAML source or tree limits.");
+            SceneDiagnosticError(diagnostics, "Invalid YAML destination or tree limits.", SceneDiagnosticCode::InvalidArgument);
+            return false;
+        }
+        if (source.empty() || source.size() > limits.MaxFileBytes)
+        {
+            SceneDiagnosticError(diagnostics, "YAML source is empty or exceeds its file limit.", source.empty() ? SceneDiagnosticCode::InvalidData : SceneDiagnosticCode::LimitExceeded);
+            return false;
+        }
+        Core::Memory::WorkingMemoryCharge fixed = {};
+        if (!fixed.TryAcquire(Core::Serialization::YAMLWorkingMemoryBudget(), sizeof(ParserLease) + sizeof(EventLease) + sizeof(BoundedTree) + sizeof(fixed)))
+        {
+            SceneDiagnosticError(diagnostics, "Fixed scene YAML parser state exceeds the working budget.", SceneDiagnosticCode::LimitExceeded);
             return false;
         }
         ParserLease parser = {};
         parser.Initialized = yaml_parser_initialize(&parser.Parser) != 0;
         if (!parser.Initialized)
         {
-            SceneDiagnosticError(diagnostics, "Cannot allocate scene YAML parser.");
+            SceneDiagnosticError(diagnostics, "Cannot allocate scene YAML parser.", SceneDiagnosticCode::AllocationFailed);
             return false;
         }
         yaml_parser_set_input_string(&parser.Parser, reinterpret_cast<const unsigned char*>(source.data()), source.size());
@@ -162,7 +225,9 @@ namespace ZEngine::ECS
             ~Transaction()
             {
                 if (!Keep)
+                {
                     Owner.Rollback(Checkpoint);
+                }
             }
         } transaction{storage, storage.Mark()};
         BoundedTree tree(storage, limits);
@@ -179,7 +244,7 @@ namespace ZEngine::ECS
             EventLease event = {};
             if (!yaml_parser_parse(&parser.Parser, &event.Event))
             {
-                SceneDiagnosticError(diagnostics, parser.Parser.problem ? parser.Parser.problem : "Scene YAML parsing failed.");
+                SceneDiagnosticError(diagnostics, parser.Parser.problem ? parser.Parser.problem : "Scene YAML parsing failed.", parser.Parser.error == YAML_MEMORY_ERROR ? SceneDiagnosticCode::AllocationFailed : SceneDiagnosticCode::InvalidData);
                 return false;
             }
             const auto type  = event.Event.type;
@@ -201,7 +266,9 @@ namespace ZEngine::ECS
                         stage = Stage::StreamEnd;
                     }
                     else
+                    {
                         valid = tree.Add(event.Event);
+                    }
                     break;
                 case Stage::StreamEnd:
                     if (type == YAML_STREAM_END_EVENT)
@@ -214,7 +281,7 @@ namespace ZEngine::ECS
             }
             if (!valid)
             {
-                SceneDiagnosticError(diagnostics, "Scene requires one bounded YAML document without duplicate keys, aliases, anchors or tags.");
+                SceneDiagnosticError(diagnostics, "Scene requires one bounded YAML document without duplicate keys, aliases, anchors or tags.", tree.Failure());
                 return false;
             }
         }

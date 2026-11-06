@@ -20,9 +20,12 @@ namespace ZEngine::Core::VFS
             Directory = 1
         };
 
-        Kind                             NodeKind = Kind::File;
-        VFSPath                          Path     = {};
-        Core::Containers::Array<uint8_t> Data     = {};
+        Kind                             NodeKind    = Kind::File;
+        VFSPath                          Path        = {};
+        Core::Containers::Array<uint8_t> Data        = {};
+        uint32_t                         WriterCount = 0;
+        uint32_t                         RootPins    = 0;
+        uint64_t                         Identity    = 0;
     };
 
     struct VFSMemoryFile final : public IVFSFile
@@ -30,25 +33,29 @@ namespace ZEngine::Core::VFS
         VFSMemoryFile() = default;
         ~VFSMemoryFile() override;
 
-        VFSResult<size_t>      Read(Core::Containers::ArrayView<uint8_t> buffer, uint64_t offset) override;
-        VFSResult<size_t>      Write(Core::Containers::ArrayView<const uint8_t> buffer, uint64_t offset) override;
-        VFSResult<uint64_t>    Size() const override;
-        VFSResult<VFSFileStat> Stat() const override;
-        VFSResult<void>        Flush() override;
-        const VFSPath&         Path() const override;
-        VFSResult<void>        Close() override;
+        VFSResult<size_t>          Read(Core::Containers::ArrayView<uint8_t> buffer, uint64_t offset) override;
+        VFSResult<size_t>          Write(Core::Containers::ArrayView<const uint8_t> buffer, uint64_t offset) override;
+        VFSResult<uint64_t>        Size() const override;
+        VFSResult<VFSFileStat>     Stat() const override;
+        VFSResult<VFSFileIdentity> Identity() const override;
+        VFSResult<void>            Flush() override;
+        const VFSPath&             Path() const override;
+        VFSResult<void>            Close() override;
 
-        VFSResult<void*>       MemoryMap(uint64_t& out_size);
+        VFSResult<void*>           MemoryMap(uint64_t& out_size);
 
     private:
-        friend struct VFSMemoryBackend;
+        friend struct VFSMemoryStorage;
 
-        MemNode*                            m_node   = nullptr;
-        VFSOpenFlags                        m_flags  = VFSOpenFlags::None;
-        bool                                m_closed = false;
-        bool                                m_dirty  = false;
+        MemNode*                            m_node          = nullptr;
+        VFSOpenFlags                        m_flags         = VFSOpenFlags::None;
+        bool                                m_closed        = false;
+        bool                                m_dirty         = false;
+        bool                                m_snapshot      = false;
+        VFSPath                             m_path          = {};
+        VFSFileIdentity                     m_identity      = {};
 
-        std::shared_lock<std::shared_mutex> m_read_lock;
+        std::shared_lock<std::shared_mutex> m_read_lock     = {};
 
         Core::Containers::Array<uint8_t>    m_write_buf     = {};
         Memory::ArenaAllocator*             m_arena         = nullptr;
@@ -59,12 +66,22 @@ namespace ZEngine::Core::VFS
         VFSResult<void>                     Commit();
     };
 
+    struct VFSMemoryStorage;
+
     struct VFSMemoryBackend final : public IVFSBackend
     {
         VFSMemoryBackend();
         ~VFSMemoryBackend() override;
+        VFSMemoryBackend(const VFSMemoryBackend&)                                                        = delete;
+        VFSMemoryBackend&                                             operator=(const VFSMemoryBackend&) = delete;
 
         void                                                          Initialize(Memory::ArenaAllocator* arena);
+        // Explicitly owned, bounded storage. Metadata/file wrappers use reusable
+        // pools; file contents/snapshots use TLSF within this same backing arena.
+        // Failure preserves the current backend. Borrowed Initialize cannot pin
+        // an external arena and therefore intentionally does not support roots.
+        [[nodiscard]] VFSResult<void>                                 InitializeOwned(size_t storage_bytes, uint32_t max_nodes);
+        Helpers::Ref<IVFSRootProvider>                                RootProvider() const override;
 
         [[nodiscard]] VFSResult<IVFSFile*>                            Open(const VFSPath& relative_path, VFSOpenFlags flags) override;
         void                                                          Close(IVFSFile* file) override;
@@ -82,21 +99,8 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<void>                                 WriteFile(const VFSPath& path, Core::Containers::ArrayView<const uint8_t> data);
 
     private:
-        Core::Containers::UnorderedHashMap<cstring, MemNode*> m_nodes;
-        mutable std::shared_mutex                             m_mutex;
-        Memory::ArenaAllocator*                               m_arena     = nullptr;
-
-        Memory::PoolAllocator                                 m_file_pool = {};
-        std::mutex                                            m_file_pool_mutex;
-
-        MemNode*                                              FindNode(const VFSPath& path);
-        const MemNode*                                        FindNode(const VFSPath& path) const;
-        MemNode*                                              CreateNode(const VFSPath& path, MemNode::Kind kind);
-        void                                                  EnsureParentExists(const VFSPath& path);
-        bool                                                  HasChildren(const VFSPath& dir) const;
-
-        VFSMemoryFile*                                        AllocFile();
-        void                                                  FreeFile(IVFSFile* file);
+        // Initialize out of line, where the intrusive pointee is complete.
+        Helpers::Ref<VFSMemoryStorage> m_storage;
     };
 
 } // namespace ZEngine::Core::VFS

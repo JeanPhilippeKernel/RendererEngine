@@ -1,0 +1,10 @@
+/* Keep the pinned upstream source intact. Only its API translation unit uses
+ * these allocator names, after libc declarations have already been included.
+ * This catches yaml_strdup too; overriding yaml_malloc alone would miss it. */
+#include <yaml.h>
+#include <ZEngine/Core/Serialization/YAMLAllocation.h>
+#define malloc ZEngineYAMLAllocate
+#define realloc ZEngineYAMLReallocate
+#define free ZEngineYAMLFree
+#define strdup ZEngineYAMLDuplicate
+#include "@libyaml_SOURCE_DIR@/src/api.c"

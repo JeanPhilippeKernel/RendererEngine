@@ -43,12 +43,25 @@ namespace ZEngine::ECS
 
     struct SceneReference
     {
-        SceneReferenceKind Kind = SceneReferenceKind::Entity;
-        uuids::uuid        UUID = {};
+        SceneReferenceKind Kind         = SceneReferenceKind::Entity;
+        uuids::uuid        UUID         = {};
+        // Schema-owned descriptors, borrowed for the reference visitor call.
+        // Legacy consumers may omit them; typed asset consumers validate both.
+        cstring            FieldKey     = nullptr;
+        cstring            AssetKindKey = nullptr;
     };
 
+    struct SceneReferenceOccurrence
+    {
+        SceneReference Reference  = {};
+        uuids::uuid    EntityUUID = {};
+        cstring        SchemaKey  = nullptr;
+    };
+
+    using SceneReferenceOccurrenceVisitorFn = bool (*)(void* visitor_context, const SceneReferenceOccurrence& occurrence);
+
     // Returning false stops the walk.
-    using SceneReferenceVisitorFn = bool (*)(void* visitor_context, const SceneReference& reference);
+    using SceneReferenceVisitorFn           = bool (*)(void* visitor_context, const SceneReference& reference);
 
     struct SceneUUIDRemap
     {
@@ -111,24 +124,30 @@ namespace ZEngine::ECS
     class SceneComponentSchemaRegistry
     {
     public:
-        void                        Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity = 64);
-        [[nodiscard]] bool          IsInitialized() const;
+        void                                              Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity = 64);
+        [[nodiscard]] bool                                IsInitialized() const;
 
         // Copies Key and every field key into the registry arena
-        [[nodiscard]] bool          Register(const SceneComponentSchemaDesc& schema, SceneDiagnostics* diagnostics);
+        [[nodiscard]] bool                                Register(const SceneComponentSchemaDesc& schema, SceneDiagnostics* diagnostics);
 
-        const SceneComponentSchema* FindByKey(cstring key) const;
-        const SceneComponentSchema* FindByRuntimeType(ComponentTypeID type) const;
+        const SceneComponentSchema*                       FindByKey(cstring key) const;
+        const SceneComponentSchema*                       FindByRuntimeType(ComponentTypeID type) const;
 
-        void                        ForEachCanonical(SceneSchemaVisitorFn visitor, void* ctx) const;
+        void                                              ForEachCanonical(SceneSchemaVisitorFn visitor, void* ctx) const;
 
-        [[nodiscard]] uint32_t      Count() const;
+        [[nodiscard]] uint32_t                            Count() const;
+        // Registry/arena family and callback contexts remain stable for readers.
+        // This is a const storage view, not permission to rewind or allocate.
+        [[nodiscard]] const Core::Memory::ArenaAllocator* StorageArena() const noexcept
+        {
+            return m_arena;
+        }
 
     private:
         cstring                                       CopyKey(cstring key);
 
-        Core::Containers::Array<SceneComponentSchema> m_schemas;
-        Core::Containers::Array<uint32_t>             m_canonical;
-        Core::Memory::ArenaAllocator*                 m_arena = nullptr;
+        Core::Containers::Array<SceneComponentSchema> m_schemas   = {};
+        Core::Containers::Array<uint32_t>             m_canonical = {};
+        Core::Memory::ArenaAllocator*                 m_arena     = nullptr;
     };
 } // namespace ZEngine::ECS

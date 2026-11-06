@@ -1,26 +1,10 @@
-// Route STBI allocation through the per-worker TLSFSlab when available so
-// stbi_load pixel buffers stay on the slab rather than the system heap.
-// Falls back to malloc/free/realloc on the main thread (slab = nullptr).
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
+#include <ZEngine/Importers/ImageCodec.h>
 #include <ZEngine/Profiling/Profiling.h>
-#include <cstdlib>
-#define STBI_MALLOC(sz)        (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->TryRealloc(nullptr, sz) : std::malloc(sz))
-#define STBI_REALLOC(p, newsz) (ZEngine::Helpers::GetWorkerSlab() ? ZEngine::Helpers::GetWorkerSlab()->TryRealloc(p, newsz) : std::realloc(p, newsz))
-#define STBI_FREE(p)                                    \
-    do                                                  \
-    {                                                   \
-        if (ZEngine::Helpers::GetWorkerSlab())          \
-            ZEngine::Helpers::GetWorkerSlab()->Free(p); \
-        else                                            \
-            std::free(p);                               \
-    } while (0)
-#define STB_IMAGE_IMPLEMENTATION
-#ifdef __GNUC__
-#define STBI_NO_SIMD
-#endif
 #include <stb/stb_image.h>
+#include <cstdlib>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -68,19 +52,25 @@ namespace ZEngine::Rendering
         uint64_t           ThumbnailChecksum(const uint8_t* bytes, size_t size, uint64_t hash = 14695981039346656037ull)
         {
             for (size_t i = 0; i < size; ++i)
+            {
                 hash = (hash ^ bytes[i]) * 1099511628211ull;
+            }
             return hash;
         }
         void StoreThumbnailInteger(uint8_t* bytes, uint64_t value, size_t count)
         {
             for (size_t i = 0; i < count; ++i)
+            {
                 bytes[i] = static_cast<uint8_t>(value >> (i * 8));
+            }
         }
         uint64_t LoadThumbnailInteger(const uint8_t* bytes, size_t count)
         {
             uint64_t value = 0;
             for (size_t i = 0; i < count; ++i)
+            {
                 value |= static_cast<uint64_t>(bytes[i]) << (i * 8);
+            }
             return value;
         }
         std::array<uint8_t, kThumbnailMetadataSize> ThumbnailMetadata(const RenderResourceManager::ThumbnailCacheIdentity& key, uint32_t width, uint32_t height)
@@ -111,14 +101,18 @@ namespace ZEngine::Rendering
             if (exponent <= 0)
             {
                 if (exponent < -10)
+                {
                     return sign;
+                }
 
                 mantissa             |= 0x0080'0000u;
                 const uint32_t shift  = static_cast<uint32_t>(14 - exponent);
                 return static_cast<uint16_t>(sign | ((mantissa + (1u << (shift - 1))) >> shift));
             }
             if (exponent >= 31)
+            {
                 return static_cast<uint16_t>(sign | 0x7C00u);
+            }
 
             return static_cast<uint16_t>(sign | (static_cast<uint32_t>(exponent) << 10) | ((mantissa + 0x0000'1000u) >> 13));
         }
@@ -165,7 +159,9 @@ namespace ZEngine::Rendering
                 const float ndot_light = std::max(0.0f, light_z);
                 const float ndot_half  = std::max(0.0f, half_z);
                 if (ndot_light <= 0.0f || ndot_half <= 0.0f)
+                {
                     continue;
+                }
 
                 const float geometry    = GeometrySchlickGGX(ndot_view, roughness) * GeometrySchlickGGX(ndot_light, roughness);
                 const float visibility  = (geometry * vdot_half) / std::max(1.0e-5f, ndot_half * ndot_view);
@@ -204,14 +200,18 @@ namespace ZEngine::Rendering
     uint8_t* RenderResourceManager::ReadThumbnailCache(const char* filename, uint32_t width, uint32_t height, const ThumbnailCacheIdentity& identity)
     {
         if (!filename || !filename[0] || !width || !height || width > kMaxThumbnailExtent || height > kMaxThumbnailExtent)
+        {
             return nullptr;
+        }
         FILE* file = std::fopen(filename, "rb");
         if (!file)
+        {
             return nullptr;
+        }
         bool       valid = std::fseek(file, 0, SEEK_END) == 0;
         const long size  = valid ? std::ftell(file) : -1;
         valid            = valid && size > static_cast<long>(kThumbnailMetadataSize) && size <= static_cast<long>(kMaxThumbnailPayload + kThumbnailMetadataSize) && std::fseek(file, 0, SEEK_SET) == 0;
-        auto* bytes      = valid ? static_cast<uint8_t*>(STBI_MALLOC(static_cast<size_t>(size))) : nullptr;
+        auto* bytes      = valid ? static_cast<uint8_t*>(Importers::ImageCodec::Allocate(static_cast<size_t>(size))) : nullptr;
         valid            = bytes && std::fread(bytes, 1, static_cast<size_t>(size), file) == static_cast<size_t>(size);
         std::fclose(file);
         uint8_t* pixels = nullptr;
@@ -227,9 +227,11 @@ namespace ZEngine::Rendering
             // Reject oversized headers before asking the decoder to allocate.
             valid = valid && stbi_info_from_memory(bytes, static_cast<int>(payload_size), &decoded_width, &decoded_height, &channels) && decoded_width == static_cast<int>(width) && decoded_height == static_cast<int>(height) && channels == 4;
             if (valid)
+            {
                 pixels = stbi_load_from_memory(bytes, static_cast<int>(payload_size), &decoded_width, &decoded_height, &channels, STBI_rgb_alpha);
+            }
         }
-        STBI_FREE(bytes);
+        Importers::ImageCodec::Free(bytes);
         return pixels;
     }
 
@@ -271,7 +273,9 @@ namespace ZEngine::Rendering
                 const auto write = +[](void* context, void* data, int size) {
                     auto& output = *static_cast<Writer*>(context);
                     if (size < 0 || output.Size + static_cast<size_t>(size) > kMaxThumbnailPayload || std::fwrite(data, 1, static_cast<size_t>(size), output.File) != static_cast<size_t>(size))
+                    {
                         output.Success = false;
+                    }
                     else
                     {
                         output.Checksum  = ThumbnailChecksum(static_cast<const uint8_t*>(data), static_cast<size_t>(size), output.Checksum);
@@ -291,7 +295,9 @@ namespace ZEngine::Rendering
                     published = !error;
                 }
                 if (!published)
+                {
                     std::filesystem::remove(temporary_path, error);
+                }
             }
         }
 
@@ -314,7 +320,9 @@ namespace ZEngine::Rendering
         m_fallback_cubemap              = {};
         m_fallback_environment_lighting = {};
         for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+        {
             tracked = {};
+        }
         m_texture_decode_tracker.Completions.clear();
 
         InitUploadPool();
@@ -334,16 +342,26 @@ namespace ZEngine::Rendering
         auto*              manager = static_cast<RenderResourceManager*>(context);
         const AssetRecord* record  = manager->m_registry->FindByUUID(uuid);
         if (!record || record->Type != AssetType::MESH)
+        {
             return;
+        }
 
         std::lock_guard map_lock(manager->m_uuid_map_mutex);
         std::lock_guard pending_lock(manager->m_pending_mutex);
         for (uint32_t i = 0; i < manager->m_uuid_to_buffer_count; ++i)
+        {
             if (manager->m_uuid_to_buffer[i].UUID == uuid)
+            {
                 return;
+            }
+        }
         for (uint32_t i = 0; i < manager->m_pending_count; ++i)
+        {
             if (manager->m_pending[i].UUID == uuid)
+            {
                 return;
+            }
+        }
 
         if (manager->m_pending_count >= MAX_PENDING)
         {
@@ -360,11 +378,15 @@ namespace ZEngine::Rendering
         for (uint32_t i = 0; i < manager->m_uuid_to_buffer_count; ++i)
         {
             if (manager->m_uuid_to_buffer[i].UUID != uuid)
+            {
                 continue;
+            }
 
             AssetHandle new_asset = 0;
             if (const AssetRecord* record = manager->m_registry->FindByUUID(uuid))
+            {
                 new_asset = record->SlotHandle;
+            }
             manager->ScheduleSwap(manager->m_uuid_to_buffer[i].Handle, new_asset);
             return;
         }
@@ -373,7 +395,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::OnAssetRemoved(void* context, const uuids::uuid& uuid, AssetType type)
     {
         if (type == AssetType::TEXTURE)
+        {
             static_cast<RenderResourceManager*>(context)->ReleaseTexture(uuid);
+        }
     }
 
     void RenderResourceManager::InitUploadPool()
@@ -386,7 +410,9 @@ namespace ZEngine::Rendering
         m_batch_timeline     = ZPushStructCtorArgs<Rendering::Primitives::Semaphore>(m_device->Arena, m_device, true);
         m_batch_frames.init(m_device->Arena, frame_count, frame_count);
         for (uint32_t i = 0; i < frame_count; ++i)
+        {
             m_batch_frames[i] = BatchFrameState{};
+        }
 
         // RenderThread-only, single thread slot — cycles through BufferedFrameCount distinct
         // command buffers instead of resetting and resubmitting the same one every call (see
@@ -401,7 +427,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::Shutdown()
     {
         if (!m_device)
+        {
             return;
+        }
 
         {
             std::lock_guard lock(m_pending_mutex);
@@ -409,7 +437,9 @@ namespace ZEngine::Rendering
         }
         CancelStoppedThumbnailCacheWrites();
         while (m_pending_texture_decodes.value.load(std::memory_order_acquire) > 0)
+        {
             std::this_thread::yield();
+        }
 
         DiscardQueuedTextureDecodes();
         m_device->QueueWaitAll();
@@ -421,8 +451,12 @@ namespace ZEngine::Rendering
         {
             std::lock_guard lock(m_texture_decode_mutex);
             for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
+            {
                 if (tracked.State == TextureDecodeState::Pending)
+                {
                     tracked.State = TextureDecodeState::Failed;
+                }
+            }
         }
         // QueueWaitAll proved every producer complete; their semaphores were just
         // retired by ShutdownTextureTimelines and must no longer be polled.
@@ -431,7 +465,9 @@ namespace ZEngine::Rendering
 
         ZENGINE_VALIDATE_ASSERT(m_active_texture_decode_slabs.value.load(std::memory_order_acquire) == 0, "RenderResourceManager::Shutdown: texture decode slab lease was not released")
         for (uint32_t i = 0; i < MAX_CONCURRENT_TEXTURE_DECODES; ++i)
+        {
             m_upload_slabs[i].Shutdown();
+        }
         m_synchronous_texture_scratch.Shutdown();
         m_texture_task_slab.Shutdown();
 
@@ -455,18 +491,28 @@ namespace ZEngine::Rendering
 
         // Free all live buffer slots
         if (m_pool.VertexBuffer)
+        {
             m_device->GpuMem.FreeBuffer(m_pool.VertexBuffer);
+        }
         if (m_pool.IndexBuffer)
+        {
             m_device->GpuMem.FreeBuffer(m_pool.IndexBuffer);
+        }
         if (m_builtin_vertex_buf)
+        {
             m_device->GpuMem.FreeBuffer(m_builtin_vertex_buf);
+        }
         if (m_builtin_index_buf)
+        {
             m_device->GpuMem.FreeBuffer(m_builtin_index_buf);
+        }
 
         for (uint32_t i = 0; i < m_gbuf_slot_count; ++i)
         {
             if (m_gbuf_slots[i].Generation != 0 && m_gbuf_slots[i].Data)
+            {
                 m_device->GpuMem.FreeBuffer(m_gbuf_slots[i].Data);
+            }
         }
 
         m_streaming_mgr.Deinitialize();
@@ -480,13 +526,17 @@ namespace ZEngine::Rendering
         // A resize or skipped acquire can make the first rendered slot different.
         // Submit its copies before changing slots or retiring their staging data.
         if (m_batch_mode && m_batch_frame_index != frame_index)
+        {
             EndBatchUpload();
+        }
         m_active_frame_index = static_cast<uint8_t>(frame_index);
         RetireBatchStagings();
         DispatchQueuedTextureDecodes();
         m_streaming_mgr.Tick(frame_index);
         if (m_streaming_mgr.IsCompactionRequested())
+        {
             RunCompaction();
+        }
         FlushPendingUploads(frame_index);
         FlushPendingSwaps(frame_index);
         FlushPendingTextureReloads();
@@ -496,7 +546,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::EndFrame()
     {
         if (m_batch_mode)
+        {
             EndBatchUpload();
+        }
     }
 
     void RenderResourceManager::FlushPendingSwaps(uint32_t frame_index)
@@ -541,7 +593,9 @@ namespace ZEngine::Rendering
                 // Free the old region before repointing the slot — pool is no longer append-only.
                 auto& slot = m_mesh_slots[s.OldBuffer.Index];
                 if (slot.Data.Region.VtxByteSize > 0)
+                {
                     m_pool.Free(slot.Data.Region);
+                }
                 slot.Data            = new_data;
                 slot.Data.State      = StreamingState::Resident;
                 slot.Data.Referenced = false;
@@ -663,11 +717,15 @@ namespace ZEngine::Rendering
         for (uint32_t i = 0; i < props.memoryHeapCount; ++i)
         {
             if ((props.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) && props.memoryHeaps[i].size > largest_device_local)
+            {
                 largest_device_local = props.memoryHeaps[i].size;
+            }
         }
 
         if (largest_device_local == 0)
+        {
             return RenderResourceManager::GLOBAL_VTX_CAPACITY;
+        }
 
         VkDeviceSize half_budget = largest_device_local * 15 / 100 / 2;
         half_budget              = std::max(half_budget, RenderResourceManager::GLOBAL_VTX_MIN);
@@ -742,12 +800,16 @@ namespace ZEngine::Rendering
     {
         m_pool.Reset();
         for (uint32_t i = 0; i < m_mesh_slot_count; ++i)
+        {
             m_mesh_slots[i] = {};
+        }
         m_mesh_slot_count = 0;
 
         std::lock_guard lock(m_uuid_map_mutex);
         for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
+        {
             m_uuid_to_buffer[i] = {};
+        }
         m_uuid_to_buffer_count = 0;
     }
 
@@ -771,18 +833,28 @@ namespace ZEngine::Rendering
             {
                 const UUIDBufferPair& pair = m_uuid_to_buffer[i];
                 if (!pair.Handle.IsValid())
+                {
                     continue;
+                }
                 uint32_t slot_idx = pair.Handle.Index;
                 if (slot_idx >= m_mesh_slot_count)
+                {
                     continue;
+                }
                 const auto& slot = m_mesh_slots[slot_idx];
                 if (slot.Generation != pair.Handle.Generation)
+                {
                     continue;
+                }
                 if (slot.Data.State != StreamingState::Resident)
+                {
                     continue;
+                }
                 const AssetRecord* rec = m_registry->FindByUUID(pair.UUID);
                 if (!rec)
+                {
                     continue;
+                }
                 entries[entry_count++] = {slot_idx, rec->SlotHandle};
             }
         }
@@ -793,7 +865,9 @@ namespace ZEngine::Rendering
 
         // Clear stale regions so no slot holds a dangling offset after the reset.
         for (uint32_t i = 0; i < entry_count; ++i)
+        {
             m_mesh_slots[entries[i].SlotIdx].Data.Region = {};
+        }
 
         // Re-upload each mesh into a fresh packed region.  EnsureBatchOpen opens the
         // batch if nothing else has yet — it will be closed by EndFrame as normal.
@@ -822,15 +896,23 @@ namespace ZEngine::Rendering
         {
             // LastSignal covers the previous submission, not newly recorded copies.
             if (m_batch_mode && i == m_batch_frame_index)
+            {
                 continue;
+            }
             BatchFrameState& frame = m_batch_frames[i];
             if (frame.StagingCount == 0)
+            {
                 continue;
+            }
             uint64_t gate = frame.LastSignal;
             if (gate == 0 || gate > completed)
+            {
                 continue;
+            }
             for (uint32_t j = 0; j < frame.StagingCount; ++j)
+            {
                 m_device->GpuMem.FreeBuffer(frame.StagingBuffers[j]);
+            }
             frame.StagingCount = 0;
         }
     }
@@ -838,9 +920,13 @@ namespace ZEngine::Rendering
     void RenderResourceManager::EnsureBatchOpen(uint8_t frame_index)
     {
         if (m_batch_mode && m_batch_frame_index != frame_index)
+        {
             EndBatchUpload();
+        }
         if (!m_batch_mode)
+        {
             BeginBatchUpload(frame_index);
+        }
     }
 
     void RenderResourceManager::BeginBatchUpload(uint8_t frame_index)
@@ -857,7 +943,9 @@ namespace ZEngine::Rendering
         // into it again. Almost always a no-op — BufferedFrameCount frames have already
         // passed by the time this frame index comes back around.
         if (frame.LastSignal != 0)
+        {
             m_batch_timeline->Wait(frame.LastSignal, UINT64_MAX);
+        }
 
         // RetireBatchStagings polls the batch timeline each frame. Any staging buffers
         // still owned by this frame index are released only after its prior batch signal.
@@ -950,7 +1038,9 @@ namespace ZEngine::Rendering
     {
         auto* assets = AssetManager::Instance();
         if (!assets)
+        {
             return {};
+        }
         // Keep descriptor growth/reload and payload lifetime out of GPU staging.
         std::lock_guard asset_lock(assets->IngestMutex);
         AssetMesh*      mesh = AssetManager::GetAsset<AssetMesh>(asset);
@@ -1009,7 +1099,9 @@ namespace ZEngine::Rendering
     {
         // Compact geometry buffers if a scene reload was requested
         if (m_pending_reset.exchange(false, std::memory_order_acq_rel))
+        {
             ResetGeometryBuffersInternal();
+        }
 
         uint32_t      count = 0;
         PendingUpload local[MAX_PENDING];
@@ -1020,7 +1112,9 @@ namespace ZEngine::Rendering
             m_pending_count = 0;
         }
         if (count == 0)
+        {
             return;
+        }
 
         // Joins this frame's deferred batch (opened here if nothing else has yet) — closed
         // once, by RRM::EndFrame, after everything else that might also join it this frame.
@@ -1032,7 +1126,9 @@ namespace ZEngine::Rendering
             {
                 std::lock_guard lock(m_uuid_map_mutex);
                 if (m_uuid_to_buffer_count < MAX_UUID_MAP)
+                {
                     m_uuid_to_buffer[m_uuid_to_buffer_count++] = {local[i].UUID, h};
+                }
             }
             else
             {
@@ -1044,7 +1140,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::UpdateBuffer(BufferView& dst, const void* data, size_t byte_size, uint32_t dst_offset)
     {
         if (!data || byte_size == 0 || !dst)
+        {
             return;
+        }
 
         VkMemoryPropertyFlags mem_flags = 0;
         vmaGetAllocationMemoryProperties(m_device->GpuMem.Allocator, dst.Allocation, &mem_flags);
@@ -1054,7 +1152,9 @@ namespace ZEngine::Rendering
             // BAR / HOST_VISIBLE — direct memcpy, no command buffer.
             ZENGINE_VALIDATE_ASSERT(vmaCopyMemoryToAllocation(m_device->GpuMem.Allocator, data, dst.Allocation, dst_offset, byte_size) == VK_SUCCESS, "RRM::UpdateBuffer: host-visible memcpy failed")
             if (!(mem_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+            {
                 vmaFlushAllocation(m_device->GpuMem.Allocator, dst.Allocation, dst_offset, byte_size);
+            }
             return;
         }
 
@@ -1120,10 +1220,14 @@ namespace ZEngine::Rendering
     bool RenderResourceManager::GetMeshOffsets(BufferHandle handle, uint32_t& vtx_offset, uint32_t& idx_offset) const
     {
         if (!handle.IsValid() || handle.Index >= m_mesh_slot_count)
+        {
             return false;
+        }
         const auto& slot = m_mesh_slots[handle.Index];
         if (slot.Generation != handle.Generation)
+        {
             return false;
+        }
         vtx_offset = static_cast<uint32_t>(slot.Data.Region.VtxByteOffset / DRAW_VERTEX_BYTES);
         idx_offset = static_cast<uint32_t>(slot.Data.Region.IdxByteOffset / sizeof(uint32_t));
         return true;
@@ -1133,27 +1237,37 @@ namespace ZEngine::Rendering
     {
         const AssetRecord* rec = m_registry->FindByUUID(uuid);
         if (!rec || rec->SlotHandle == 0)
+        {
             return false;
+        }
         return m_streaming_mgr.RequestLoad({uuid, rec->SlotHandle, handle, 0});
     }
 
     bool RenderResourceManager::IsMeshResident(BufferHandle handle) const
     {
         if (!handle.IsValid() || handle.Index >= m_mesh_slot_count)
+        {
             return false;
+        }
         const auto& slot = m_mesh_slots[handle.Index];
         if (slot.Generation != handle.Generation)
+        {
             return false;
+        }
         return slot.Data.State == StreamingState::Resident;
     }
 
     void RenderResourceManager::MarkMeshReferenced(BufferHandle handle)
     {
         if (!handle.IsValid() || handle.Index >= m_mesh_slot_count)
+        {
             return;
+        }
         auto& slot = m_mesh_slots[handle.Index];
         if (slot.Generation == handle.Generation)
+        {
             slot.Data.Referenced = true;
+        }
     }
 
     BufferHandle RenderResourceManager::FindMeshBuffer(const uuids::uuid& uuid) const
@@ -1161,8 +1275,12 @@ namespace ZEngine::Rendering
         // Render-thread only — m_uuid_to_buffer is written in FlushPendingUploads
         // which also runs on the render thread, so no mutex needed.
         for (uint32_t i = 0; i < m_uuid_to_buffer_count; ++i)
+        {
             if (m_uuid_to_buffer[i].UUID == uuid)
+            {
                 return m_uuid_to_buffer[i].Handle;
+            }
+        }
         return {};
     }
 
@@ -1181,7 +1299,9 @@ namespace ZEngine::Rendering
                 {
                     auto& slot = m_mesh_slots[h.Index];
                     if (slot.Data.Region.VtxByteSize > 0)
+                    {
                         m_pool.Free(slot.Data.Region);
+                    }
                     slot.Generation = 0;
                 }
 
@@ -1196,16 +1316,22 @@ namespace ZEngine::Rendering
     void RenderResourceManager::Release(BufferHandle handle)
     {
         if (!handle.IsValid())
+        {
             return;
+        }
 
         if (handle.Generation & GBUF_GEN_TAG)
         {
             // Generic device-local buffer — deferred-free the VmaAllocation.
             if (handle.Index >= m_gbuf_slot_count)
+            {
                 return;
+            }
             auto& slot = m_gbuf_slots[handle.Index];
             if (slot.Generation != handle.Generation)
+            {
                 return;
+            }
             DeferredFreeEntry e;
             e.EntryKind     = DeferredFreeEntry::Kind::Buffer;
             e.TimelineValue = m_device->SwapchainPtr->RenderTimelineNextValue;
@@ -1218,7 +1344,9 @@ namespace ZEngine::Rendering
         {
             // Mesh slot — packed global buffer is append-only; just invalidate the slot.
             if (handle.Index >= m_mesh_slot_count)
+            {
                 return;
+            }
             m_mesh_slots[handle.Index].Generation = 0;
         }
     }
@@ -1236,7 +1364,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::EnqueueDeletion(VkShaderModule module)
     {
         if (module == VK_NULL_HANDLE)
+        {
             return;
+        }
         DeferredFreeEntry e;
         e.EntryKind      = DeferredFreeEntry::Kind::VkHandle;
         e.TimelineValue  = m_device->SwapchainPtr->RenderTimelineNextValue;
@@ -1249,7 +1379,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::EnqueueDeletion(VkPipeline pipeline)
     {
         if (pipeline == VK_NULL_HANDLE)
+        {
             return;
+        }
         DeferredFreeEntry e;
         e.EntryKind      = DeferredFreeEntry::Kind::VkHandle;
         e.TimelineValue  = m_device->SwapchainPtr->RenderTimelineNextValue;
@@ -1262,7 +1394,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::EnqueueDeletion(VkBuffer buffer, VmaAllocation allocation)
     {
         if (buffer == VK_NULL_HANDLE)
+        {
             return;
+        }
         DeferredFreeEntry e;
         e.EntryKind              = DeferredFreeEntry::Kind::Buffer;
         e.TimelineValue          = m_device->SwapchainPtr->RenderTimelineNextValue;
@@ -1274,7 +1408,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::EnqueueDeletion(VkImage image, VkImageView view, VmaAllocation allocation)
     {
         if (image == VK_NULL_HANDLE)
+        {
             return;
+        }
         DeferredFreeEntry e;
         e.EntryKind             = DeferredFreeEntry::Kind::Image;
         e.TimelineValue         = m_device->SwapchainPtr->RenderTimelineNextValue;
@@ -1332,12 +1468,16 @@ namespace ZEngine::Rendering
     BufferHandle RenderResourceManager::UploadBuffer(const void* data, size_t byte_size, VkBufferUsageFlags usage, const char* debug_name)
     {
         if (!data || byte_size == 0)
+        {
             return {};
+        }
 
         Core::Memory::BufferView buf = m_device->GpuMem.AllocateBuffer(static_cast<VkDeviceSize>(byte_size), usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, Core::Memory::GpuMemoryDomain::DeviceGeometry, debug_name ? debug_name : "RRM::UploadBuffer");
 
         if (!buf)
+        {
             return {};
+        }
 
         EnsureBatchOpen(m_active_frame_index);
 
@@ -1359,9 +1499,13 @@ namespace ZEngine::Rendering
     const Core::Memory::BufferView* RenderResourceManager::GetBuffer(BufferHandle handle) const
     {
         if (!handle.IsValid() || !(handle.Generation & GBUF_GEN_TAG))
+        {
             return nullptr;
+        }
         if (handle.Index >= m_gbuf_slot_count)
+        {
             return nullptr;
+        }
         const auto& slot = m_gbuf_slots[handle.Index];
         return slot.Generation == handle.Generation ? &slot.Data : nullptr;
     }
@@ -1407,7 +1551,9 @@ namespace ZEngine::Rendering
     {
         m_active_texture_decode_slabs.value.store(0, std::memory_order_relaxed);
         for (uint32_t i = 0; i < MAX_CONCURRENT_TEXTURE_DECODES; ++i)
+        {
             m_upload_slabs[i].Init(m_upload_arena, UPLOAD_SLAB_BYTES);
+        }
     }
 
     bool RenderResourceManager::TryAcquireTextureDecodeSlab(uint8_t* out_index)
@@ -1420,7 +1566,9 @@ namespace ZEngine::Rendering
             {
                 const uint32_t bit = 1u << index;
                 if ((occupied & bit) != 0)
+                {
                     continue;
+                }
 
                 const uint32_t desired = occupied | bit;
                 if (m_active_texture_decode_slabs.value.compare_exchange_weak(occupied, desired, std::memory_order_acq_rel, std::memory_order_acquire))
@@ -1431,7 +1579,9 @@ namespace ZEngine::Rendering
                 break;
             }
             if (occupied == (1u << MAX_CONCURRENT_TEXTURE_DECODES) - 1u)
+            {
                 return false;
+            }
         }
     }
 
@@ -1444,7 +1594,9 @@ namespace ZEngine::Rendering
         {
             ZENGINE_VALIDATE_ASSERT((occupied & bit) != 0, "RenderResourceManager::ReleaseTextureDecodeSlab: slab was not leased")
             if (m_active_texture_decode_slabs.value.compare_exchange_weak(occupied, occupied & ~bit, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
                 return;
+            }
         }
     }
 
@@ -1457,23 +1609,31 @@ namespace ZEngine::Rendering
             {
                 auto& sb = m_tex_retire_staging[p][i];
                 if (sb.Handle != VK_NULL_HANDLE)
+                {
                     m_device->GpuMem.FreeBuffer(sb);
+                }
 
                 if (m_device->HasSeparateTransferQueue)
                 {
                     auto& tsb = m_tex_transfer_staging[p][i];
                     if (tsb.Handle != VK_NULL_HANDLE)
+                    {
                         m_device->GpuMem.FreeBuffer(tsb);
+                    }
                 }
             }
 
             // Explicitly destroy arena-allocated Semaphore objects — VkSemaphore handles
             // are never freed by the arena page release.
             if (p < m_tex_timelines.size() && m_tex_timelines[p])
+            {
                 m_tex_timelines[p]->~Semaphore();
+            }
 
             if (m_device->HasSeparateTransferQueue && p < m_tex_transfer_timelines.size() && m_tex_transfer_timelines[p])
+            {
                 m_tex_transfer_timelines[p]->~Semaphore();
+            }
         }
     }
 
@@ -1483,24 +1643,34 @@ namespace ZEngine::Rendering
         using namespace Rendering::Primitives;
 
         if (!handle.Valid() || !data)
+        {
             return {};
+        }
         // A texture released from a transfer queue cannot be uploaded again until the
         // graph has acquired it on its consumer queue. Retrying the deferral keeps the
         // exclusive-ownership protocol valid on separate-family devices.
         if (FindStreamingUploadTicket(handle))
+        {
             return {};
+        }
 
         uint32_t pool_index = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
 
         auto     texture    = m_device->GlobalTextures.Access(handle);
         if (!texture)
+        {
             return {};
+        }
         const VkDeviceSize upload_size = data_size == 0 ? texture->BufferSize : static_cast<VkDeviceSize>(data_size);
         if (upload_size == 0 || upload_size > texture->BufferSize)
+        {
             return {};
+        }
         auto img_buf = m_device->ImageBufferManager.Access(texture->BufferHandle);
         if (!img_buf)
+        {
             return {};
+        }
         auto img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
         auto buffer_handle  = img_buf->GetHandle();
 
@@ -1509,8 +1679,12 @@ namespace ZEngine::Rendering
             auto&    transfer_retire = m_tex_transfer_retire[pool_index];
             uint32_t i               = 0;
             for (; i < GEOMETRY_UPLOAD_SLOT; ++i)
+            {
                 if (transfer_retire[i] == 0)
+                {
                     break;
+                }
+            }
             if (i >= GEOMETRY_UPLOAD_SLOT)
             {
                 ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free transfer slot — upload deferred")
@@ -1563,7 +1737,9 @@ namespace ZEngine::Rendering
             uint64_t transfer_val = m_tex_transfer_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
             transfer_retire[i]    = transfer_val;
             if (transfer_staging)
+            {
                 m_tex_transfer_staging[pool_index][i] = transfer_staging;
+            }
 
             m_async_uploads.Enqueue({
                 .Buffer            = transfer_cmd,
@@ -1583,8 +1759,12 @@ namespace ZEngine::Rendering
             auto&    retire_values = m_tex_retire_values[pool_index];
             uint32_t i             = 0;
             for (; i < GEOMETRY_UPLOAD_SLOT; ++i)
+            {
                 if (retire_values[i] == 0)
+                {
                     break;
+                }
+            }
             if (i >= GEOMETRY_UPLOAD_SLOT)
             {
                 ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free graphics slot — upload deferred")
@@ -1630,7 +1810,9 @@ namespace ZEngine::Rendering
             uint64_t signal_value = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
             retire_values[i]      = signal_value;
             if (staging)
+            {
                 m_tex_retire_staging[pool_index][i] = staging;
+            }
             m_async_uploads.Enqueue({
                 .Buffer            = cmd,
                 .Timeline          = m_tex_timelines[pool_index],
@@ -1654,7 +1836,9 @@ namespace ZEngine::Rendering
         using namespace Rendering::Primitives;
 
         if (!pixels || width == 0 || height == 0)
+        {
             return {};
+        }
 
         TextureSpecification spec                     = {};
         spec.Width                                    = width;
@@ -1721,7 +1905,9 @@ namespace ZEngine::Rendering
         // the fence wait above is not trustworthy proof of completion once any command
         // buffer on the queue has already timed out (issue #764 follow-up investigation).
         if (ring_offset != std::numeric_limits<uint32_t>::max())
+        {
             m_device->GpuMem.Ring.Submit(ring_offset, static_cast<uint32_t>(texture->BufferSize), m_device->SwapchainPtr->RenderTimelineNextValue);
+        }
 
         if (staging)
         {
@@ -1743,12 +1929,18 @@ namespace ZEngine::Rendering
     {
         auto result = UploadTextureBuffer(frame_index, 0, deferral.TexHandle, deferral.Pixels, deferral.ByteSize);
         if (!result.Valid())
+        {
             return false;
+        }
 
         if (deferral.Slab && deferral.Pixels)
+        {
             deferral.Slab->Free(deferral.Pixels);
+        }
         if (deferral.DecodeSlabIndex != UINT8_MAX)
+        {
             ReleaseTextureDecodeSlab(deferral.DecodeSlabIndex);
+        }
         return true;
     }
 
@@ -1758,17 +1950,25 @@ namespace ZEngine::Rendering
         while (m_tex_deferral_queue.pop(deferral))
         {
             if (deferral.Slab && deferral.Pixels)
+            {
                 deferral.Slab->Free(deferral.Pixels);
+            }
             if (deferral.DecodeSlabIndex != UINT8_MAX)
+            {
                 ReleaseTextureDecodeSlab(deferral.DecodeSlabIndex);
+            }
         }
 
         for (TextureDeferral& retry : m_tex_deferral_retry)
         {
             if (retry.Slab && retry.Pixels)
+            {
                 retry.Slab->Free(retry.Pixels);
+            }
             if (retry.DecodeSlabIndex != UINT8_MAX)
+            {
                 ReleaseTextureDecodeSlab(retry.DecodeSlabIndex);
+            }
         }
         m_tex_deferral_retry.clear();
     }
@@ -1792,7 +1992,9 @@ namespace ZEngine::Rendering
         while (m_tex_deferral_queue.pop(deferral))
         {
             if (!ProcessTextureDeferral(frame_index, deferral))
+            {
                 m_tex_deferral_retry.push(deferral);
+            }
         }
 
         DispatchQueuedTextureDecodes();
@@ -1811,15 +2013,21 @@ namespace ZEngine::Rendering
     const Hardwares::StreamingUploadTicket* RenderResourceManager::FindStreamingUploadTicket(const Rendering::Textures::TextureHandle& handle) const
     {
         for (const auto& ticket : m_streaming_upload_tickets)
+        {
             if (ticket.Texture.Index == handle.Index && ticket.Texture.Generation == handle.Generation)
+            {
                 return &ticket;
+            }
+        }
         return nullptr;
     }
 
     void RenderResourceManager::PublishStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket)
     {
         if (!ticket.Texture.Valid() || !ticket.CompletionTimeline || ticket.CompletionValue == 0)
+        {
             return;
+        }
 
         for (auto& pending : m_streaming_upload_tickets)
         {
@@ -1848,7 +2056,9 @@ namespace ZEngine::Rendering
         {
             const auto& pending = m_streaming_upload_tickets[index];
             if (pending.Texture.Index != ticket.Texture.Index || pending.Texture.Generation != ticket.Texture.Generation || pending.CompletionTimeline != ticket.CompletionTimeline || pending.CompletionValue != ticket.CompletionValue)
+            {
                 continue;
+            }
             m_streaming_upload_tickets.erase(index);
             return;
         }
@@ -1874,7 +2084,9 @@ namespace ZEngine::Rendering
 
                 auto& sb         = m_tex_retire_staging[pool_index][i];
                 if (sb.Handle != VK_NULL_HANDLE)
+                {
                     m_device->GpuMem.FreeBuffer(sb);
+                }
             }
         }
 
@@ -1895,7 +2107,9 @@ namespace ZEngine::Rendering
 
                     auto& tsb          = m_tex_transfer_staging[pool_index][i];
                     if (tsb.Handle != VK_NULL_HANDLE)
+                    {
                         m_device->GpuMem.FreeBuffer(tsb);
+                    }
                 }
             }
         }
@@ -1911,7 +2125,9 @@ namespace ZEngine::Rendering
         // an OUT_OF_DATE acquire has no Present() submission to relay it to the
         // next frame's graph.
         if (m_batch_timeline && m_batch_next_value != 0)
+        {
             m_device->EnqueueAsyncGPUOperation({VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, m_batch_next_value, m_batch_timeline});
+        }
 
         m_streaming_upload_tickets.clear();
     }
@@ -1956,7 +2172,9 @@ namespace ZEngine::Rendering
         // frame before the real descriptor. Pixel readiness alone is insufficient:
         // do not bake that temporary magenta fallback into a persistent preview.
         if (m_device && (!m_device->DeferredTextureDescriptorUpdates.empty() || !m_device->TextureHandleToUpdates.empty()))
+        {
             return true;
+        }
         return m_pending_texture_reload_count != 0 || !m_queued_texture_decodes.empty() || m_active_texture_decode_slabs.value.load(std::memory_order_acquire) != 0 || m_async_uploads.HasPendingJobs();
     }
 
@@ -1964,8 +2182,12 @@ namespace ZEngine::Rendering
     {
         std::lock_guard lock(m_pending_texture_reload_mutex);
         for (uint32_t i = 0; i < m_pending_texture_reload_count; ++i)
+        {
             if (m_pending_texture_reloads[i] == uuid)
+            {
                 return; // already pending — dedupe
+            }
+        }
         if (m_pending_texture_reload_count >= MAX_PENDING)
         {
             ZENGINE_LOG_RENDER_WARN("[RRM] Pending texture reload queue full — dropping reload for {}", uuids::to_string(uuid))
@@ -1989,7 +2211,9 @@ namespace ZEngine::Rendering
         {
             Rendering::Textures::TextureHandle existing = AssetManager::FindTextureHandle(local[i]);
             if (!existing.Valid())
+            {
                 continue;
+            }
 
             // IngestMutex guards the read: AssetManager::Textures (unlike Meshes/Materials)
             // is arena-backed, so a concurrent IngestTexture on the import thread can
@@ -1999,7 +2223,9 @@ namespace ZEngine::Rendering
                 std::lock_guard lock(AssetManager::Instance()->IngestMutex);
                 AssetTexture*   tex = AssetManager::GetAsset<AssetTexture>(local[i]);
                 if (!tex || tex->Path.empty())
+                {
                     continue;
+                }
                 snprintf(full_path, sizeof(full_path), "%s%c%s", AssetManager::Instance()->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, tex->Path.c_str());
             }
             IngestTexture(local[i], full_path, existing);
@@ -2015,7 +2241,9 @@ namespace ZEngine::Rendering
         AssetManager::ReleaseTexture(uuid);
 
         if (!handle.Valid())
+        {
             return;
+        }
 
         QueueTextureRelease(handle);
     }
@@ -2024,8 +2252,12 @@ namespace ZEngine::Rendering
     {
         std::lock_guard lock(m_pending_texture_release_mutex);
         for (uint32_t index = 0; index < m_pending_texture_release_count; ++index)
+        {
             if (m_pending_texture_releases[index].Index == handle.Index && m_pending_texture_releases[index].Generation == handle.Generation)
+            {
                 return;
+            }
+        }
         if (m_pending_texture_release_count >= MAX_PENDING)
         {
             ZENGINE_LOG_RENDER_ERR("[RRM] Pending texture release queue full — texture handle (index {}) leaked", handle.Index)
@@ -2084,15 +2316,19 @@ namespace ZEngine::Rendering
         // Engine teardown joins/destroys the pool before RRM. Its shutdown can
         // discard jobs that never started. No callback can run once Pool is null.
         if (Helpers::ThreadPoolHelper::IsInitialized())
+        {
             return;
+        }
         std::lock_guard lock(m_pending_mutex);
         for (auto& task : m_thumbnail_cache_writes)
+        {
             if (task.WorkerQueued)
             {
                 task.WorkerQueued = false;
                 task.Reserved     = false;
                 m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
             }
+        }
         if (m_thumbnail_cache_cleanup.WorkerQueued)
         {
             m_thumbnail_cache_cleanup.WorkerQueued = false;
@@ -2105,7 +2341,9 @@ namespace ZEngine::Rendering
     {
         std::lock_guard lock(m_pending_mutex);
         if (!Helpers::ThreadPoolHelper::IsInitialized() || !m_registry || !m_accept_texture_decodes.value.load(std::memory_order_acquire) || m_thumbnail_cache_cleanup.WorkerQueued || !project_root || !project_root[0] || Helpers::secure_strlen(project_root) >= MAX_FILE_PATH_COUNT || !schema_revision || !renderer_revision)
+        {
             return false;
+        }
         auto& task            = m_thumbnail_cache_cleanup;
         task.Owner            = this;
         task.SchemaRevision   = schema_revision;
@@ -2115,7 +2353,9 @@ namespace ZEngine::Rendering
         m_thumbnail_maintenance_stats.Pending = true;
         m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
         if (Helpers::ThreadPoolHelper::Submit(&task, &RenderResourceManager::RunThumbnailCacheCleanup))
+        {
             return true;
+        }
         task.WorkerQueued                     = false;
         m_thumbnail_maintenance_stats.Pending = false;
         m_pending_texture_decodes.value.fetch_sub(1, std::memory_order_release);
@@ -2139,20 +2379,32 @@ namespace ZEngine::Rendering
             const auto resolve = +[](void* context, const uuids::uuid& uuid, ThumbnailCacheMaintenance::CurrentKey* key) {
                 auto& task = *static_cast<ThumbnailCacheCleanupTask*>(context);
                 if (auto* engine = Engine::GetContext(); engine && engine->VFSScanner.IsScanning())
+                {
                     return ThumbnailCacheMaintenance::Resolution::Unknown;
+                }
                 AssetRecordSnapshot record{};
                 if (!task.Owner->m_registry->TryReadRecord(uuid, &record))
+                {
                     return ThumbnailCacheMaintenance::Resolution::Missing;
+                }
                 if (record.Record.State != AssetState::Loaded && record.Record.State != AssetState::Registered)
+                {
                     return ThumbnailCacheMaintenance::Resolution::Unknown;
+                }
                 key->Identity = {.AssetUUID = uuid, .SourceHash = record.Record.Meta.SourceHash, .SchemaRevision = task.SchemaRevision};
                 if (record.Record.Type == AssetType::TEXTURE)
+                {
                     return ThumbnailCacheMaintenance::Resolution::Current;
+                }
                 if (record.Record.Type != AssetType::MATERIAL && record.Record.Type != AssetType::MESH)
+                {
                     return ThumbnailCacheMaintenance::Resolution::Missing;
+                }
                 uint64_t runtime = 0;
                 if (!Renderers::AssetPreviewPass::DependencyFingerprint(record, &runtime, &key->Identity.DependencyHash, &key->FullyTransparent))
+                {
                     return ThumbnailCacheMaintenance::Resolution::SourceOnly;
+                }
                 key->Identity.RendererRevision = task.RendererRevision;
                 return ThumbnailCacheMaintenance::Resolution::Current;
             };
@@ -2180,11 +2432,15 @@ namespace ZEngine::Rendering
     {
         std::lock_guard lock(m_pending_mutex);
         if (!m_accept_texture_decodes.value.load(std::memory_order_acquire) || !filename || !filename[0] || Helpers::secure_strlen(filename) >= MAX_FILE_PATH_COUNT)
+        {
             return nullptr;
+        }
         for (auto& task : m_thumbnail_cache_writes)
         {
             if (task.Reserved)
+            {
                 continue;
+            }
             task.Owner    = this;
             task.Identity = identity;
             Helpers::secure_strcpy(task.Filename, sizeof(task.Filename), filename);
@@ -2199,7 +2455,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::AcceptThumbnailCacheWrite(void* context)
     {
         if (!context)
+        {
             return;
+        }
         std::lock_guard lock(m_pending_mutex);
         static_cast<ThumbnailCacheWriteTask*>(context)->Accepted = true;
     }
@@ -2274,7 +2532,9 @@ namespace ZEngine::Rendering
 
         std::unique_lock<std::mutex> l(m_pending_mutex);
         if (!m_accept_texture_decodes.value.load(std::memory_order_acquire) || !filename || filename[0] == '\0')
+        {
             return {};
+        }
 
         const size_t filename_length = Helpers::secure_strlen(filename);
         if (filename_length >= MAX_FILE_PATH_COUNT)
@@ -2289,7 +2549,9 @@ namespace ZEngine::Rendering
         }
         cstring file_ext = std::strrchr(filename, '.');
         if (!file_ext)
+        {
             file_ext = "";
+        }
         const bool is_environment_map = Helpers::secure_strcmp(file_ext, ".zenvmap") == 0;
         if (thumbnail_extent != 0 && is_environment_map)
         {
@@ -2331,7 +2593,9 @@ namespace ZEngine::Rendering
             {
                 int w = 0, h = 0, ch = 0;
                 if (!stbi_info(filename, &w, &h, &ch))
+                {
                     return {};
+                }
                 spec.Width  = static_cast<uint32_t>(w);
                 spec.Height = static_cast<uint32_t>(h);
             }
@@ -2346,7 +2610,9 @@ namespace ZEngine::Rendering
             const uint32_t largest_dimension = std::max(spec.Width, spec.Height);
             uint32_t       mip_count         = 1;
             for (uint32_t dimension = largest_dimension; dimension > 1; dimension >>= 1)
+            {
                 ++mip_count;
+            }
             spec.MipLevelCount  = mip_count;
             // HDRI mip generation is recorded as a graph compute stage before
             // the cubemap is sampled by the IBL convolution passes.
@@ -2362,7 +2628,9 @@ namespace ZEngine::Rendering
             // same handle, same bindless index either way.
             auto* texture = m_device->GlobalTextures.Access(existing);
             if (texture && (texture->Width != spec.Width || texture->Height != spec.Height || texture->Specification.Format != spec.Format || texture->Specification.MipLevelCount != spec.MipLevelCount))
+            {
                 m_device->ReconstructTexture(existing, spec);
+            }
             tex_handle = existing;
         }
         else
@@ -2373,11 +2641,15 @@ namespace ZEngine::Rendering
         if (track_decode && (!tex_handle.Valid() || !TrackTextureDecode(tex_handle)))
         {
             if (tex_handle.Valid() && !existing.Valid())
+            {
                 m_device->DestroyTexture(tex_handle);
+            }
             return {};
         }
         if (!tex_handle.Valid())
+        {
             return {};
+        }
 
         auto* task = static_cast<TextureDecodeTask*>(m_texture_task_slab.Alloc(sizeof(TextureDecodeTask)));
         ZConstruct<TextureDecodeTask>(task);
@@ -2389,7 +2661,9 @@ namespace ZEngine::Rendering
         task->FitIntoSquare    = thumbnail_extent != 0;
         task->CacheOnly        = cache_only;
         if (identity)
+        {
             task->CacheIdentity = *identity;
+        }
         Helpers::secure_strcpy(task->Filename, sizeof(task->Filename), filename);
         if (cache_filename)
         {
@@ -2399,9 +2673,13 @@ namespace ZEngine::Rendering
         if (!m_queued_texture_decodes.push(task))
         {
             if (task->TrackCompletion)
+            {
                 PublishTextureDecodeCompletion(tex_handle, false);
+            }
             if (!existing.Valid())
+            {
                 m_device->DestroyTexture(tex_handle);
+            }
             m_texture_task_slab.Free(task);
             ZENGINE_CORE_ERROR("[RRM] Texture decode queue full — rejecting {}", filename)
             return existing;
@@ -2416,7 +2694,9 @@ namespace ZEngine::Rendering
         {
             uint8_t decode_slab_index = UINT8_MAX;
             if (!TryAcquireTextureDecodeSlab(&decode_slab_index))
+            {
                 return;
+            }
 
             TextureDecodeTask* task = nullptr;
             if (!m_queued_texture_decodes.pop(task))
@@ -2428,10 +2708,14 @@ namespace ZEngine::Rendering
             task->DecodeSlabIndex = decode_slab_index;
             m_pending_texture_decodes.value.fetch_add(1, std::memory_order_release);
             if (Helpers::ThreadPoolHelper::Submit(task, &RenderResourceManager::RunTextureDecodeTask))
+            {
                 continue;
+            }
 
             if (task->TrackCompletion)
+            {
                 PublishTextureDecodeCompletion(task->Texture, false);
+            }
             ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
             CompleteTextureDecodeTask(task);
             ZENGINE_CORE_WARN("[RRM] Texture decode rejected because the worker pool is unavailable or saturated")
@@ -2443,13 +2727,17 @@ namespace ZEngine::Rendering
     {
         TextureDecodeTask* task = nullptr;
         while (m_queued_texture_decodes.pop(task))
+        {
             m_texture_task_slab.Free(task);
+        }
     }
 
     bool RenderResourceManager::AspectFitThumbnail(const uint8_t* source, int width, int height, uint8_t* destination, uint32_t extent)
     {
         if (!source || !destination || width <= 0 || height <= 0 || extent == 0 || extent > kMaxThumbnailExtent)
+        {
             return false;
+        }
 
         const size_t byte_size = static_cast<size_t>(extent) * extent * STBI_rgb_alpha;
         Helpers::secure_memset(destination, 0, byte_size, byte_size);
@@ -2487,7 +2775,9 @@ namespace ZEngine::Rendering
                     byte_size = cubemap.BufferSize;
                     pixels    = static_cast<uint8_t*>(slab->TryRealloc(nullptr, byte_size));
                     if (pixels)
+                    {
                         Helpers::secure_memmove(pixels, byte_size, cubemap.Buffer, byte_size);
+                    }
                 }
             }
             else
@@ -2509,11 +2799,15 @@ namespace ZEngine::Rendering
                 height = static_cast<int>(task->Specification.Height);
             }
             else if (!task->CacheOnly)
+            {
                 image_data = stbi_load(task->Filename, &width, &height, &channels, STBI_rgb_alpha);
+            }
             if (!image_data)
             {
                 if (!task->CacheOnly)
+                {
                     ZENGINE_CORE_ERROR("Failed to load texture: {}", task->Filename)
+                }
             }
             else
             {
@@ -2542,7 +2836,9 @@ namespace ZEngine::Rendering
                     stbi_image_free(image_data);
                 }
                 if (!pixels)
+                {
                     ZENGINE_CORE_ERROR("[RRM] Texture resize failed or exceeded the decode memory budget: {}", task->Filename)
+                }
 
                 if (pixels && task->FitIntoSquare && !cache_hit && task->CacheFilename[0] != '\0')
                 {
@@ -2576,10 +2872,14 @@ namespace ZEngine::Rendering
         // CPU success is not GPU readiness. The render-thread submission callback
         // publishes success only after a streaming ticket exists for this texture.
         if (task->TrackCompletion && !decode_succeeded)
+        {
             manager->PublishTextureDecodeCompletion(task->Texture, false);
+        }
         Helpers::SetWorkerSlab(previous);
         if (!decode_succeeded)
+        {
             manager->ReleaseTextureDecodeSlab(task->DecodeSlabIndex);
+        }
         manager->CompleteTextureDecodeTask(task);
     }
 
@@ -2592,13 +2892,17 @@ namespace ZEngine::Rendering
     bool RenderResourceManager::TrackTextureDecode(const Rendering::Textures::TextureHandle& handle)
     {
         if (!handle.Valid())
+        {
             return false;
+        }
 
         std::lock_guard lock(m_texture_decode_mutex);
         for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
         {
             if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
+            {
                 return true;
+            }
         }
         for (TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
         {
@@ -2621,7 +2925,9 @@ namespace ZEngine::Rendering
         for (const TrackedTextureDecode& tracked : m_texture_decode_tracker.Entries)
         {
             if (tracked.Texture.Index == handle.Index && tracked.Texture.Generation == handle.Generation)
+            {
                 return tracked.State;
+            }
         }
         return TextureDecodeState::Untracked;
     }
@@ -2642,7 +2948,9 @@ namespace ZEngine::Rendering
     void RenderResourceManager::PublishTextureDecodeCompletion(const Rendering::Textures::TextureHandle& handle, bool success)
     {
         if (!m_texture_decode_tracker.Completions.push({.Texture = handle, .Success = success}))
+        {
             ZENGINE_CORE_ERROR("[RRM] Texture decode completion queue full — environment will retain its fallback")
+        }
     }
 
     void RenderResourceManager::DrainTextureDecodeCompletions()
@@ -2731,7 +3039,9 @@ namespace ZEngine::Rendering
         using namespace Rendering::Primitives;
 
         if (!m_device || !m_upload_cmd_mgr || !m_sync_upload_fence || !pixels)
+        {
             return {};
+        }
 
         const auto  handle  = m_device->CreateTexture(specification, debug_name);
         auto* const texture = m_device->GlobalTextures.Access(handle);
@@ -2739,7 +3049,9 @@ namespace ZEngine::Rendering
         if (!texture || !image || image->GetHandle() == VK_NULL_HANDLE)
         {
             if (handle.Valid())
+            {
                 m_device->DestroyTexture(handle);
+            }
             return {};
         }
 
@@ -2793,7 +3105,9 @@ namespace ZEngine::Rendering
         if (vkQueueSubmit(queue, 1, &submit, m_sync_upload_fence->GetHandle()) != VK_SUCCESS)
         {
             if (staging)
+            {
                 m_device->GpuMem.FreeBuffer(staging);
+            }
             m_device->DestroyTexture(handle);
             return {};
         }
@@ -2801,7 +3115,9 @@ namespace ZEngine::Rendering
         command_buffer->ResetState();
 
         if (staging)
+        {
             m_device->GpuMem.FreeBuffer(staging);
+        }
 
         return handle;
     }
@@ -2811,7 +3127,9 @@ namespace ZEngine::Rendering
         using namespace Rendering::Specifications;
 
         if (m_fallback_cubemap.Valid())
+        {
             return m_fallback_cubemap;
+        }
 
         // A dim neutral-blue source keeps the viewport visibly usable while an
         // HDRI or future atmosphere bake is pending. It is a real cubemap, so
@@ -2836,7 +3154,9 @@ namespace ZEngine::Rendering
         using namespace Rendering::Specifications;
 
         if (m_fallback_environment_lighting.Valid())
+        {
             return m_fallback_environment_lighting;
+        }
 
         constexpr BrdfIntegrationLutKey lut_key = {
             .ShaderVersion = 1,
@@ -2869,9 +3189,13 @@ namespace ZEngine::Rendering
         if (!resources.DiffuseIrradiance.Valid() || !resources.SpecularEnvironment.Valid())
         {
             if (resources.DiffuseIrradiance.Valid())
+            {
                 m_device->DestroyTexture(resources.DiffuseIrradiance);
+            }
             if (resources.SpecularEnvironment.Valid())
+            {
                 m_device->DestroyTexture(resources.SpecularEnvironment);
+            }
             return {};
         }
 

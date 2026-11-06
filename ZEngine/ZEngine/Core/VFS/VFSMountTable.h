@@ -9,9 +9,10 @@ namespace ZEngine::Core::VFS
 {
     struct MountPoint
     {
-        IVFSBackend* Backend     = nullptr;
-        VFSPath      LogicalRoot = {};
-        int          Priority    = 0;
+        IVFSBackend*                   Backend      = nullptr;
+        VFSPath                        LogicalRoot  = {};
+        int                            Priority     = 0;
+        Helpers::Ref<IVFSRootProvider> RootProvider = {};
     };
 
     struct ResolveResult
@@ -22,7 +23,12 @@ namespace ZEngine::Core::VFS
 
     struct VFSMountTable
     {
-        static constexpr uint32_t              kMaxMountPoints = 256;
+        static constexpr uint32_t kMaxMountPoints = 256;
+
+        VFSMountTable();
+        ~VFSMountTable();
+        VFSMountTable(const VFSMountTable&)                                    = delete;
+        VFSMountTable&                         operator=(const VFSMountTable&) = delete;
 
         void                                   Initialize(Memory::ArenaAllocator* arena, size_t initial_capacity = 16);
 
@@ -30,6 +36,9 @@ namespace ZEngine::Core::VFS
         [[nodiscard]] VFSResult<void>          Unmount(const VFSPath& logical_root);
         [[nodiscard]] VFSResult<ResolveResult> Resolve(const VFSPath& path) const;
         [[nodiscard]] VFSResult<void>          ResolveAll(const VFSPath& dir_path, Containers::Array<ResolveResult>& out_results) const;
+        [[nodiscard]] VFSResult<void>          AcquirePublicationRoot(const VFSPath&, VFSPublicationRootLease*, IVFSWorkingMemoryBudget* = nullptr);
+        [[nodiscard]] VFSResult<void>          AcquireScratchRoot(const VFSPath&, VFSScratchRootLease*, IVFSWorkingMemoryBudget* = nullptr);
+        [[nodiscard]] VFSResult<void>          AcquireReadRoot(const VFSPath&, VFSReadRootLease*, IVFSWorkingMemoryBudget* = nullptr);
 
         void                                   Clear();
 
@@ -39,9 +48,12 @@ namespace ZEngine::Core::VFS
         static bool                             IsPrefixOf(const VFSPath& prefix, const VFSPath& path);
         [[nodiscard]] static VFSResult<VFSPath> StripPrefix(const VFSPath& prefix, const VFSPath& path);
 
-        Memory::ArenaAllocator*                 m_arena  = nullptr;
-        Containers::Array<MountPoint>           m_mounts = {};
-        mutable std::shared_mutex               m_mutex;
+        [[nodiscard]] VFSResult<void>           AcquireRoot(const VFSPath&, VFSRootLease*, VFSRootAccess access, IVFSWorkingMemoryBudget*);
+        [[nodiscard]] size_t                    FindMount(const VFSPath&) const;
+
+        // Initialize out of line, where the intrusive pointee is complete.
+        Helpers::Ref<VFSMountState>             m_state;
+        mutable std::shared_mutex               m_mutex = {};
     };
 
 } // namespace ZEngine::Core::VFS

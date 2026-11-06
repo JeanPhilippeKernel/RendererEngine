@@ -30,15 +30,34 @@ namespace ZEngine::ECS
         {
             return m_position;
         }
+        [[nodiscard]] bool LimitExceeded() const
+        {
+            return m_limit_exceeded;
+        }
+        // Codec preflights must use this rather than a bare Remaining() test,
+        // so a transactional payload writer still records capacity refusal.
+        [[nodiscard]] bool Require(size_t bytes)
+        {
+            if (bytes <= Remaining())
+            {
+                return true;
+            }
+            m_limit_exceeded = true;
+            return false;
+        }
         [[nodiscard]] bool UInt32(uint32_t value)
         {
-            if (Remaining() < sizeof(value))
+            if (!Require(sizeof(value)))
             {
                 return false;
             }
             if (!m_measuring)
+            {
                 for (uint32_t shift = 0; shift < 32; shift += 8)
+                {
                     m_bytes[m_position + shift / 8] = std::byte((value >> shift) & 0xffu);
+                }
+            }
             m_position += sizeof(value);
             return true;
         }
@@ -48,7 +67,11 @@ namespace ZEngine::ECS
         }
         [[nodiscard]] bool Vector(const Core::Maths::Vec3f& value)
         {
-            if (Remaining() < 3 * sizeof(float) || !std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z))
+            if (!Require(3 * sizeof(float)))
+            {
+                return false;
+            }
+            if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z))
             {
                 return false;
             }
@@ -56,22 +79,27 @@ namespace ZEngine::ECS
         }
         [[nodiscard]] bool Bytes(std::span<const uint8_t> value)
         {
-            if (Remaining() < value.size())
+            if (!Require(value.size()))
             {
                 return false;
             }
             if (!m_measuring)
+            {
                 for (size_t i = 0; i < value.size(); ++i)
+                {
                     m_bytes[m_position + i] = std::byte(value[i]);
+                }
+            }
             m_position += value.size();
             return true;
         }
 
     private:
-        std::span<std::byte> m_bytes     = {};
-        size_t               m_position  = 0;
-        size_t               m_limit     = 0;
-        bool                 m_measuring = false;
+        std::span<std::byte> m_bytes          = {};
+        size_t               m_position       = 0;
+        size_t               m_limit          = 0;
+        bool                 m_measuring      = false;
+        bool                 m_limit_exceeded = false;
     };
 
     class SceneBinaryReader

@@ -1,10 +1,16 @@
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
+#include <ZEngine/Core/VFS/VFSDiskRoot.h>
+#include <ZEngine/Core/VFS/VFSNativeStat.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#if defined(_WIN32)
+#include <ZEngine/Core/VFS/VFSNativeRenameWindows.h>
+#include <cwchar>
+#endif
 #if defined(__linux__)
 #include <linux/fs.h>
 #include <sys/syscall.h>
@@ -19,9 +25,13 @@ namespace ZEngine::Core::VFS
         {
             size_t length = 0;
             if (!text || !output)
+            {
                 return false;
+            }
             while (length < MAX_FILE_PATH_COUNT && text[length])
+            {
                 ++length;
+            }
             output[0] = L'\0';
             // The byte budget is unchanged. UTF-16 cannot exceed that many
             // code units; include the terminator and reject malformed input.
@@ -40,7 +50,9 @@ namespace ZEngine::Core::VFS
 #if defined(_WIN32)
             const int count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name.data(), static_cast<int>(name.size()), output, MAX_FILE_PATH_COUNT - 1, nullptr, nullptr);
             if (count <= 0)
+            {
                 return false;
+            }
             output[count] = '\0';
 #else
             if (Helpers::secure_memcpy(output, sizeof(output), name.data(), name.size()) != Helpers::MEMORY_OP_SUCCESS)
@@ -99,8 +111,10 @@ namespace ZEngine::Core::VFS
             return VFSResult<size_t>::Fail(VFSError::IOError);
         }
         OVERLAPPED ov = {};
-        ov.Offset     = static_cast<DWORD>(offset & 0xFFFFFFFF);
-        ov.OffsetHigh = static_cast<DWORD>(offset >> 32);
+        // Windows' all-ones byte offset appends atomically without a separate,
+        // racy Size()/seek step. It matches the POSIX O_APPEND handle policy.
+        ov.Offset     = m_append ? MAXDWORD : static_cast<DWORD>(offset & 0xFFFFFFFF);
+        ov.OffsetHigh = m_append ? MAXDWORD : static_cast<DWORD>(offset >> 32);
         DWORD written = 0;
         if (!WriteFile(m_handle, buffer.data(), static_cast<DWORD>(buffer.size()), &written, &ov))
         {
@@ -124,26 +138,48 @@ namespace ZEngine::Core::VFS
     VFSResult<uint64_t> VFSDiskFile::Size() const
     {
 #if defined(_WIN32)
-        if (m_handle == INVALID_HANDLE_VALUE)
+        LARGE_INTEGER size = {};
+        if (m_handle == INVALID_HANDLE_VALUE || !GetFileSizeEx(m_handle, &size))
         {
             return VFSResult<uint64_t>::Fail(VFSError::IOError);
         }
+        return size.QuadPart < 0 ? VFSResult<uint64_t>::Fail(VFSError::Corrupted) : VFSResult<uint64_t>::Ok(static_cast<uint64_t>(size.QuadPart));
 #else
-        if (m_fd < 0)
+        struct stat value = {};
+        if (m_fd < 0 || ::fstat(m_fd, &value) != 0)
         {
             return VFSResult<uint64_t>::Fail(VFSError::IOError);
         }
+        return value.st_size < 0 ? VFSResult<uint64_t>::Fail(VFSError::Corrupted) : VFSResult<uint64_t>::Ok(static_cast<uint64_t>(value.st_size));
 #endif
-        return VFSResult<uint64_t>::Ok(m_size);
     }
 
     VFSResult<VFSFileStat> VFSDiskFile::Stat() const
     {
-        VFSFileStat stat = {};
-        stat.SizeBytes   = m_size;
-        stat.IsReadOnly  = !m_writable;
-        stat.IsDirectory = false;
-        return VFSResult<VFSFileStat>::Ok(stat);
+#if defined(_WIN32)
+        return Detail::NativeStat(m_handle);
+#else
+        struct stat value = {};
+        if (m_fd < 0 || ::fstat(m_fd, &value) != 0)
+        {
+            return VFSResult<VFSFileStat>::Fail(VFSError::IOError);
+        }
+        return Detail::NativeStat(value);
+#endif
+    }
+
+    VFSResult<VFSFileIdentity> VFSDiskFile::Identity() const
+    {
+#if defined(_WIN32)
+        return Detail::NativeIdentity(m_handle);
+#else
+        struct stat value = {};
+        if (m_fd < 0 || ::fstat(m_fd, &value) != 0)
+        {
+            return VFSResult<VFSFileIdentity>::Fail(VFSError::IOError);
+        }
+        return VFSResult<VFSFileIdentity>::Ok(Detail::NativeIdentity(value));
+#endif
     }
 
     VFSResult<void> VFSDiskFile::Flush()
@@ -173,26 +209,35 @@ namespace ZEngine::Core::VFS
 
     VFSResult<void> VFSDiskFile::Close()
     {
+        bool succeeded = true;
         if (m_mapped_ptr)
         {
-            Unmap(m_mapped_ptr, m_mapped_size);
+#if defined(_WIN32)
+            succeeded = UnmapViewOfFile(m_mapped_ptr) != 0;
+#else
+            succeeded = munmap(m_mapped_ptr, m_mapped_size) == 0;
+#endif
             m_mapped_ptr  = nullptr;
             m_mapped_size = 0;
         }
 #if defined(_WIN32)
         if (m_handle != INVALID_HANDLE_VALUE)
         {
-            CloseHandle(m_handle);
-            m_handle = INVALID_HANDLE_VALUE;
+            const auto handle = m_handle;
+            m_handle          = INVALID_HANDLE_VALUE;
+            succeeded         = (CloseHandle(handle) != 0) && succeeded;
         }
 #else
         if (m_fd >= 0)
         {
-            ::close(m_fd);
-            m_fd = -1;
+            const auto descriptor = m_fd;
+            m_fd                  = -1;
+            // A failed POSIX close may already have released the descriptor. Never
+            // retry it during wrapper teardown against a potentially reused number.
+            succeeded             = (::close(descriptor) == 0) && succeeded;
         }
 #endif
-        return VFSResult<void>::Ok();
+        return succeeded ? VFSResult<void>::Ok() : VFSResult<void>::Fail(VFSError::IOError);
     }
 
     VFSResult<void*> VFSDiskFile::MemoryMap(uint64_t& out_size)
@@ -256,6 +301,10 @@ namespace ZEngine::Core::VFS
 
     void VFSDiskBackend::Initialize(cstring native_root, VFSBackendCaps caps, Memory::ArenaAllocator* arena, size_t max_open_files)
     {
+        if (m_root_provider)
+        {
+            m_root_provider->Retire();
+        }
         m_native_root_len = Helpers::secure_strlen(native_root);
         ZENGINE_VALIDATE_ASSERT(m_native_root_len < MAX_FILE_PATH_COUNT, "VFSDiskBackend native_root exceeds MAX_FILE_PATH_COUNT")
         Helpers::secure_memcpy(m_native_root, MAX_FILE_PATH_COUNT, native_root, m_native_root_len);
@@ -273,6 +322,20 @@ namespace ZEngine::Core::VFS
 
         const size_t file_stride = Helpers::memory_align_size_t(sizeof(VFSDiskFile), ZAlignof<VFSDiskFile>());
         m_file_pool.Initialize(m_arena, file_stride * max_open_files, file_stride, ZAlignof<VFSDiskFile>());
+        m_root_provider = CreateDiskRootProvider(m_native_root, m_caps);
+    }
+
+    VFSDiskBackend::~VFSDiskBackend()
+    {
+        if (m_root_provider)
+        {
+            m_root_provider->Retire();
+        }
+    }
+
+    Helpers::Ref<IVFSRootProvider> VFSDiskBackend::RootProvider() const
+    {
+        return m_root_provider;
     }
 
     bool VFSDiskBackend::ResolveNativePath(const VFSPath& relative, NativePathChar* out_buf) const
@@ -356,6 +419,11 @@ namespace ZEngine::Core::VFS
 
     VFSResult<IVFSFile*> VFSDiskBackend::Open(const VFSPath& relative_path, VFSOpenFlags flags)
     {
+        const bool allow_replace = HasFlag(flags, VFSOpenFlags::AllowReplace);
+        if (allow_replace && flags != (VFSOpenFlags::Read | VFSOpenFlags::AllowReplace))
+        {
+            return VFSResult<IVFSFile*>::Fail(VFSError::Unsupported);
+        }
         const bool exclusive = HasFlag(flags, VFSOpenFlags::Exclusive);
         if (exclusive && (!HasFlag(flags, VFSOpenFlags::Write) || !HasFlag(flags, VFSOpenFlags::Create)))
         {
@@ -395,16 +463,28 @@ namespace ZEngine::Core::VFS
         const DWORD access   = GENERIC_READ | (wants_write ? GENERIC_WRITE : 0);
         DWORD       creation = OPEN_EXISTING;
         if (exclusive)
+        {
             creation = CREATE_NEW;
+        }
         else if (HasFlag(flags, VFSOpenFlags::Create) && HasFlag(flags, VFSOpenFlags::Truncate))
+        {
             creation = CREATE_ALWAYS; // create or truncate
+        }
         else if (HasFlag(flags, VFSOpenFlags::Truncate))
+        {
             creation = TRUNCATE_EXISTING; // truncate must-exist file
+        }
         else if (wants_write || HasFlag(flags, VFSOpenFlags::Create))
+        {
             creation = OPEN_ALWAYS; // create if absent, open if present
+        }
         else
+        {
             creation = OPEN_EXISTING;
-        file->m_handle = CreateFileW(native, access, FILE_SHARE_READ, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
+        }
+        const DWORD sharing = FILE_SHARE_READ | (allow_replace ? FILE_SHARE_DELETE : 0);
+        file->m_handle      = CreateFileW(native, access, sharing, nullptr, creation, FILE_ATTRIBUTE_NORMAL, nullptr);
+        file->m_append      = HasFlag(flags, VFSOpenFlags::Append);
         if (file->m_handle == INVALID_HANDLE_VALUE)
         {
             const DWORD native_error = GetLastError();
@@ -672,10 +752,48 @@ namespace ZEngine::Core::VFS
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
         }
 #if defined(_WIN32)
-        if (!MoveFileExW(native_src, native_dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        // Share the same atomic open-reader replacement primitive as rooted
+        // publication. MoveFileExW cannot replace a retained snapshot reader.
+        const auto module          = GetModuleHandleW(L"ntdll.dll");
+        const auto set_information = module ? reinterpret_cast<Detail::NativeSetInformationFn>(GetProcAddress(module, "NtSetInformationFile")) : nullptr;
+        const auto status_to_error = module ? reinterpret_cast<decltype(&::RtlNtStatusToDosError)>(GetProcAddress(module, "RtlNtStatusToDosError")) : nullptr;
+        if (!set_information || !status_to_error)
         {
-            return VFSResult<void>::Fail(VFSError::IOError);
+            return VFSResult<void>::Fail(VFSError::Unsupported);
         }
+        auto* leaf = native_dst;
+        for (auto* cursor = native_dst; *cursor; ++cursor)
+        {
+            if (*cursor == L'/' || *cursor == L'\\')
+            {
+                leaf = cursor + 1;
+            }
+        }
+        if (leaf == native_dst || !*leaf)
+        {
+            return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
+        constexpr DWORD sharing = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+        const auto      source  = CreateFileW(native_src, DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, sharing, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (source == INVALID_HANDLE_VALUE)
+        {
+            return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+        }
+        // Preserve the trailing separator, including a drive root's backslash.
+        const auto first  = *leaf;
+        *leaf             = L'\0';
+        const auto parent = CreateFileW(native_dst, FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, sharing, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        *leaf             = first;
+        if (parent == INVALID_HANDLE_VALUE)
+        {
+            const auto error = Detail::NativeWindowsError(GetLastError());
+            (void) CloseHandle(source);
+            return VFSResult<void>::Fail(error);
+        }
+        const auto renamed = Detail::RenameWindowsHandle(set_information, status_to_error, source, parent, leaf, std::wcslen(leaf), true);
+        (void) CloseHandle(parent);
+        (void) CloseHandle(source);
+        return renamed;
 #else
         std::error_code ec = {};
         std::filesystem::rename(native_src, native_dst, ec);
@@ -705,10 +823,14 @@ namespace ZEngine::Core::VFS
         }
 #if defined(_WIN32)
         if (MoveFileExW(native_src, native_dst, MOVEFILE_WRITE_THROUGH))
+        {
             return VFSResult<void>::Ok();
+        }
         const DWORD error = GetLastError();
         if (error == ERROR_ACCESS_DENIED && GetFileAttributesW(native_dst) != INVALID_FILE_ATTRIBUTES)
+        {
             return VFSResult<void>::Fail(VFSError::AlreadyExists);
+        }
         return VFSResult<void>::Fail(error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS ? VFSError::AlreadyExists : error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ? VFSError::NotFound : error == ERROR_ACCESS_DENIED ? VFSError::PermissionDenied : VFSError::IOError);
 #else
 #if defined(__APPLE__)

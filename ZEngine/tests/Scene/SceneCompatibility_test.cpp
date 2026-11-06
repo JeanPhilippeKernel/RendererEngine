@@ -1,4 +1,5 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/Serialization/YAMLAllocation.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/ECS/BinarySceneCodec.h>
@@ -9,6 +10,7 @@
 #include <ZEngine/ECS/Scene.h>
 #include <ZEngine/ECS/SceneBinaryValue.h>
 #include <ZEngine/ECS/SceneCompatibility.h>
+#include <ZEngine/ECS/SceneDocumentInternal.h>
 #include <ZEngine/ECS/SceneYAMLReader.h>
 #include <ZEngine/ECS/SceneYamlValue.h>
 #include <gtest/gtest.h>
@@ -16,6 +18,7 @@
 #include <array>
 #include <future>
 #include <vector>
+#include "SceneWorkingMemoryTestSupport.h"
 
 namespace
 {
@@ -40,11 +43,15 @@ namespace
     {
         const auto& step = *static_cast<const RenameStep*>(context);
         if (!source.IsMap() || source.size() != 1 || !source[step.From].IsScalar())
+        {
             return false;
+        }
         auto&      storage = *out->Owner();
         const auto result  = storage.Make(ECS::SceneYAML::NodeType::Map);
         if (!storage.Set(result, step.To, storage.Clone(source[step.From])))
+        {
             return false;
+        }
         *out = result;
         return true;
     }
@@ -53,7 +60,9 @@ namespace
         auto&      storage = *out->Owner();
         const auto result  = storage.Clone(source);
         if (!storage.Set(result["scene"], "schema_version", storage.UInt(ECS::SceneDocument::SchemaVersion)))
+        {
             return false;
+        }
         *out = result;
         return true;
     }
@@ -169,6 +178,135 @@ namespace
         }
     };
 
+    TEST(SceneDiagnosticsTest, RetentionReusesCallerStorageAndPreservesAddMessages)
+    {
+        ECS::SceneDiagnostics diagnostics = {};
+        auto*                 entry       = diagnostics.Emplace(ECS::SceneDiagnosticSeverity::Warning);
+        ASSERT_EQ(entry, &diagnostics.Entries[0]);
+        EXPECT_EQ(entry->Severity, ECS::SceneDiagnosticSeverity::Warning);
+        EXPECT_EQ(entry->Code, ECS::SceneDiagnosticCode::None);
+        EXPECT_TRUE(std::all_of(std::begin(entry->Message), std::end(entry->Message), [](char value) { return value == 0; }));
+        ASSERT_EQ(ZEngine::Helpers::secure_strncpy(entry->Message, sizeof(entry->Message), "retained message", 16), ZEngine::Helpers::MEMORY_OP_SUCCESS);
+        diagnostics.Add(ECS::SceneDiagnosticSeverity::Info, entry->Message);
+        EXPECT_STREQ(diagnostics.Entries[1].Message, "retained message");
+        diagnostics.Error(nullptr);
+        EXPECT_STREQ(diagnostics.Entries[2].Message, "");
+        EXPECT_TRUE(diagnostics.HasError(ECS::SceneDiagnosticCode::InvalidData));
+        EXPECT_EQ(diagnostics.ErrorCount, 1u);
+
+        diagnostics.Clear();
+        EXPECT_EQ(diagnostics.Count, 0u);
+        EXPECT_EQ(diagnostics.Dropped, 0u);
+        EXPECT_EQ(diagnostics.ErrorCount, 0u);
+        EXPECT_EQ(diagnostics.ErrorCodes, 0u);
+        // Clear does not erase retained entries. Add must not clear its target
+        // before copying from a different retained slot supplied by the caller.
+        diagnostics.Add(ECS::SceneDiagnosticSeverity::Info, diagnostics.Entries[1].Message);
+        EXPECT_STREQ(diagnostics.Entries[0].Message, "retained message");
+        diagnostics.Clear();
+        entry = diagnostics.Emplace(ECS::SceneDiagnosticSeverity::Error, ECS::SceneDiagnosticCode::AllocationFailed);
+        ASSERT_EQ(entry, &diagnostics.Entries[0]);
+        EXPECT_TRUE(std::all_of(std::begin(entry->Message), std::end(entry->Message), [](char value) { return value == 0; }));
+        EXPECT_EQ(entry->Code, ECS::SceneDiagnosticCode::AllocationFailed);
+        EXPECT_TRUE(diagnostics.HasError(ECS::SceneDiagnosticCode::AllocationFailed));
+        EXPECT_FALSE(diagnostics.HasError(ECS::SceneDiagnosticCode::InvalidData));
+
+        const std::string long_message(ECS::SceneDiagnostics::MAX_MESSAGE_LEN * 2, 'm');
+        diagnostics.Error(long_message.c_str());
+        EXPECT_EQ(ZEngine::Helpers::secure_strlen(diagnostics.Entries[1].Message), ECS::SceneDiagnostics::MAX_MESSAGE_LEN - 1);
+        EXPECT_EQ(std::string_view(diagnostics.Entries[1].Message), std::string_view(long_message).substr(0, ECS::SceneDiagnostics::MAX_MESSAGE_LEN - 1));
+
+        diagnostics.Clear();
+        entry = diagnostics.Emplace(ECS::SceneDiagnosticSeverity::Info, ECS::SceneDiagnosticCode::None, diagnostics.Entries[1].Message + 1);
+        ASSERT_EQ(entry, &diagnostics.Entries[0]);
+        EXPECT_EQ(ZEngine::Helpers::secure_strlen(entry->Message), ECS::SceneDiagnostics::MAX_MESSAGE_LEN - 2);
+        diagnostics.Clear();
+        entry = diagnostics.Emplace(ECS::SceneDiagnosticSeverity::Info, ECS::SceneDiagnosticCode::None, diagnostics.Entries[0].Message + 1);
+        ASSERT_EQ(entry, &diagnostics.Entries[0]);
+        EXPECT_EQ(ZEngine::Helpers::secure_strlen(entry->Message), ECS::SceneDiagnostics::MAX_MESSAGE_LEN - 3);
+        EXPECT_EQ(entry->Message[ECS::SceneDiagnostics::MAX_MESSAGE_LEN - 2], '\0');
+    }
+
+    TEST(SceneDiagnosticsTest, FullBuffersRetainErrorCategoriesAndDoNotOverwriteEntries)
+    {
+        ECS::SceneDiagnostics diagnostics = {};
+        for (uint32_t index = 0; index < ECS::SceneDiagnostics::MAX_ENTRIES; ++index)
+        {
+            diagnostics.Add(ECS::SceneDiagnosticSeverity::Warning, "unchanged");
+        }
+        EXPECT_EQ(diagnostics.Count, ECS::SceneDiagnostics::MAX_ENTRIES);
+        EXPECT_FALSE(diagnostics.HasErrors());
+        EXPECT_EQ(diagnostics.Emplace(ECS::SceneDiagnosticSeverity::Error, ECS::SceneDiagnosticCode::LimitExceeded), nullptr);
+        diagnostics.Error("not retained", ECS::SceneDiagnosticCode::AllocationFailed);
+        EXPECT_EQ(diagnostics.Emplace(ECS::SceneDiagnosticSeverity::Info), nullptr);
+        EXPECT_EQ(diagnostics.Count, ECS::SceneDiagnostics::MAX_ENTRIES);
+        EXPECT_EQ(diagnostics.ErrorCount, 2u);
+        EXPECT_EQ(diagnostics.Dropped, 3u);
+        EXPECT_TRUE(diagnostics.HasError(ECS::SceneDiagnosticCode::LimitExceeded));
+        EXPECT_TRUE(diagnostics.HasError(ECS::SceneDiagnosticCode::AllocationFailed));
+        for (const auto& entry : diagnostics.Entries)
+        {
+            EXPECT_EQ(entry.Severity, ECS::SceneDiagnosticSeverity::Warning);
+            EXPECT_EQ(entry.Code, ECS::SceneDiagnosticCode::None);
+            EXPECT_STREQ(entry.Message, "unchanged");
+        }
+    }
+
+    TEST_F(SceneCompatibilityTest, MigrationDiagnosticsFormatAndTruncateInRetainedStorage)
+    {
+        Diagnostics.Clear();
+        const auto offset = Memory.MainArena.m_current_offset;
+        EXPECT_FALSE(Migrations.RegisterDocumentMigration(0, 2, nullptr, UpgradeDocument, &Diagnostics));
+        ASSERT_EQ(Diagnostics.Count, 1u);
+        EXPECT_STREQ(Diagnostics.Entries[0].Message, "Migration scene 0 -> 2: invalid, duplicate/branching or full registration");
+        EXPECT_EQ(Diagnostics.Entries[0].Severity, ECS::SceneDiagnosticSeverity::Error);
+        EXPECT_EQ(Diagnostics.Entries[0].Code, ECS::SceneDiagnosticCode::InvalidData);
+
+        const std::string long_key(127, 'k');
+        EXPECT_FALSE(Migrations.RegisterComponentMigration(long_key.c_str(), UINT32_MAX - 1, UINT32_MAX - 1, nullptr, RenameField, &Diagnostics));
+        std::string expected = "Migration " + long_key + " 4294967294 -> 4294967294: invalid, duplicate/branching or full registration";
+        expected.resize(ECS::SceneDiagnostics::MAX_MESSAGE_LEN - 1);
+        ASSERT_EQ(Diagnostics.Count, 2u);
+        EXPECT_EQ(std::string_view(Diagnostics.Entries[1].Message), expected);
+        EXPECT_EQ(Diagnostics.ErrorCount, 2u);
+        EXPECT_EQ(Diagnostics.Dropped, 0u);
+        EXPECT_FALSE(Migrations.RegisterDocumentMigration(0, 2, nullptr, UpgradeDocument, nullptr));
+        EXPECT_EQ(Diagnostics.Count, 2u);
+        EXPECT_EQ(Memory.MainArena.m_current_offset, offset);
+        EXPECT_EQ(Migrations.Count(), 0u);
+
+        Diagnostics.Clear();
+        Diagnostics.Add(ECS::SceneDiagnosticSeverity::Info, "NameComponent");
+        Diagnostics.Clear();
+        EXPECT_FALSE(Migrations.RegisterComponentMigration(Diagnostics.Entries[0].Message, 0, 2, nullptr, RenameField, &Diagnostics));
+        ASSERT_EQ(Diagnostics.Count, 1u);
+        EXPECT_STREQ(Diagnostics.Entries[0].Message, "Migration NameComponent 0 -> 2: invalid, duplicate/branching or full registration");
+        EXPECT_EQ(Memory.MainArena.m_current_offset, offset);
+    }
+
+    TEST_F(SceneCompatibilityTest, MissingMigrationWithFullDiagnosticsPreservesDocumentAndReportsVersionCategory)
+    {
+        const auto source = Fixture();
+        Diagnostics.Clear();
+        for (uint32_t index = 0; index < ECS::SceneDiagnostics::MAX_ENTRIES; ++index)
+        {
+            Diagnostics.Add(ECS::SceneDiagnosticSeverity::Info, "unchanged");
+        }
+        EXPECT_FALSE(Parse(source));
+        EXPECT_TRUE(Diagnostics.HasErrors());
+        EXPECT_TRUE(Diagnostics.HasError(ECS::SceneDiagnosticCode::UnsupportedVersion));
+        EXPECT_GE(Diagnostics.Dropped, 1u);
+        EXPECT_EQ(Diagnostics.Count, ECS::SceneDiagnostics::MAX_ENTRIES);
+        for (const auto& entry : Diagnostics.Entries)
+        {
+            EXPECT_STREQ(entry.Message, "unchanged");
+        }
+        std::string after = {};
+        ASSERT_TRUE(Document.Emit(&after, nullptr));
+        EXPECT_EQ(after, Canonical);
+        EXPECT_EQ(Candidate.AliveCount(), 0u);
+    }
+
     TEST_F(SceneCompatibilityTest, RegistrationRejectsInvalidAmbiguousAndExhaustedRoutes)
     {
         EXPECT_FALSE(Migrations.RegisterDocumentMigration(0, 2, nullptr, UpgradeDocument, &Diagnostics));
@@ -176,7 +314,9 @@ namespace
         EXPECT_FALSE(Migrations.RegisterDocumentMigration(1, 1, nullptr, UpgradeDocument, &Diagnostics));
         EXPECT_FALSE(Migrations.RegisterDocumentMigration(1, 2, nullptr, nullptr, &Diagnostics));
         for (const auto* key : {"", "bad/key", "bad\\key", "bad\"key", "bad key", "\xc3\xa9", "UUIDComponent"})
+        {
             EXPECT_FALSE(Migrations.RegisterComponentMigration(key, 1, 2, &First, RenameField, &Diagnostics));
+        }
         EXPECT_FALSE(Migrations.RegisterComponentMigration(nullptr, 1, 2, &First, RenameField, &Diagnostics));
         const std::string long_key(128, 'k');
         EXPECT_FALSE(Migrations.RegisterComponentMigration(long_key.c_str(), 1, 2, &First, RenameField, &Diagnostics));
@@ -288,6 +428,94 @@ namespace
         EXPECT_EQ(after, Canonical);
     }
 
+    TEST_F(SceneCompatibilityTest, MigrationPrincipalAndNestedScratchBudgetsRefuseBeforeCallbacksAndPreserveOutputs)
+    {
+        struct Trace
+        {
+            RenameStep* Step  = nullptr;
+            uint32_t    Calls = 0;
+        } trace            = {&First};
+        const auto migrate = [](void* context, const ECS::SceneYAML::Node& source, ECS::SceneYAML::Node* out, ECS::SceneDiagnostics* diagnostics) {
+            auto& state = *static_cast<Trace*>(context);
+            ++state.Calls;
+            return RenameField(state.Step, source, out, diagnostics);
+        };
+        ASSERT_TRUE(Migrations.RegisterComponentMigration("NameComponent", 1, 2, &trace, migrate, &Diagnostics));
+        ASSERT_TRUE(Migrations.RegisterComponentMigration("NameComponent", 2, 3, &Second, RenameField, &Diagnostics));
+        const auto text      = Fixture();
+        const auto principal = ECS::SceneDocumentDetail::MigrationScratchWorkingBytes();
+        size_t     peak      = 0;
+        for (uint32_t attempt = 0; attempt < 4; ++attempt)
+        {
+            ZEngine::Tests::SceneTestAllocationRoute route = {}, unrelated = {};
+            route.Limit = SIZE_MAX;
+            {
+                ECS::SceneYAML::Storage storage = {};
+                ASSERT_TRUE(storage.Initialize(ZMega(2), 1048576, 65536, 4096, &route));
+                auto root = storage.Destination();
+                ASSERT_TRUE(ECS::ReadSceneYAML(text, {}, &root, &Diagnostics));
+                const auto original    = root["scene"]["entities"][size_t{0}]["components"]["NameComponent"]["fields"]["label"].Scalar();
+                const auto used        = storage.BytesUsed();
+                const auto allocations = route.Attempts;
+                const auto blocks      = route.Blocks;
+                route.WatchBytes       = principal;
+                route.Peak             = 0;
+                route.Limit            = attempt < 2 ? SIZE_MAX : peak - (attempt == 2 ? 1 : 0);
+                route.RefuseBytes      = attempt == 1 ? principal : 0;
+                trace.Calls            = 0;
+                Diagnostics.Clear();
+                ZEngine::Core::Serialization::YAMLAllocationScope scope(unrelated);
+                const bool                                        accepted = attempt == 0 || attempt == 3;
+                EXPECT_EQ(ECS::SceneCompatibilityService::PrepareForLoad(&root, Schemas, &Migrations, &Diagnostics, {}, &route), accepted);
+                if (attempt == 0)
+                {
+                    peak = route.Peak;
+                }
+                EXPECT_GT(peak, principal); // Snapshot state stays charged during cloning.
+                EXPECT_EQ(trace.Calls, accepted ? 1u : 0u);
+                EXPECT_EQ(route.Live, 0u);
+                EXPECT_EQ(route.WatchCalls, 1u);
+                EXPECT_EQ(route.WatchReleases, attempt == 1 ? 0u : 1u);
+                EXPECT_EQ(unrelated.Required, 0u);
+                EXPECT_TRUE(storage.Good());
+                const auto fields = root["scene"]["entities"][size_t{0}]["components"]["NameComponent"]["fields"];
+                if (accepted)
+                {
+                    EXPECT_EQ(fields["value"].Scalar(), original);
+                }
+                else
+                {
+                    EXPECT_EQ(fields["label"].Scalar(), original);
+                    EXPECT_EQ(storage.BytesUsed(), used);
+                    EXPECT_EQ(route.Blocks, blocks); // Snapshot owners have drained.
+                    EXPECT_TRUE(Diagnostics.HasError(ECS::SceneDiagnosticCode::LimitExceeded));
+                    if (attempt == 1)
+                    {
+                        EXPECT_EQ(route.Attempts, allocations); // Before first snapshot allocation.
+                    }
+                }
+            }
+            EXPECT_EQ(route.Live, 0u);
+            EXPECT_EQ(route.Blocks, 0u);
+        }
+        // Check the published document's stronger candidate boundary as well.
+        ZEngine::Tests::SceneTestAllocationRoute route    = {};
+        const auto*                              previous = Document.Settings();
+        route.Limit                                       = SIZE_MAX;
+        route.RefuseBytes                                 = principal;
+        trace.Calls                                       = 0;
+        Diagnostics.Clear();
+        EXPECT_FALSE(ECS::SceneDocument::Parse(text.data(), text.size(), Schemas, &Document, &Diagnostics, {}, &Migrations, &route));
+        EXPECT_TRUE(Diagnostics.HasError(ECS::SceneDiagnosticCode::LimitExceeded));
+        EXPECT_EQ(trace.Calls, 0u);
+        EXPECT_EQ(Document.Settings(), previous);
+        EXPECT_EQ(route.Live, 0u);
+        EXPECT_EQ(route.Blocks, 0u);
+        std::string after = {};
+        ASSERT_TRUE(Document.Emit(&after, &Diagnostics));
+        EXPECT_EQ(after, Canonical);
+    }
+
     TEST_F(SceneCompatibilityTest, EntireRouteIsCheckedBeforeAnyCallbackRuns)
     {
         uint32_t   calls = 0;
@@ -307,7 +535,9 @@ namespace
         const auto* original = BuiltIns.FindByKey("NameComponent");
         ASSERT_TRUE(schemas.Register({.Key = original->Key, .Version = 35, .RuntimeType = original->RuntimeType, .Fields = original->Fields, .FieldCount = original->FieldCount, .Codecs = original->Codecs}, &Diagnostics));
         for (uint32_t version = 1; version < 35; ++version)
+        {
             ASSERT_TRUE(deep.RegisterComponentMigration("NameComponent", version, version + 1, &calls, count, &Diagnostics));
+        }
         const auto source = Fixture();
         EXPECT_FALSE(ECS::SceneDocument::Parse(source.data(), source.size(), schemas, &Document, &Diagnostics, {}, &deep));
         EXPECT_EQ(calls, 0u);
@@ -376,24 +606,34 @@ namespace
                 auto&      storage = *out->Owner();
                 auto       result  = storage.Make(ECS::SceneYAML::NodeType::Map);
                 if (mode == 0)
+                {
                     result = storage.Scalar("not a component map");
+                }
                 else if (mode == 1)
                 {
                     if (!storage.AppendField(result, storage.Scalar("value"), storage.Scalar("one")) || !storage.AppendField(result, storage.Scalar("value"), storage.Scalar("two")))
+                    {
                         return false;
+                    }
                 }
                 else if (mode == 2)
                 {
                     if (!storage.Set(result, "value", storage.Scalar(std::string(4097, 'x'))))
+                    {
                         return false;
+                    }
                 }
                 else if (mode == 3)
                 {
                     if (!storage.Set(result, "value", storage.Scalar(std::string(128, 'x'))))
+                    {
                         return false; // valid tree, invalid NameComponent semantics
+                    }
                 }
                 else if (!storage.Set(result, "unexpected", storage.Scalar("not current fields")))
+                {
                     return false;
+                }
                 *out = result;
                 return true;
             };
@@ -430,13 +670,19 @@ namespace
                 {
                     const uint32_t count = mode == 0 ? 65 : mode == 2 ? 512 : 4000;
                     for (uint32_t i = 0; i < count; ++i)
+                    {
                         if (!storage.Set(result, std::to_string(i), storage.Scalar("value")))
+                        {
                             return false;
+                        }
+                    }
                 }
                 else if (mode == 1)
                 {
                     if (!storage.Set(result, "value", storage.Scalar(std::string(513, 'x'))))
+                    {
                         return false;
+                    }
                 }
                 else
                 {
@@ -444,7 +690,9 @@ namespace
                     {
                         const auto parent = storage.Make(ECS::SceneYAML::NodeType::Map);
                         if (!storage.Set(parent, "nested", result))
+                        {
                             return false;
+                        }
                         result = parent;
                     }
                 }
@@ -454,15 +702,25 @@ namespace
             ASSERT_TRUE(registry.RegisterComponentMigration("NameComponent", 1, 3, &mode, grow, &Diagnostics));
             ECS::SceneDocumentLimits limits = {};
             if (mode == 0)
+            {
                 limits.MaxCollectionItems = 64;
+            }
             if (mode == 1)
+            {
                 limits.MaxScalarBytes = 512;
+            }
             if (mode == 2)
+            {
                 limits.MaxNodes = 512;
+            }
             if (mode == 3)
+            {
                 limits.MaxDepth = 8;
+            }
             if (mode == 4)
+            {
                 limits.MaxDecodedBytes = ZKilo(64);
+            }
             const auto source = Fixture();
             EXPECT_FALSE(Parse(source, limits, &registry));
             std::string after = {};
@@ -480,7 +738,9 @@ namespace
             const auto envelope = storage.Make(ECS::SceneYAML::NodeType::Map);
             const auto fields   = storage.Make(ECS::SceneYAML::NodeType::Map);
             if (!storage.Set(fields, "parent_uuid", storage.UUID(EntityUUID)) || !storage.Set(envelope, "schema_version", storage.UInt(1)) || !storage.Set(envelope, "fields", fields) || !storage.Set(result["scene"]["entities"][size_t{0}]["components"], "ParentComponent", envelope) || !storage.Set(result["scene"], "schema_version", storage.UInt(2)))
+            {
                 return false;
+            }
             *out = result;
             return true;
         };

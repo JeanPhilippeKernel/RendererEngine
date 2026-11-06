@@ -6,6 +6,7 @@
 #include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <cstring>
+#include <typeinfo>
 
 #if defined(__APPLE__)
 #include <ZEngine/Core/VFS/Platform/VFSFSEventsWatcher.h>
@@ -34,7 +35,40 @@ namespace ZEngine::Core::VFS
         m_active_import_publication.DirtyDirectories.init(m_arena, 8);
         m_active_import_publication.DeferredEvents.init(m_arena, 32);
         for (uint32_t i = 0; i < COMPLETED_IMPORT_PUBLICATION_COUNT; ++i)
+        {
             m_completed_import_publications[i].Artifacts.init(m_arena, 16);
+        }
+    }
+
+    VFSResult<VFSContextStorage> VFSContext::NativeStorage() const noexcept
+    {
+        // Inherited sizeof(base) is not a complete custom-facade contract.
+        // Derived contexts must explicitly describe their complete storage.
+        if (typeid(*this) != typeid(VFSContext) || !m_arena || m_platform_watcher || m_file_watcher || m_directory_cache || m_scanner || m_registry || m_coordinator || m_file_change_listener || m_file_change_context || m_active_import_publication.Publication.IsValid())
+        {
+            return VFSResult<VFSContextStorage>::Fail(VFSError::Unsupported);
+        }
+        Memory::ArenaRetainedStorage storage = {};
+        if (!m_arena->RetainedStorage(&storage))
+        {
+            return VFSResult<VFSContextStorage>::Fail(VFSError::Unsupported);
+        }
+        return VFSResult<VFSContextStorage>::Ok({this, sizeof(*this), m_arena});
+    }
+
+    VFSResult<void> VFSContext::AcquirePublicationRoot(const VFSPath& root, VFSPublicationRootLease* output, IVFSWorkingMemoryBudget* budget)
+    {
+        return m_mount_table.AcquirePublicationRoot(root, output, budget);
+    }
+
+    VFSResult<void> VFSContext::AcquireScratchRoot(const VFSPath& root, VFSScratchRootLease* output, IVFSWorkingMemoryBudget* budget)
+    {
+        return m_mount_table.AcquireScratchRoot(root, output, budget);
+    }
+
+    VFSResult<void> VFSContext::AcquireReadRoot(const VFSPath& root, VFSReadRootLease* output, IVFSWorkingMemoryBudget* budget)
+    {
+        return m_mount_table.AcquireReadRoot(root, output, budget);
     }
 
     void VFSContext::InitWatcher(const char* project_root_native, VFSDirectoryCache* cache, VFSScanner* scanner, AssetRegistry* registry, Importers::ImportCoordinator* coordinator, FileChangeListener file_change_listener, void* file_change_context)
@@ -65,7 +99,9 @@ namespace ZEngine::Core::VFS
         for (char* c = m_project_root_native; *c != '\0'; ++c)
         {
             if (*c == '/')
+            {
                 *c = '\\';
+            }
         }
 #endif
 
@@ -179,25 +215,37 @@ namespace ZEngine::Core::VFS
     void VFSContext::RecordImportPublicationArtifact(VFSImportPublication publication, const VFSPath& path)
     {
         if (!publication.IsValid() || publication.Id != m_active_import_publication.Publication.Id || !path.IsValid())
+        {
             return;
+        }
 
         for (size_t i = 0; i < m_active_import_publication.Artifacts.size(); ++i)
+        {
             if (m_active_import_publication.Artifacts[i] == path)
+            {
                 return;
+            }
+        }
 
         m_active_import_publication.Artifacts.push(path);
 
         const VFSPath parent = path.Parent();
         for (size_t i = 0; i < m_active_import_publication.DirtyDirectories.size(); ++i)
+        {
             if (m_active_import_publication.DirtyDirectories[i] == parent)
+            {
                 return;
+            }
+        }
         m_active_import_publication.DirtyDirectories.push(parent);
     }
 
     void VFSContext::EndImportPublication(VFSImportPublication publication)
     {
         if (!publication.IsValid() || publication.Id != m_active_import_publication.Publication.Id)
+        {
             return;
+        }
         if (m_active_import_publication.Depth > 1)
         {
             --m_active_import_publication.Depth;
@@ -224,8 +272,12 @@ namespace ZEngine::Core::VFS
         if (!m_active_import_publication.Artifacts.empty())
         {
             for (size_t i = 0; i < m_active_import_publication.DirtyDirectories.size(); ++i)
+            {
                 if (m_directory_cache)
+                {
                     m_directory_cache->Invalidate(m_active_import_publication.DirtyDirectories[i]);
+                }
+            }
             m_active_import_publication.RequiresScan = true;
         }
 
@@ -238,7 +290,9 @@ namespace ZEngine::Core::VFS
         completed.RequiresScan                = m_active_import_publication.RequiresScan;
         completed.Artifacts.clear();
         for (size_t i = 0; i < m_active_import_publication.Artifacts.size(); ++i)
+        {
             completed.Artifacts.push(m_active_import_publication.Artifacts[i]);
+        }
         m_next_completed_import_publication      = (m_next_completed_import_publication + 1) % COMPLETED_IMPORT_PUBLICATION_COUNT;
 
         m_active_import_publication.Publication  = {};
@@ -252,12 +306,16 @@ namespace ZEngine::Core::VFS
     VFSResult<VFSPath> VFSContext::ToRelativeVFSPath(cstring native) const
     {
         if (!native)
+        {
             return VFSResult<VFSPath>::Fail(VFSError::InvalidPath);
+        }
 
         const size_t root_len   = Helpers::secure_strlen(m_project_root_native);
         const size_t native_len = Helpers::secure_strlen(native);
         if (native_len >= root_len && strncmp(native, m_project_root_native, root_len) == 0 && (native[root_len] == '\0' || native[root_len] == PLATFORM_OS_BACKSLASH))
+        {
             return VFSPath::Parse(native[root_len] != '\0' ? native + root_len : "/");
+        }
         return VFSPath::FromNative(native);
     }
 
@@ -267,10 +325,14 @@ namespace ZEngine::Core::VFS
         {
             const VFSPath& artifact = artifacts[i];
             if (artifact == path)
+            {
                 return true;
+            }
             // Metadata is stored beside its registered artifact as <artifact>.meta.
             if (path.Length() == artifact.Length() + 5 && strncmp(path.CStr(), artifact.CStr(), artifact.Length()) == 0 && strncmp(path.CStr() + artifact.Length(), ".meta", 5) == 0)
+            {
                 return true;
+            }
         }
         return false;
     }
@@ -278,7 +340,9 @@ namespace ZEngine::Core::VFS
     bool VFSContext::IsPublicationEvent(uint64_t started_at_ns, const Containers::Array<VFSPath>& artifacts, const VFSWatchEvent& event) const
     {
         if (event.Kind == WatchEventKind::Overflow || event.ObservedAtNanoseconds == 0 || event.ObservedAtNanoseconds < started_at_ns)
+        {
             return false;
+        }
 
         VFSResult<VFSPath> path = ToRelativeVFSPath(event.Path);
         return path.Succeeded() && IsPublicationArtifact(artifacts, path.Value());
@@ -310,7 +374,9 @@ namespace ZEngine::Core::VFS
         const bool         full_rescan = (event.Kind == WatchEventKind::Overflow);
         VFSResult<VFSPath> path        = full_rescan ? ToRelativeVFSPath(m_project_root_native) : ToRelativeVFSPath(event.Path);
         if (path.Failed())
+        {
             return;
+        }
         if (event.Kind == WatchEventKind::Renamed && event.OldPath[0] != '\0')
         {
             const auto old_path = ToRelativeVFSPath(event.OldPath);
@@ -334,7 +400,9 @@ namespace ZEngine::Core::VFS
             }
         }
         if (IsEngineCachePath(path.Value()))
+        {
             return;
+        }
 
         const VFSPath target    = (event.IsDirectory || full_rescan) ? path.Value() : path.Value().Parent();
         const VFSPath file_path = path.Value();
@@ -346,7 +414,9 @@ namespace ZEngine::Core::VFS
             {
                 VFSResult<VFSPath> old_path = ToRelativeVFSPath(event.OldPath);
                 if (old_path.Succeeded())
+                {
                     m_directory_cache->Invalidate(event.IsDirectory ? old_path.Value() : old_path.Value().Parent());
+                }
             }
         }
 
@@ -360,21 +430,29 @@ namespace ZEngine::Core::VFS
         };
 
         if (!event.IsDirectory && !full_rescan && is_temporary(file_path))
+        {
             return;
+        }
         if (!event.IsDirectory && !full_rescan && !is_meta(file_path))
         {
             switch (event.Kind)
             {
                 case WatchEventKind::Modified:
                     if (m_registry)
+                    {
                         m_registry->OnAssetModified(file_path);
+                    }
                     if (m_coordinator)
+                    {
                         m_coordinator->Enqueue(file_path, Importers::ImportPriority::Immediate);
+                    }
                     break;
 
                 case WatchEventKind::Deleted:
                     if (m_registry)
+                    {
                         m_registry->OnAssetDeleted(file_path);
+                    }
                     break;
 
                 case WatchEventKind::Renamed:
@@ -382,7 +460,9 @@ namespace ZEngine::Core::VFS
                     {
                         VFSResult<VFSPath> old_path = ToRelativeVFSPath(event.OldPath);
                         if (old_path.Succeeded())
+                        {
                             m_registry->OnAssetRenamed(old_path.Value(), file_path);
+                        }
                     }
                     break;
 
@@ -391,17 +471,23 @@ namespace ZEngine::Core::VFS
             }
 
             if (m_file_change_listener)
+            {
                 m_file_change_listener(m_file_change_context, file_path, event.Kind);
+            }
         }
 
         if (m_scanner && m_directory_cache && !m_scanner->IsScanning())
+        {
             m_rescan_requested |= !m_scanner->Scan(this, target, m_directory_cache);
+        }
     }
 
     void VFSContext::FlushDeferredImportScan()
     {
         if (!m_scanner || !m_directory_cache)
+        {
             return;
+        }
 
         const uint64_t now_ns      = VFSWatchTimestampNowNanoseconds();
         bool           should_scan = false;
@@ -415,7 +501,9 @@ namespace ZEngine::Core::VFS
             }
         }
         if (!should_scan || m_scanner->IsScanning())
+        {
             return;
+        }
 
         // Start one scan for every completed publication whose watcher grace period
         // elapsed. The scan observes the final filesystem state, including a real
@@ -437,7 +525,9 @@ namespace ZEngine::Core::VFS
     void VFSContext::ScanProject()
     {
         if (m_scanner && m_directory_cache)
+        {
             m_rescan_requested = !m_scanner->Scan(this, VFSPath::Root(), m_directory_cache);
+        }
     }
 
     void VFSContext::Tick()
@@ -448,7 +538,9 @@ namespace ZEngine::Core::VFS
         }
         FlushDeferredImportScan();
         if (m_rescan_requested && m_scanner && !m_scanner->IsScanning())
+        {
             ScanProject();
+        }
     }
 
     void VFSContext::ShutdownWatcher()
@@ -637,7 +729,9 @@ namespace ZEngine::Core::VFS
     {
         const auto writable = ResolveWritable(absolute_path);
         if (writable.Failed())
+        {
             return VFSResult<void>::Fail(writable.Error());
+        }
         const auto& hit = writable.Value();
         return hit.Backend->CreateDirExclusive(hit.RelativePath);
     }
@@ -658,7 +752,9 @@ namespace ZEngine::Core::VFS
     {
         VFSResult<ResolveResult> writable = ResolveWritable(absolute_path);
         if (writable.Failed())
+        {
             return VFSResult<void>::Fail(writable.Error());
+        }
         const ResolveResult& hit = writable.Value();
         return hit.Backend->RemoveAll(hit.RelativePath);
     }
@@ -688,19 +784,29 @@ namespace ZEngine::Core::VFS
     VFSResult<void> VFSContext::RenameNoReplace(const VFSPath& src, const VFSPath& dst)
     {
         if (!src.IsValid() || !dst.IsValid() || src.IsRoot() || dst.IsRoot() || src.IsPrefixOf(dst))
+        {
             return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
         // Resolve the actual owning mounts, not a less-specific writable fallback.
         // A read-only mounted asset must never rename an unrelated shadowed file.
         const auto source = m_mount_table.Resolve(src);
         if (source.Failed())
+        {
             return VFSResult<void>::Fail(source.Error());
+        }
         const auto destination = m_mount_table.Resolve(dst);
         if (destination.Failed())
+        {
             return VFSResult<void>::Fail(destination.Error());
+        }
         if (source.Value().Backend != destination.Value().Backend)
+        {
             return VFSResult<void>::Fail(VFSError::Unsupported);
+        }
         if (!HasCap(source.Value().Backend->Capabilities(), VFSBackendCaps::Write))
+        {
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
+        }
         return source.Value().Backend->RenameNoReplace(source.Value().RelativePath, destination.Value().RelativePath);
     }
 
@@ -714,15 +820,21 @@ namespace ZEngine::Core::VFS
     VFSResult<ResolveResult> VFSContext::ResolveWritable(const VFSPath& path) const
     {
         if (!path.IsValid())
+        {
             return VFSResult<ResolveResult>::Fail(VFSError::InvalidPath);
+        }
         // Mutations must use the same owning mount as Open/Stat. Falling through
         // a read-only mount can delete or create an unrelated shadowed asset.
         // A single resolution also avoids scratch allocations and the arena lock.
         const auto resolved = m_mount_table.Resolve(path);
         if (resolved.Failed())
+        {
             return VFSResult<ResolveResult>::Fail(resolved.Error());
+        }
         if (!HasCap(resolved.Value().Backend->Capabilities(), VFSBackendCaps::Write))
+        {
             return VFSResult<ResolveResult>::Fail(VFSError::PermissionDenied);
+        }
         return resolved;
     }
 

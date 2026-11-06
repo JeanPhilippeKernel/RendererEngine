@@ -3,6 +3,7 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/VFS/IVFSFile.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Core/VFS/VFSRootLease.h>
 #include <cstdint>
 
 namespace ZEngine::Core::VFS
@@ -36,7 +37,14 @@ namespace ZEngine::Core::VFS
 
     struct IVFSBackend
     {
-        virtual ~IVFSBackend()                                                                                                                    = default;
+        virtual ~IVFSBackend() = default;
+
+        // Mounts retain independent operational state while the facade is alive.
+        // Ordinary backends remain unsupported until they implement rooted I/O.
+        virtual Helpers::Ref<IVFSRootProvider> RootProvider() const
+        {
+            return {};
+        }
 
         [[nodiscard]] virtual VFSResult<IVFSFile*>                            Open(const VFSPath& path, VFSOpenFlags flags)                       = 0;
         virtual void                                                          Close(IVFSFile* file)                                               = 0;

@@ -250,7 +250,7 @@ namespace
 
     TEST_F(SceneDocumentProcessTest, SaveOrReopenUsingProductionDiskVFS)
     {
-        const auto path     = VFS::VFSPath::Parse(Options.Binary ? "/scene.zescenebin" : reinterpret_cast<const char*>(u8"/sc\u00e8ne_\u8cc7\u6599_\U0001f680.zescene"));
+        const auto path     = VFS::VFSPath::Parse(Options.Binary ? "/scene.zescenebin" : reinterpret_cast<const char*>(u8"/sc\u00e8ne_\u8cc7\u6599_\U00020bb7.zescene"));
         const auto reopened = VFS::VFSPath::Parse(Options.Binary ? "/reopened.zescenebin" : "/reopened.zescene");
         ASSERT_TRUE(path.Succeeded());
         ASSERT_TRUE(reopened.Succeeded());

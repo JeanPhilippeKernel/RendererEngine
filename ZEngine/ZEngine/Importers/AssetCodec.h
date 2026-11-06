@@ -5,6 +5,7 @@
 #include <ZEngine/Core/VFS/VFSError.h>
 #include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/Core/VFS/VFSPath.h>
+#include <ZEngine/Importers/AssetByteSource.h>
 #include <ZEngine/Importers/AssetTypes.h>
 #include <ZEngine/Rendering/Buffers/Bitmap.h>
 
@@ -126,8 +127,26 @@ namespace ZEngine::Importers::AssetCodec
     /// The caller exclusively owns arena for the call and the lifetime of the result.
     /// Failure preserves both outputs and restores the arena's allocation cursors.
     /// A non-nil expected UUID prevents a stale/substituted file binding another asset.
+    [[nodiscard]] Core::VFS::VFSResult<void>                ReadMeshAsset(const AssetByteSource&, Core::Memory::ArenaAllocator* arena, AssetMesh* mesh, AssetNodeHierarchy* hierarchy, const uuids::uuid& expected_uuid = {}, const MeshAssetReadLimits& limits = {});
     [[nodiscard]] Core::VFS::VFSResult<void>                ReadMeshAssetFileVFS(Core::Memory::ArenaAllocator* arena, Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, AssetMesh* mesh, AssetNodeHierarchy* hierarchy, const uuids::uuid& expected_uuid = {}, const MeshAssetReadLimits& limits = {});
     [[nodiscard]] Core::VFS::VFSResult<void>                ReadMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* path, AssetMesh* mesh, AssetNodeHierarchy* hierarchy, const uuids::uuid& expected_uuid = {}, const MeshAssetReadLimits& limits = {});
+
+    // Allocation-free layout measurement through the SAME bounded wire reader.
+    // WorkspaceBytes includes decoder allocations/alignment/temporary validation
+    // state for an empty DEFAULT_ALIGNMENT-aligned arena. It excludes the fixed
+    // reader fixed storage below and other call-stack bytes. Failure preserves output.
+    // This is NOT payload validation:
+    // callers must still ReadMeshAsset against the same immutable bytes before
+    // consuming/staging them. No geometry/name/map validation is skipped there.
+    [[nodiscard]] Core::VFS::VFSResult<void>                MeasureMeshAssetReadWorkspace(const AssetByteSource&, size_t* workspace_bytes, const uuids::uuid& expected_uuid = {}, const MeshAssetReadLimits& limits = {});
+
+    // Allocation-free upper bound for named fixed objects inside either layout
+    // measurement or decode: the buffered reader, pending mesh/hierarchy and
+    // arena transaction/validation helpers. The two calls are sequential, not
+    // additive. Budgeted callers reserve this BEFORE entering either function,
+    // separately from the arena's allocated capacity. This is not a complete
+    // compiler/helper/scalar call-stack bound and excludes caller-owned outputs.
+    [[nodiscard]] size_t                                    MeshAssetReadFixedWorkingBytes() noexcept;
 
     [[nodiscard]] Core::VFS::VFSResult<AssetImporterOutput> SerializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, AssetMesh& mesh, AssetNodeHierarchy& hierarchies, const ImportConfiguration& config);
 
@@ -142,20 +161,35 @@ namespace ZEngine::Importers::AssetCodec
     [[nodiscard]] bool                                      IsEnvironmentMapFileHeaderValid(const EnvironmentMapFileHeader& header);
     [[nodiscard]] bool                                      DoesEnvironmentMapHeaderMatchSource(const EnvironmentMapFileHeader& header, uint64_t source_hash);
 
+    struct EnvironmentMapReadLimits
+    {
+        uint64_t MaxFileBytes     = ZMega(512);
+        uint64_t MaxDecodedBytes  = ZMega(512);
+        uint32_t MaxFaceDimension = ENVIRONMENT_MAP_MAX_FACE_SIZE;
+    };
+
+    // Current le64 artifact, complete finite RGBA32F base payload, exact file
+    // size. No Bitmap/pixel array allocation. Stream is borrowed caller-owned
+    // workspace, at least sizeof(float), divisible by sizeof(float). Failure
+    // preserves output. Full mip metadata describes the existing GPU policy;
+    // no extra mip payload or GPU operation is implied.
+    [[nodiscard]] Core::VFS::VFSResult<void> ReadEnvironmentMapAsset(const AssetByteSource&, Core::Containers::ArrayView<uint8_t> stream, EnvironmentMapFileHeader*, uint64_t expected_source_hash, const EnvironmentMapReadLimits& = {});
+    [[nodiscard]] Core::VFS::VFSResult<void> ReadEnvironmentMapFileVFS(Core::VFS::IVFSContext&, const Core::VFS::VFSPath&, Core::Containers::ArrayView<uint8_t> stream, EnvironmentMapFileHeader*, uint64_t expected_source_hash, const EnvironmentMapReadLimits& = {});
+
     // VFS-based — writes through IVFSContext using atomic .tmp → rename protocol.
     // out_path: the VFS path to write (e.g. project://_cache/envmaps/<uuid>.zenvmap)
-    Core::VFS::VFSResult<void>                              SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap, const EnvironmentMapCookMetadata& metadata = {});
+    Core::VFS::VFSResult<void>               SerializeEnvironmentMapFileVFS(Core::VFS::IVFSContext& ctx, const Core::VFS::VFSPath& out_path, const Rendering::Buffers::Bitmap& cubemap, const EnvironmentMapCookMetadata& metadata = {});
 
-    void                                                    DeserializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh& mesh, AssetNodeHierarchy& hierarchies);
+    void                                     DeserializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh& mesh, AssetNodeHierarchy& hierarchies);
 
-    void                                                    DeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material);
+    void                                     DeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material);
 
-    void                                                    DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>& textures);
+    void                                     DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>& textures);
 
-    bool                                                    ReadAssetMeshFileHeader(const char* asset_file, AssetMeshFileHeader& header);
+    bool                                     ReadAssetMeshFileHeader(const char* asset_file, AssetMeshFileHeader& header);
 
-    bool                                                    DeserializeEnvironmentMapFile(const char* zenvmap_file, Rendering::Buffers::Bitmap& out_cubemap);
+    bool                                     DeserializeEnvironmentMapFile(const char* zenvmap_file, Rendering::Buffers::Bitmap& out_cubemap);
 
-    bool                                                    ReadEnvironmentMapFileHeader(const char* zenvmap_file, EnvironmentMapFileHeader& out_header);
+    bool                                     ReadEnvironmentMapFileHeader(const char* zenvmap_file, EnvironmentMapFileHeader& out_header);
 
 } // namespace ZEngine::Importers::AssetCodec
