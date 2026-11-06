@@ -84,15 +84,7 @@ namespace ZEngine::Core::VFS
                 OBJECT_ATTRIBUTES attributes = {.Length = sizeof(attributes), .RootDirectory = parent, .ObjectName = &text, .Attributes = OBJ_CASE_INSENSITIVE | OBJ_DONT_REPARSE};
                 IO_STATUS_BLOCK   io         = {};
                 HANDLE            handle     = INVALID_HANDLE_VALUE;
-                // Match CreateFileW(FILE_FLAG_BACKUP_SEMANTICS) for directory
-                // anchors. Without backup intent, retained descendant handles
-                // can prevent NTFS ancestor renames even with shared deletion.
-                // This does not enable any backup/restore token privileges.
-                if (kind & FILE_DIRECTORY_FILE)
-                {
-                    kind |= FILE_OPEN_FOR_BACKUP_INTENT;
-                }
-                const auto status = Create(&handle, access, &attributes, &io, nullptr, FILE_ATTRIBUTE_NORMAL, share, disposition, kind | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT, nullptr, 0);
+                const auto        status     = Create(&handle, access, &attributes, &io, nullptr, FILE_ATTRIBUTE_NORMAL, share, disposition, kind | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT, nullptr, 0);
                 if (status < 0)
                 {
                     if (handle != INVALID_HANDLE_VALUE && handle)

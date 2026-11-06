@@ -798,6 +798,18 @@ it does not enable new context-level acquisitions. Current implementations make
 one root-state allocation (with inline file slots), not an allocation per file or
 a second pin table. Their public run accounting uses the policy below.
 
+Anchoring preserves identity and routing; it does not guarantee that the OS
+allows every directory rename. Under the
+[Windows native rename rules](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information),
+Windows may return `PermissionDenied` for an
+ancestor rename while descendant directory leases remain open. Such a failure
+must preserve both paths and all leases. The backend must not close another
+caller's handles, retry, or substitute copy/delete to force success. After the
+caller releases blocking children, an allowed rename preserves the parent's
+anchor; child acquisition and overlap checks still use physical identity, not
+the parent's former path. This restriction does not relax atomic manifest-file
+replacement with replace-compatible readers.
+
 Budgeted root acquisition accepts an optional trailing
 `IVFSWorkingMemoryBudget*` on all three context root-acquisition methods. A
 `VFSWorkingMemoryReservation` is prepared before allocating root state and moves

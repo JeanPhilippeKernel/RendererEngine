@@ -950,7 +950,7 @@ namespace ZEngine::Tests
         EXPECT_FALSE(same.Overlaps(sibling).Value());
     }
 
-    TEST_F(VFSDiskRootLeaseTest, PhysicalOverlapPreservesSiblingAndAncestorIdentityAfterRename)
+    TEST_F(VFSDiskRootLeaseTest, PhysicalOverlapPreservesIdentityAcrossAllowedAncestorRename)
     {
         ASSERT_TRUE(Root.CreateDirExclusive(Relative("branch")).Succeeded());
         ASSERT_TRUE(Root.CreateDirExclusive(Relative("branch/left")).Succeeded());
@@ -974,9 +974,46 @@ namespace ZEngine::Tests
         // Windows this also exercises the filesystem-specific file-ID reopen.
         const auto identity = parent.RootIdentity();
         ASSERT_TRUE(identity.Succeeded());
-        const auto renamed = Root.Rename(Relative("branch"), Relative("moved"));
+        const auto left_identity  = left.RootIdentity();
+        const auto right_identity = right.RootIdentity();
+        ASSERT_TRUE(left_identity.Succeeded());
+        ASSERT_TRUE(right_identity.Succeeded());
+        auto renamed = Root.Rename(Relative("branch"), Relative("moved"));
+#if defined(_WIN32)
+        if (renamed.Failed())
+        {
+            // NTFS can deny ancestor renames while descendant directories are
+            // open. POSIX file-replacement flags do not waive this restriction.
+            // A denial must not alter either path, any lease or its ancestry.
+            ASSERT_EQ(renamed.Error(), VFS::VFSError::PermissionDenied);
+            EXPECT_EQ(parent.RootIdentity().Value(), identity.Value());
+            EXPECT_EQ(left.RootIdentity().Value(), left_identity.Value());
+            EXPECT_EQ(right.RootIdentity().Value(), right_identity.Value());
+            EXPECT_TRUE(Root.Stat(Relative("branch")).Succeeded());
+            EXPECT_EQ(Root.Stat(Relative("moved")).Error(), VFS::VFSError::NotFound);
+            expect_overlap(left, right, false);
+            expect_overlap(right, left, false);
+            expect_overlap(parent, left, true);
+            expect_overlap(right, parent, true);
+            ExpectBytes(Root, Relative("branch/left/asset"), OldContent);
+
+            // Explicitly release the blocking child leases, not the retained
+            // parent. Production rename must never close callers' handles or
+            // retry behind their backs to force an operation through.
+            left.Reset();
+            right.Reset();
+            renamed = Root.Rename(Relative("branch"), Relative("moved"));
+            ASSERT_TRUE(renamed.Succeeded()) << static_cast<uint32_t>(renamed.Error());
+            // Reacquire through the original parent's physical anchor after
+            // its saved path disappeared, never through context-level routing.
+            ASSERT_TRUE(parent.AcquireChildRoot(Relative("left"), &left).Succeeded());
+            ASSERT_TRUE(parent.AcquireChildRoot(Relative("right"), &right).Succeeded());
+        }
+#endif
         ASSERT_TRUE(renamed.Succeeded()) << "Retained-descendant rename failed (VFS " << static_cast<uint32_t>(renamed.Error()) << ").";
         EXPECT_EQ(parent.RootIdentity().Value(), identity.Value());
+        EXPECT_EQ(left.RootIdentity().Value(), left_identity.Value());
+        EXPECT_EQ(right.RootIdentity().Value(), right_identity.Value());
         expect_overlap(left, right, false);
         expect_overlap(right, left, false);
         expect_overlap(parent, left, true);
