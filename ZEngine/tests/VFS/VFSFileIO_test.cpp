@@ -538,22 +538,39 @@ namespace ZEngine::Tests
         {
             GTEST_SKIP() << "Borrowed-memory mode intentionally does not support snapshots; owned-memory coverage is in VFSMemoryRootLeaseTest.";
         }
-        PutOriginal();
-        const auto open = Backend->Open(Destination, VFS::VFSOpenFlags::Read | VFS::VFSOpenFlags::AllowReplace);
-        ASSERT_TRUE(open.Succeeded());
-        const auto published = Publish();
-        uint8_t    bytes[16] = {};
-        const auto read      = open.Value()->ReadAll({bytes, sizeof(bytes)});
-        const auto close     = open.Value()->Close();
-        EXPECT_TRUE(open.Value()->Close().Succeeded());
-        EXPECT_EQ(open.Value()->Read({bytes, sizeof(bytes)}, 0).Error(), VFS::VFSError::IOError);
-        Backend->Close(open.Value());
-        ASSERT_TRUE(published.Succeeded());
-        EXPECT_TRUE(close.Succeeded());
-        ASSERT_TRUE(read.Succeeded());
-        EXPECT_EQ(read.Value(), sizeof(OldBytes));
-        EXPECT_EQ(Helpers::secure_memcmp(bytes, sizeof(bytes), OldBytes, sizeof(OldBytes), sizeof(OldBytes)), 0);
-        ExpectBytes(Destination, {NewBytes, sizeof(NewBytes)});
+        ASSERT_TRUE(Backend->CreateDir(VFS::VFSPath::Parse("/nested").Value()).Succeeded());
+        for (const auto name : {"/manifest.json", reinterpret_cast<cstring>(u8"/nested/資料_𠮷.json")})
+        {
+            SCOPED_TRACE(name);
+            Destination = VFS::VFSPath::Parse(name).Value();
+            PutOriginal();
+            const auto open = Backend->Open(Destination, VFS::VFSOpenFlags::Read | VFS::VFSOpenFlags::AllowReplace);
+            ASSERT_TRUE(open.Succeeded());
+            const auto published = Publish();
+            ASSERT_TRUE(published.Succeeded()) << static_cast<uint32_t>(published.Error());
+            const auto next = Backend->Open(Destination, VFS::VFSOpenFlags::Read | VFS::VFSOpenFlags::AllowReplace);
+            ASSERT_TRUE(next.Succeeded());
+            const auto republished = VFS::WriteFileAtomically(Context, Destination, OldBytes);
+            ASSERT_TRUE(republished.Succeeded()) << static_cast<uint32_t>(republished.Error());
+
+            // Read both retained generations only after the second commit.
+            uint8_t    bytes[16] = {};
+            const auto read      = open.Value()->ReadAll(bytes);
+            const auto close     = open.Value()->Close();
+            EXPECT_TRUE(open.Value()->Close().Succeeded());
+            EXPECT_EQ(open.Value()->Read(bytes, 0).Error(), VFS::VFSError::IOError);
+            Backend->Close(open.Value());
+            EXPECT_TRUE(close.Succeeded());
+            ASSERT_TRUE(read.Succeeded());
+            EXPECT_EQ(read.Value(), sizeof(OldBytes));
+            EXPECT_EQ(Helpers::secure_memcmp(bytes, sizeof(bytes), OldBytes, sizeof(OldBytes), sizeof(OldBytes)), 0);
+            const auto next_read = next.Value()->ReadAll(bytes);
+            Backend->Close(next.Value());
+            ASSERT_TRUE(next_read.Succeeded());
+            EXPECT_EQ(next_read.Value(), sizeof(NewBytes));
+            EXPECT_EQ(Helpers::secure_memcmp(bytes, sizeof(bytes), NewBytes, sizeof(NewBytes), sizeof(NewBytes)), 0);
+            ExpectBytes(Destination, OldBytes);
+        }
     }
 
     INSTANTIATE_TEST_SUITE_P(MemoryAndDisk, VFSFileIOTest, testing::Bool());

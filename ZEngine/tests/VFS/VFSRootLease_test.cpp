@@ -955,6 +955,7 @@ namespace ZEngine::Tests
         ASSERT_TRUE(Root.CreateDirExclusive(Relative("branch")).Succeeded());
         ASSERT_TRUE(Root.CreateDirExclusive(Relative("branch/left")).Succeeded());
         ASSERT_TRUE(Root.CreateDirExclusive(Relative("branch/right")).Succeeded());
+        ASSERT_TRUE(VFS::WriteFileAtomically(Root, Relative("branch/left/asset"), OldContent).Succeeded());
         VFS::VFSReadRootLease parent = {}, left = {}, right = {};
         ASSERT_TRUE(Context.AcquireReadRoot(RootPath("/assets/output/branch"), &parent).Succeeded());
         ASSERT_TRUE(Context.AcquireReadRoot(RootPath("/assets/output/branch/left"), &left).Succeeded());
@@ -971,11 +972,24 @@ namespace ZEngine::Tests
 
         // Native anchors, not saved paths, must identify each ancestor. On
         // Windows this also exercises the filesystem-specific file-ID reopen.
-        ASSERT_TRUE(Root.Rename(Relative("branch"), Relative("moved")).Succeeded());
+        const auto identity = parent.RootIdentity();
+        ASSERT_TRUE(identity.Succeeded());
+        const auto renamed = Root.Rename(Relative("branch"), Relative("moved"));
+        ASSERT_TRUE(renamed.Succeeded()) << "Retained-descendant rename failed (VFS " << static_cast<uint32_t>(renamed.Error()) << ").";
+        EXPECT_EQ(parent.RootIdentity().Value(), identity.Value());
         expect_overlap(left, right, false);
         expect_overlap(right, left, false);
         expect_overlap(parent, left, true);
         expect_overlap(right, parent, true);
+        const auto asset = left.Open(Relative("asset"));
+        ASSERT_TRUE(asset.Succeeded());
+        uint8_t    bytes[8] = {};
+        const auto read     = asset.Value()->ReadAll(bytes);
+        EXPECT_TRUE(left.CloseChecked(asset.Value()).Succeeded());
+        ASSERT_TRUE(read.Succeeded());
+        EXPECT_EQ(read.Value(), sizeof(OldContent));
+        EXPECT_EQ(Helpers::secure_memcmp(bytes, sizeof(bytes), OldContent, sizeof(OldContent), sizeof(OldContent)), 0);
+        ExpectBytes(Root, Relative("moved/left/asset"), OldContent);
     }
 
     TEST_F(VFSDiskRootLeaseTest, ReadLeaseSurvivesFacadeArenaDestructionAndRootPathReplacement)

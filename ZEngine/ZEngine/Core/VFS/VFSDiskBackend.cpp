@@ -7,6 +7,10 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#if defined(_WIN32)
+#include <ZEngine/Core/VFS/VFSNativeRenameWindows.h>
+#include <cwchar>
+#endif
 #if defined(__linux__)
 #include <linux/fs.h>
 #include <sys/syscall.h>
@@ -748,10 +752,48 @@ namespace ZEngine::Core::VFS
             return VFSResult<void>::Fail(VFSError::PermissionDenied);
         }
 #if defined(_WIN32)
-        if (!MoveFileExW(native_src, native_dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        // Share the same atomic open-reader replacement primitive as rooted
+        // publication. MoveFileExW cannot replace a retained snapshot reader.
+        const auto module          = GetModuleHandleW(L"ntdll.dll");
+        const auto set_information = module ? reinterpret_cast<Detail::NativeSetInformationFn>(GetProcAddress(module, "NtSetInformationFile")) : nullptr;
+        const auto status_to_error = module ? reinterpret_cast<decltype(&::RtlNtStatusToDosError)>(GetProcAddress(module, "RtlNtStatusToDosError")) : nullptr;
+        if (!set_information || !status_to_error)
         {
-            return VFSResult<void>::Fail(VFSError::IOError);
+            return VFSResult<void>::Fail(VFSError::Unsupported);
         }
+        auto* leaf = native_dst;
+        for (auto* cursor = native_dst; *cursor; ++cursor)
+        {
+            if (*cursor == L'/' || *cursor == L'\\')
+            {
+                leaf = cursor + 1;
+            }
+        }
+        if (leaf == native_dst || !*leaf)
+        {
+            return VFSResult<void>::Fail(VFSError::InvalidPath);
+        }
+        constexpr DWORD sharing = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+        const auto      source  = CreateFileW(native_src, DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, sharing, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (source == INVALID_HANDLE_VALUE)
+        {
+            return VFSResult<void>::Fail(Detail::NativeWindowsError(GetLastError()));
+        }
+        // Preserve the trailing separator, including a drive root's backslash.
+        const auto first  = *leaf;
+        *leaf             = L'\0';
+        const auto parent = CreateFileW(native_dst, FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, sharing, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        *leaf             = first;
+        if (parent == INVALID_HANDLE_VALUE)
+        {
+            const auto error = Detail::NativeWindowsError(GetLastError());
+            (void) CloseHandle(source);
+            return VFSResult<void>::Fail(error);
+        }
+        const auto renamed = Detail::RenameWindowsHandle(set_information, status_to_error, source, parent, leaf, std::wcslen(leaf), true);
+        (void) CloseHandle(parent);
+        (void) CloseHandle(source);
+        return renamed;
 #else
         std::error_code ec = {};
         std::filesystem::rename(native_src, native_dst, ec);

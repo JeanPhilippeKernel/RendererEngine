@@ -3,6 +3,7 @@
 #include <ZEngine/Core/Memory/NativePages.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
 #include <ZEngine/Core/VFS/VFSDiskRoot.h>
+#include <ZEngine/Core/VFS/VFSNativeRenameWindows.h>
 #include <ZEngine/Core/VFS/VFSNativeStat.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <winternl.h>
@@ -48,12 +49,8 @@ namespace ZEngine::Core::VFS
 
         struct NativeFunctions
         {
-            // The desktop SDK omits this export and most native information
-            // classes. Keep the documented ntdll ABI without a kernel header.
-            using SetInformationFn                            = NTSTATUS(NTAPI*)(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, ULONG);
-
             decltype(&::NtCreateFile)          Create         = nullptr;
-            SetInformationFn                   SetInformation = nullptr;
+            Detail::NativeSetInformationFn     SetInformation = nullptr;
             decltype(&::RtlNtStatusToDosError) StatusToError  = nullptr;
 
             bool                               Initialize()
@@ -87,7 +84,15 @@ namespace ZEngine::Core::VFS
                 OBJECT_ATTRIBUTES attributes = {.Length = sizeof(attributes), .RootDirectory = parent, .ObjectName = &text, .Attributes = OBJ_CASE_INSENSITIVE | OBJ_DONT_REPARSE};
                 IO_STATUS_BLOCK   io         = {};
                 HANDLE            handle     = INVALID_HANDLE_VALUE;
-                const auto        status     = Create(&handle, access, &attributes, &io, nullptr, FILE_ATTRIBUTE_NORMAL, share, disposition, kind | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT, nullptr, 0);
+                // Match CreateFileW(FILE_FLAG_BACKUP_SEMANTICS) for directory
+                // anchors. Without backup intent, retained descendant handles
+                // can prevent NTFS ancestor renames even with shared deletion.
+                // This does not enable any backup/restore token privileges.
+                if (kind & FILE_DIRECTORY_FILE)
+                {
+                    kind |= FILE_OPEN_FOR_BACKUP_INTENT;
+                }
+                const auto status = Create(&handle, access, &attributes, &io, nullptr, FILE_ATTRIBUTE_NORMAL, share, disposition, kind | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT, nullptr, 0);
                 if (status < 0)
                 {
                     if (handle != INVALID_HANDLE_VALUE && handle)
@@ -111,48 +116,7 @@ namespace ZEngine::Core::VFS
 
             VFSResult<void> Rename(HANDLE file, HANDLE parent, const wchar_t* name, size_t length, bool replace) const
             {
-                if (!SetInformation || !StatusToError)
-                {
-                    return VFSResult<void>::Fail(VFSError::Unsupported);
-                }
-                if (!name || !length || length >= VFS_MAX_PATH)
-                {
-                    return VFSResult<void>::Fail(VFSError::InvalidPath);
-                }
-                // Native rename information is a counted leaf relative to
-                // RootDirectory. The Win32 wrapper can convert the name through
-                // DOS-path resolution, which must not participate in routing.
-                struct NativeRenameInformation
-                {
-                    ULONG  Flags          = 0;
-                    HANDLE RootDirectory  = nullptr;
-                    ULONG  FileNameLength = 0;
-                    WCHAR  FileName[1]    = {};
-                };
-                static_assert(offsetof(NativeRenameInformation, RootDirectory) == offsetof(FILE_RENAME_INFO, RootDirectory));
-                static_assert(offsetof(NativeRenameInformation, FileNameLength) == offsetof(FILE_RENAME_INFO, FileNameLength));
-                static_assert(offsetof(NativeRenameInformation, FileName) == offsetof(FILE_RENAME_INFO, FileName));
-                alignas(NativeRenameInformation) uint8_t storage[sizeof(NativeRenameInformation) + VFS_MAX_PATH * sizeof(wchar_t)] = {};
-                auto*                                    rename                                                                    = new (storage) NativeRenameInformation{};
-                // FileRenameInformationEx requires both flags to replace an
-                // open destination while preserving its readers' old object.
-                // FILE_SHARE_DELETE alone does not give the legacy class this
-                // POSIX behavior. Never fall back to unlink/copy or a retry.
-                constexpr ULONG                          replace_if_exists                                                         = 0x00000001;
-                constexpr ULONG                          posix_semantics                                                           = 0x00000002;
-                rename->Flags                                                                                                      = replace ? replace_if_exists | posix_semantics : 0;
-                rename->RootDirectory                                                                                              = parent;
-                rename->FileNameLength                                                                                             = static_cast<ULONG>(length * sizeof(wchar_t));
-                (void) Helpers::secure_memcpy(storage + offsetof(NativeRenameInformation, FileName), sizeof(storage) - offsetof(NativeRenameInformation, FileName), name, rename->FileNameLength);
-                IO_STATUS_BLOCK io          = {};
-                // FileRenameInformationEx is class 65; the no-replace case uses
-                // legacy class 10 (zero flags also means ReplaceIfExists=false).
-                // Use the 32-bit ABI, not the SDK's truncated enum (class 1 only).
-                const ULONG     information = replace ? 65 : 10;
-                // Include the complete fixed header, even for a one-character
-                // leaf whose counted payload ends before the struct's padding.
-                const auto      status      = SetInformation(file, &io, storage, static_cast<ULONG>(sizeof(NativeRenameInformation) + rename->FileNameLength), information);
-                return status < 0 ? VFSResult<void>::Fail(Detail::NativeWindowsError(StatusToError(status))) : VFSResult<void>::Ok();
+                return Detail::RenameWindowsHandle(SetInformation, StatusToError, file, parent, name, length, replace);
             }
         };
 
