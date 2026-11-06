@@ -396,6 +396,45 @@ namespace ZEngine::Tests
         ExpectBytes(Root, file, {NewContent, sizeof(NewContent)});
     }
 
+    TEST_F(VFSDiskRootLeaseTest, ReadRootSnapshotsRetainTheirGenerationAcrossReplacements)
+    {
+        const auto file = Relative("manifest.json");
+        ASSERT_TRUE(VFS::WriteFileAtomically(Root, file, OldContent).Succeeded());
+        VFS::VFSReadRootLease readers = {};
+        ASSERT_TRUE(Context.AcquireReadRoot(RootPath("/assets/output"), &readers).Succeeded());
+        const auto first = readers.Open(file);
+        ASSERT_TRUE(first.Succeeded());
+
+        // An open destination must still reject no-replace publication without
+        // altering either object. Replacement must instead keep each old handle
+        // readable while new opens observe the newly committed generation.
+        EXPECT_EQ(VFS::WriteFileAtomically(Root, file, NewContent, VFS::AtomicWriteMode::NoReplace).Error(), VFS::VFSError::AlreadyExists);
+        const auto second_commit = VFS::WriteFileAtomically(Root, file, NewContent);
+        ASSERT_TRUE(second_commit.Succeeded()) << static_cast<uint32_t>(second_commit.Error());
+        const auto second = readers.Open(file);
+        ASSERT_TRUE(second.Succeeded());
+        const auto third_commit = VFS::WriteFileAtomically(Root, file, OldContent);
+        ASSERT_TRUE(third_commit.Succeeded()) << static_cast<uint32_t>(third_commit.Error());
+        const auto third = readers.Open(file);
+        ASSERT_TRUE(third.Succeeded());
+
+        // All three handles remain open; read each for the first time only
+        // after both commits. Path-based reopening cannot satisfy this check.
+        const auto expect_snapshot = [&](VFS::IVFSFile* handle, Core::Containers::ArrayView<const uint8_t> expected) {
+            uint8_t    bytes[8] = {};
+            const auto read     = handle->ReadAll({bytes, sizeof(bytes)});
+            const auto closed   = readers.CloseChecked(handle);
+            ASSERT_TRUE(read.Succeeded());
+            ASSERT_EQ(read.Value(), expected.size());
+            EXPECT_EQ(Helpers::secure_memcmp(bytes, sizeof(bytes), expected.data(), expected.size(), expected.size()), 0);
+            EXPECT_TRUE(closed.Succeeded());
+        };
+        expect_snapshot(first.Value(), OldContent);
+        expect_snapshot(second.Value(), NewContent);
+        expect_snapshot(third.Value(), OldContent);
+        ExpectBytes(Root, file, OldContent);
+    }
+
     TEST_F(VFSDiskRootLeaseTest, ExclusiveNamesAndStrictOpenModes)
     {
         ASSERT_TRUE(Root.CreateDir(Relative("nested/objects")).Succeeded());

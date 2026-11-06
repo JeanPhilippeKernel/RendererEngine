@@ -119,29 +119,36 @@ namespace ZEngine::Core::VFS
                 {
                     return VFSResult<void>::Fail(VFSError::InvalidPath);
                 }
-                // Native FileRenameInformation is a counted leaf relative to
+                // Native rename information is a counted leaf relative to
                 // RootDirectory. The Win32 wrapper can convert the name through
                 // DOS-path resolution, which must not participate in routing.
                 struct NativeRenameInformation
                 {
-                    BOOLEAN ReplaceIfExists = FALSE;
-                    HANDLE  RootDirectory   = nullptr;
-                    ULONG   FileNameLength  = 0;
-                    WCHAR   FileName[1]     = {};
+                    ULONG  Flags          = 0;
+                    HANDLE RootDirectory  = nullptr;
+                    ULONG  FileNameLength = 0;
+                    WCHAR  FileName[1]    = {};
                 };
                 static_assert(offsetof(NativeRenameInformation, RootDirectory) == offsetof(FILE_RENAME_INFO, RootDirectory));
                 static_assert(offsetof(NativeRenameInformation, FileNameLength) == offsetof(FILE_RENAME_INFO, FileNameLength));
                 static_assert(offsetof(NativeRenameInformation, FileName) == offsetof(FILE_RENAME_INFO, FileName));
                 alignas(NativeRenameInformation) uint8_t storage[sizeof(NativeRenameInformation) + VFS_MAX_PATH * sizeof(wchar_t)] = {};
                 auto*                                    rename                                                                    = new (storage) NativeRenameInformation{};
-                rename->ReplaceIfExists                                                                                            = replace ? TRUE : FALSE;
+                // FileRenameInformationEx requires both flags to replace an
+                // open destination while preserving its readers' old object.
+                // FILE_SHARE_DELETE alone does not give the legacy class this
+                // POSIX behavior. Never fall back to unlink/copy or a retry.
+                constexpr ULONG                          replace_if_exists                                                         = 0x00000001;
+                constexpr ULONG                          posix_semantics                                                           = 0x00000002;
+                rename->Flags                                                                                                      = replace ? replace_if_exists | posix_semantics : 0;
                 rename->RootDirectory                                                                                              = parent;
                 rename->FileNameLength                                                                                             = static_cast<ULONG>(length * sizeof(wchar_t));
                 (void) Helpers::secure_memcpy(storage + offsetof(NativeRenameInformation, FileName), sizeof(storage) - offsetof(NativeRenameInformation, FileName), name, rename->FileNameLength);
                 IO_STATUS_BLOCK io          = {};
-                // FileRenameInformation is native information class 10. Use its
-                // 32-bit ABI value, not the SDK's truncated enum (only class 1).
-                constexpr ULONG information = 10;
+                // FileRenameInformationEx is class 65; the no-replace case uses
+                // legacy class 10 (zero flags also means ReplaceIfExists=false).
+                // Use the 32-bit ABI, not the SDK's truncated enum (class 1 only).
+                const ULONG     information = replace ? 65 : 10;
                 // Include the complete fixed header, even for a one-character
                 // leaf whose counted payload ends before the struct's padding.
                 const auto      status      = SetInformation(file, &io, storage, static_cast<ULONG>(sizeof(NativeRenameInformation) + rename->FileNameLength), information);
