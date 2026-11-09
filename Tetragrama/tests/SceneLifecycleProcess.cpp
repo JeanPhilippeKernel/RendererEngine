@@ -416,9 +416,10 @@ int main(int argc, char** argv)
 #if ZENGINE_PROFILING && !ZENGINE_TRACY
     // No app tasks/render thread exist yet. Export only after Run joins them.
     // Reclamation is qualified by every-cycle live ledgers/pins, not by a
-    // partial timing trace. Keep its diagnostic prefix bounded to 30 seconds;
+    // partial timing trace. Keep its diagnostic prefix bounded to ten seconds:
+    // spatial bake batches generate more frame records during reclamation.
     // short timing profiles retain two minutes and require measured coverage.
-    const uint32_t capture_duration_ms = zero_retention ? 30000 : 120000;
+    const uint32_t capture_duration_ms = zero_retention ? 10000 : 120000;
     std::fprintf(stderr, "scene lifecycle diagnostic capture: %u ms; zero-retention timings are not load qualification\n", capture_duration_ms);
     if (!ZEngine::Profiling::ProfilerBuffer::StartTimedCapture(capture_duration_ms, "SceneLoad."))
     {

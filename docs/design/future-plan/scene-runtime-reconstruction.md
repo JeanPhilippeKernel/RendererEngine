@@ -1756,7 +1756,7 @@ to baseline after GPU/driver retirement.
 
 Non-Tracy profiling captures the first two minutes of `SceneLoad.*` stages into a
 bounded CSV for short timing profiles. Reclamation-only `zero-retention` runs
-capture a 30-second diagnostic prefix: their every-cycle ledgers/pins, not that
+capture a ten-second diagnostic prefix: their every-cycle ledgers/pins, not that
 partial trace, qualify reclamation. Export occurs only after render/worker owners
 join. Overflow still fails the run; the runner reports record/drop/export counts
 and retains the bounded prefix for diagnosis. The trace includes unclamped,
