@@ -1,3 +1,4 @@
+#include <GLFW/glfw3.h>
 #include <Tetragrama/Editor.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
@@ -11,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string_view>
+#include "SceneLifecycleInputPolicy.h"
 
 using ZEngine::ECS::SceneCancelResult;
 using ZEngine::ECS::SceneLoadOutcome;
@@ -72,6 +74,31 @@ namespace
             Editor::OverrideWindowConfiguration();
             WindowCfg.Width  = 1280;
             WindowCfg.Height = 720;
+        }
+
+        void OnInitialized() override
+        {
+            Editor::OnInitialized();
+            if (CameraController)
+            {
+                CameraController->PauseEventProcessing();
+            }
+            if (CurrentWindow)
+            {
+                // ZUILayer installs this callback directly, bypassing events.
+                // Do not let a trackpad scroll change the fixed fixture either.
+                glfwSetScrollCallback(static_cast<GLFWwindow*>(CurrentWindow->GetNativeWindow()), nullptr);
+            }
+        }
+
+        void ProcessEvent(ZEngine::Core::CoreEvent& event) override
+        {
+            if (Tetragrama::Tests::IsSceneLifecycleInteractiveEvent(event.GetType()))
+            {
+                event.SetHandled(true);
+                return;
+            }
+            Editor::ProcessEvent(event);
         }
 
         void Fail(const char* reason)

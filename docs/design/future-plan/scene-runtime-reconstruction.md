@@ -1690,6 +1690,14 @@ observability is coherent and read-only across threads; an aborted acquire,
 rejected graph or unsuccessful graphics submission cannot advance it. Accepted
 submission is not proof of display presentation or GPU completion.
 
+The fixed-fixture runner does not accept interactive keyboard, pointer or scroll
+input, and pauses camera input. Otherwise incidental hover picking can lazily
+grow the persistent readback cache after the reclamation baseline is captured,
+or an input can change the declared camera/scene. This isolation is local to the
+opt-in executable: shipping editor interaction is unchanged. Window focus,
+resize, close and internal layout events still follow the normal editor path;
+the per-cycle allocation/pin equality checks are not relaxed.
+
 Window focus gates new file-input edges, not an admitted load's lifetime. Loading,
 resource-readiness polling, publication and cancellation cleanup continue while
 unfocused. Existing dirty-revision consent remains mandatory; focus loss never
