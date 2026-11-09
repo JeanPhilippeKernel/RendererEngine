@@ -444,20 +444,23 @@ TEST_F(AppRenderSnapshotTest, PreparedFrameTokensMoveWithoutDoubleRelease)
 
 TEST_F(AppRenderSnapshotTest, ReservationSaturationFailsWithoutOverwritingExistingTokens)
 {
+    // Reuse the large inline gizmo payload instead of creating a frame-state
+    // temporary for every call; Debug builds must fit the Windows 1 MiB stack.
+    const RenderFrameState                state                                                     = {};
     AppRenderPipeline::PreparedFrameState reservations[AppRenderPipeline::MaxFrameStateBufferCount] = {};
     for (auto& reservation : reservations)
     {
-        ASSERT_TRUE(pipeline.PrepareFrameState({}, &source, &reservation));
+        ASSERT_TRUE(pipeline.PrepareFrameState(state, &source, &reservation));
     }
     AppRenderPipeline::PreparedFrameState rejected = {};
-    EXPECT_FALSE(pipeline.PrepareFrameState({}, &source, &rejected));
+    EXPECT_FALSE(pipeline.PrepareFrameState(state, &source, &rejected));
     EXPECT_FALSE(rejected);
-    EXPECT_FALSE(pipeline.PrepareFrameState({}, &source, &reservations[0]));
+    EXPECT_FALSE(pipeline.PrepareFrameState(state, &source, &reservations[0]));
     EXPECT_TRUE(reservations[0]);
-    EXPECT_FALSE(pipeline.PrepareFrameState({}, &source, nullptr));
-    EXPECT_FALSE(pipeline.PublishFrameState({}, &source));
+    EXPECT_FALSE(pipeline.PrepareFrameState(state, &source, nullptr));
+    EXPECT_FALSE(pipeline.PublishFrameState(state, &source));
     reservations[0].Reset();
-    ASSERT_TRUE(pipeline.PrepareFrameState({}, &source, &rejected));
+    ASSERT_TRUE(pipeline.PrepareFrameState(state, &source, &rejected));
     rejected.Publish();
     RenderFrameState read = {};
     ASSERT_TRUE(pipeline.TryReadFrameState(read));
