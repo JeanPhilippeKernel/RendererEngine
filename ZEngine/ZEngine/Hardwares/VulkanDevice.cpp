@@ -11,6 +11,7 @@
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/RendererPipeline.h>
 #include <ZEngine/Windows/CoreWindow.h>
+#include <bit>
 #include <cstdlib>
 #include <limits>
 
@@ -49,7 +50,7 @@ namespace ZEngine::Hardwares
         Arena             = arena;
         CurrentWindow     = window;
         WorkerThreadCount = worker_thread_count;
-        BindlessTextureSlotRequests.init(Arena, 64);
+        BindlessTextureSlotRequests.init(Arena, MaxSceneDescriptorTargets);
         ShaderReservedBindingSets.init(Arena, 4);
         ShaderReservedBindingSets.insert(1);
         CommandBufferMgr = ZPushStructCtor<CommandBufferManager>(Arena);
@@ -917,7 +918,8 @@ namespace ZEngine::Hardwares
             {
                 auto& binding_spec = layout_binding_set.second[i];
 
-                layout_bindings[i] = VkDescriptorSetLayoutBinding{.binding = binding_spec.Binding, .descriptorType = DescriptorTypeMap[VALUE_FROM_SPEC_MAP(binding_spec.DescriptorTypeValue)], .descriptorCount = binding_spec.Count, .stageFlags = ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(binding_spec.Flags)], .pImmutableSamplers = nullptr};
+                layout_bindings[i] = VkDescriptorSetLayoutBinding{.binding = binding_spec.Binding, .descriptorType = DescriptorTypeMap[VALUE_FROM_SPEC_MAP(binding_spec.DescriptorTypeValue)], .descriptorCount = binding_spec.Count, .stageFlags = ShaderStageFlagsMap[VALUE_FROM_SPEC_MAP(binding_spec.Flags)], .pImmutableSamplers = ResolveReservedImmutableSampler(binding_spec.Set, binding_spec.Binding)};
+                ZENGINE_VALIDATE_ASSERT(binding_spec.DescriptorTypeValue != DescriptorType::SAMPLER || layout_bindings[i].pImmutableSamplers != nullptr, "Reserved sampler binding requires an immutable device sampler")
             }
 
             Array<VkDescriptorBindingFlags> binding_flags = {};
@@ -992,6 +994,48 @@ namespace ZEngine::Hardwares
         }
 
         ZReleaseScratch(scratch);
+        // All scene/preview/UI texture arrays use this device-owned reserved set.
+        // Register every buffered target before any first-frame shader callback.
+        for (const auto& [set, bindings] : ShaderReservedLayoutBindingSpecificationMap)
+        {
+            for (const auto& binding : bindings)
+            {
+                if (binding.DescriptorTypeValue != DescriptorType::SAMPLED_IMAGE)
+                {
+                    continue;
+                }
+                for (const auto target : ShaderReservedDescriptorSetMap.at(set))
+                {
+                    ZENGINE_VALIDATE_ASSERT(AddBindlessTextureSlotRequest({.Binding = binding.Binding, .DstSet = target}), "Invalid shared texture descriptor target")
+                }
+            }
+        }
+        ZENGINE_VALIDATE_ASSERT(SealBindlessTextureTargets(), "Shared texture descriptor targets exceed the scene preparation profile")
+    }
+
+    const VkSampler* VulkanDevice::ResolveReservedImmutableSampler(uint32_t set, uint32_t binding) const
+    {
+        const auto* specifications = ShaderReservedLayoutBindingSpecificationMap.find(set);
+        if (!specifications)
+        {
+            return nullptr;
+        }
+        for (const auto& specification : *specifications)
+        {
+            if (specification.Binding != binding || specification.DescriptorTypeValue != DescriptorType::SAMPLER || specification.Count != 1 || !specification.Name)
+            {
+                continue;
+            }
+            if (secure_strcmp(specification.Name, "LinearWrapSampler") == 0 && GlobalLinearWrapSampler)
+            {
+                return &GlobalLinearWrapSampler;
+            }
+            if (secure_strcmp(specification.Name, "LinearClampSampler") == 0 && GlobalLinearClampToEdgeSampler)
+            {
+                return &GlobalLinearClampToEdgeSampler;
+            }
+        }
+        return nullptr;
     }
 
     void VulkanDevice::Deinitialize()
@@ -1505,6 +1549,10 @@ namespace ZEngine::Hardwares
 
     BufferImage VulkanDevice::CreateAliasingImage(const BufferImage& backing, uint32_t width, uint32_t height, VkImageType image_type, VkImageViewType image_view_type, VkFormat image_format, VkImageTiling image_tiling, VkImageLayout image_initial_layout, VkImageUsageFlags image_usage, VkSharingMode image_sharing_mode, VkSampleCountFlagBits image_sample_count, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count, uint32_t mip_level_count, VkImageCreateFlags image_create_flag_bit, cstring debug_name, uint32_t depth)
     {
+        if (IsDeviceLost.load(std::memory_order_acquire))
+        {
+            return {};
+        }
         VkImageCreateInfo image_create_info = {};
         image_create_info.sType             = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         image_create_info.flags             = image_create_flag_bit;
@@ -1521,11 +1569,13 @@ namespace ZEngine::Hardwares
         image_create_info.sharingMode       = image_sharing_mode;
         image_create_info.samples           = image_sample_count;
 
-        BufferImage alias = GpuMem.AllocateAliasingImage(backing, image_create_info, LogicalDevice, image_aspect_flag, image_view_type, layer_count, debug_name);
+        VkResult status = VK_SUCCESS;
+        BufferImage alias = GpuMem.AllocateAliasingImage(backing, image_create_info, LogicalDevice, image_aspect_flag, image_view_type, layer_count, debug_name, &status);
+        CheckDeviceLost(status, "Aliased image allocation");
         if (alias)
         {
             SetDebugObjectName(VK_OBJECT_TYPE_IMAGE, ToDebugObjectHandle(alias.Handle), debug_name);
-            alias.FrameIndex = SwapchainPtr->CurrentFrame == nullptr ? 0u : SwapchainPtr->CurrentFrame->Index;
+            alias.FrameIndex = SwapchainPtr && SwapchainPtr->CurrentFrame ? SwapchainPtr->CurrentFrame->Index : 0u;
         }
         return alias;
     }
@@ -1580,6 +1630,39 @@ namespace ZEngine::Hardwares
 
     VkImageView VulkanDevice::CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, const VkImageSubresourceRange& range)
     {
+        VkResult status = VK_SUCCESS;
+        const auto view = TryCreateImageView(image, image_format, image_view_type, range, &status);
+        ZENGINE_VALIDATE_ASSERT(status == VK_SUCCESS, "Failed to create image view")
+        return view;
+    }
+
+    VkImageView VulkanDevice::TryCreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, const VkImageSubresourceRange& range, VkResult* status, PFN_vkCreateImageView dispatch)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (IsDeviceLost.load(std::memory_order_acquire))
+        {
+            if (status)
+            {
+                *status = VK_ERROR_DEVICE_LOST;
+            }
+            return VK_NULL_HANDLE;
+        }
+        if (!LogicalDevice || !image || image_format == VK_FORMAT_UNDEFINED || !dispatch || !range.aspectMask || !range.levelCount || !range.layerCount || image_view_type < VK_IMAGE_VIEW_TYPE_1D || image_view_type > VK_IMAGE_VIEW_TYPE_CUBE_ARRAY)
+        {
+            return VK_NULL_HANDLE;
+        }
+        auto retirement = PendingFree.Reserve();
+        if (!retirement)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
+            return VK_NULL_HANDLE;
+        }
         VkImageView           image_view{VK_NULL_HANDLE};
         VkImageViewCreateInfo image_view_create_info           = {};
         image_view_create_info.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1592,26 +1675,97 @@ namespace ZEngine::Hardwares
         image_view_create_info.components.a                    = VK_COMPONENT_SWIZZLE_A;
         image_view_create_info.subresourceRange               = range;
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateImageView(LogicalDevice, &image_view_create_info, nullptr, &image_view) == VK_SUCCESS, "Failed to create image view")
-
-        return image_view;
+        const auto result = dispatch(LogicalDevice, &image_view_create_info, nullptr, &image_view);
+        if (status)
+        {
+            *status = result;
+        }
+        CheckDeviceLost(result, "Image view allocation");
+        if (result == VK_SUCCESS)
+        {
+            retirement.Publish(Rendering::DeviceResourceType::IMAGEVIEW, reinterpret_cast<void*>(image_view));
+        }
+        return result == VK_SUCCESS ? image_view : VK_NULL_HANDLE;
     }
 
     VkFramebuffer VulkanDevice::CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number)
     {
-        VkFramebuffer           framebuffer{VK_NULL_HANDLE};
+        VkResult status = VK_SUCCESS;
+        auto framebuffer = TryCreateFramebuffer(attachments, render_pass, width, height, layer_number, &status);
+        ZENGINE_VALIDATE_ASSERT(status == VK_SUCCESS, "Failed to create Framebuffer")
+        return framebuffer;
+    }
+
+    VkFramebuffer VulkanDevice::TryCreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number, VkResult* status, PFN_vkCreateFramebuffer dispatch)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (IsDeviceLost.load(std::memory_order_acquire))
+        {
+            if (status)
+            {
+                *status = VK_ERROR_DEVICE_LOST;
+            }
+            return VK_NULL_HANDLE;
+        }
+        if (!LogicalDevice || !render_pass || !width || !height || !layer_number || attachments.size() > UINT32_MAX || (attachments.size() && !attachments.data()))
+        {
+            return VK_NULL_HANDLE;
+        }
+        for (const auto view : attachments)
+        {
+            if (!view)
+            {
+                return VK_NULL_HANDLE;
+            }
+        }
+        VkPhysicalDeviceProperties properties = PhysicalDeviceProperties.properties;
+        if (!properties.limits.maxFramebufferWidth)
+        {
+            if (!PhysicalDevice)
+            {
+                return VK_NULL_HANDLE;
+            }
+            vkGetPhysicalDeviceProperties(PhysicalDevice, &properties);
+        }
+        if (width > properties.limits.maxFramebufferWidth || height > properties.limits.maxFramebufferHeight || layer_number > properties.limits.maxFramebufferLayers)
+        {
+            return VK_NULL_HANDLE;
+        }
+        auto retirement = PendingFree.Reserve();
+        if (!retirement)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
+            return VK_NULL_HANDLE;
+        }
+        // Zero-attachment render passes are valid. Do not confuse an empty list
+        // with a malformed nonempty span or reject it as an admission failure.
+        VkFramebuffer framebuffer = VK_NULL_HANDLE;
         VkFramebufferCreateInfo framebuffer_create_info = {};
         framebuffer_create_info.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebuffer_create_info.renderPass              = render_pass;
-        framebuffer_create_info.attachmentCount         = attachments.size();
+        framebuffer_create_info.attachmentCount         = static_cast<uint32_t>(attachments.size());
         framebuffer_create_info.pAttachments            = attachments.data();
         framebuffer_create_info.width                   = width;
         framebuffer_create_info.height                  = height;
         framebuffer_create_info.layers                  = layer_number;
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateFramebuffer(LogicalDevice, &framebuffer_create_info, nullptr, &framebuffer) == VK_SUCCESS, "Failed to create Framebuffer")
-
-        return framebuffer;
+        const auto result = dispatch ? dispatch(LogicalDevice, &framebuffer_create_info, nullptr, &framebuffer) : VK_ERROR_INITIALIZATION_FAILED;
+        if (status)
+        {
+            *status = result;
+        }
+        CheckDeviceLost(result, "Framebuffer allocation");
+        if (result == VK_SUCCESS)
+        {
+            retirement.Publish(Rendering::DeviceResourceType::FRAMEBUFFER, reinterpret_cast<void*>(framebuffer));
+        }
+        return result == VK_SUCCESS ? framebuffer : VK_NULL_HANDLE;
     }
 
 
@@ -1619,46 +1773,80 @@ namespace ZEngine::Hardwares
 
     Helpers::Handle<Rendering::Shaders::Shader> VulkanDevice::CompileShader(Rendering::Specifications::ShaderSpecification& spec)
     {
+        return CompileShader(spec, {});
+    }
+
+    Helpers::Handle<Rendering::Shaders::Shader> VulkanDevice::CompileShader(Rendering::Specifications::ShaderSpecification& spec, const Rendering::Shaders::ShaderInitializationServices& services)
+    {
+        if (!spec.Name)
+        {
+            return {};
+        }
+        size_t name_length = 0;
+        while (name_length < kMaxShaderReloadPathBytes && spec.Name[name_length])
+        {
+            ++name_length;
+        }
+        if (!name_length || name_length == kMaxShaderReloadPathBytes)
+        {
+            return {};
+        }
         if (ShaderCaches.contains(spec.Name))
         {
             return ShaderCaches.at(spec.Name);
         }
 
+        auto* context = Engine::GetContext();
+        auto* vfs = services.VFS ? services.VFS : context ? context->VFS : nullptr;
+        if (!vfs || ShaderCaches.size() > SIZE_MAX / 2 - 1 || !ShaderCaches.try_reserve((ShaderCaches.size() + 1) * 2))
+        {
+            return {};
+        }
         auto handle = ShaderManager.Create();
         auto shader = ShaderManager.Access(handle);
 
         if (shader)
         {
-            auto* vfs      = Engine::GetContext()->VFS;
-            auto  try_set  = [&](cstring path, cstring& out) {
+            auto resolved = spec;
+            std::array<std::array<char, kMaxShaderReloadPathBytes>, 3> resolved_paths = {};
+            auto  try_set  = [&](cstring path, cstring& out, char* storage) {
                 auto vfs_path = Core::VFS::VFSPath::Parse(path);
                 if (!vfs_path.Succeeded())
+                {
                     return;
+                }
                 auto exists = vfs->Exists(vfs_path.Value());
                 if (!exists.Succeeded() || !exists.Value())
+                {
                     return;
-                auto n = Helpers::secure_strlen(path) + 1u;
-                auto s = ZPushString(Arena, n);
-                Helpers::secure_strcpy(s, n, path);
-                out = s;
+                }
+                Helpers::secure_strcpy(storage, kMaxShaderReloadPathBytes, path);
+                out = storage;
             };
 
             char path[kMaxShaderReloadPathBytes] = {};
-            auto try_set_stage = [&](cstring suffix, cstring& out) {
+            auto try_set_stage = [&](cstring suffix, cstring& out, char* storage) {
                 const int length = snprintf(path, sizeof(path), "/ZodiacEngine/Shaders/Cache/%s%s.spv", spec.Name, suffix);
                 if (length > 0 && static_cast<size_t>(length) < sizeof(path))
-                    try_set(path, out);
+                {
+                    try_set(path, out, storage);
+                }
             };
 
             if (spec.Name)
             {
-                try_set_stage("_vertex", spec.VertexFilename);
-                try_set_stage("_fragment", spec.FragmentFilename);
-                try_set_stage("_compute", spec.ComputeFilename);
+                try_set_stage("_vertex", resolved.VertexFilename, resolved_paths[0].data());
+                try_set_stage("_fragment", resolved.FragmentFilename, resolved_paths[1].data());
+                try_set_stage("_compute", resolved.ComputeFilename, resolved_paths[2].data());
             }
 
-            shader->Initialize(this, spec);
-            ShaderCaches.insert(spec.Name, handle);
+            if (!shader->TryInitialize(this, resolved, nullptr, services))
+            {
+                ShaderManager.Remove(handle);
+                return {};
+            }
+            ShaderCaches.insert(shader->m_specification.Name, handle);
+            spec = shader->m_specification;
         }
         return handle;
     }
@@ -1742,6 +1930,18 @@ namespace ZEngine::Hardwares
             Rendering::Shaders::Shader* shader = ShaderManager.Access(reloaded[i]);
             if (shader)
                 shader->Reload();
+        }
+
+        // A request consumed while scene preparation held a generation must not
+        // disappear with that queue entry. Release only makes it eligible; the
+        // render-owner safe point performs the actual reload, once.
+        for (const auto& [shader_name, handle] : ShaderCaches)
+        {
+            (void) shader_name;
+            if (auto* shader = ShaderManager.Access(handle))
+            {
+                shader->FlushDeferredReload();
+            }
         }
     }
 
@@ -2286,6 +2486,18 @@ namespace ZEngine::Hardwares
 
             for (uint32_t i = 0; i < set_layout.size(); ++i)
             {
+                if (m_active_pipeline->ResolveDescriptorSet)
+                {
+                    const VkDescriptorSet set = m_active_pipeline->ResolveDescriptorSet(m_active_pipeline->DescriptorReplayContext, i, frame_index);
+                    if (!set)
+                    {
+                        ZENGINE_CORE_ERROR("Pass-owned descriptor set is unavailable for set {} frame {}", i, frame_index)
+                        ZReleaseScratch(scratch);
+                        return;
+                    }
+                    frame_sets.push(set);
+                    continue;
+                }
                 const Array<VkDescriptorSet>* set_array = descriptor_set_map.find(i);
                 if (!set_array)
                     set_array = Device->ShaderReservedDescriptorSetMap.find(i);
@@ -2623,14 +2835,28 @@ namespace ZEngine::Hardwares
 
     void ImageBuffer::Construct(Hardwares::VulkanDevice* device)
     {
-        Device = device;
-        Layout = Rendering::Specifications::ImageLayout::UNDEFINED;
-        if (m_cached_image_views.data())
-            m_cached_image_views.clear();
-        else
-            m_cached_image_views.init(&Device->ImageViewCacheSlab, 4);
-        ZENGINE_VALIDATE_ASSERT(Specification.Width > 0, "Image width must be greater then zero")
-        ZENGINE_VALIDATE_ASSERT(Specification.Height > 0, "Image height must be greater then zero")
+        const bool constructed = TryConstruct(device);
+        ZENGINE_VALIDATE_ASSERT(constructed, "Image allocation failed")
+    }
+
+    bool ImageBuffer::TryConstruct(Hardwares::VulkanDevice* device, VkResult* status)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (!device || !device->LogicalDevice || !device->GpuMem.Allocator || m_buffer_image || !Specification.Width || !Specification.Height || !Specification.Depth || !Specification.LayerCount || !Specification.MipLevelCount || Specification.ImageFormat == VK_FORMAT_UNDEFINED || !Specification.ImageUsage || !Specification.ImageAspectFlag)
+        {
+            return false;
+        }
+        if (device->IsDeviceLost.load(std::memory_order_acquire))
+        {
+            if (status)
+            {
+                *status = VK_ERROR_DEVICE_LOST;
+            }
+            return false;
+        }
 
         VkImageType                     image_type        = VK_IMAGE_TYPE_2D;
         Specifications::ImageViewType   image_view_type   = Specifications::ImageViewType::TYPE_2D;
@@ -2638,8 +2864,10 @@ namespace ZEngine::Hardwares
 
         if (Specification.BufferUsageType == Specifications::ImageBufferUsageType::SINGLE_3D_IMAGE)
         {
-            ZENGINE_VALIDATE_ASSERT(Specification.Depth > 0, "3D image depth must be greater than zero")
-            ZENGINE_VALIDATE_ASSERT(Specification.LayerCount == 1, "3D images cannot use array layers")
+            if (Specification.LayerCount != 1)
+            {
+                return false;
+            }
             image_type      = VK_IMAGE_TYPE_3D;
             image_view_type = Specifications::ImageViewType::TYPE_3D;
         }
@@ -2651,8 +2879,60 @@ namespace ZEngine::Hardwares
 
         VkImageCreateFlags image_create_flags = Specifications::ImageCreateFlagMap[VALUE_FROM_SPEC_MAP(image_create_flag)];
         if (Specification.IsAliasable)
+        {
             image_create_flags |= VK_IMAGE_CREATE_ALIAS_BIT;
-        m_buffer_image = Device->CreateImage(Specification.Width, Specification.Height, image_type, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.ImageFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, Specification.ImageUsage, VK_SHARING_MODE_EXCLUSIVE, VK_SAMPLE_COUNT_1_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, Specification.ImageAspectFlag, Specification.LayerCount, Specification.MipLevelCount, image_create_flags, DebugName, Specification.Depth);
+        }
+        VmaAllocatorInfo allocator_info = {};
+        vmaGetAllocatorInfo(device->GpuMem.Allocator, &allocator_info);
+        VkImageFormatProperties properties = {};
+        VkResult result = vkGetPhysicalDeviceImageFormatProperties(allocator_info.physicalDevice, Specification.ImageFormat, image_type, VK_IMAGE_TILING_OPTIMAL, Specification.ImageUsage, image_create_flags, &properties);
+        if (result == VK_SUCCESS && (Specification.Width > properties.maxExtent.width || Specification.Height > properties.maxExtent.height || Specification.Depth > properties.maxExtent.depth || Specification.LayerCount > properties.maxArrayLayers || Specification.MipLevelCount > properties.maxMipLevels))
+        {
+            result = VK_ERROR_FORMAT_NOT_SUPPORTED;
+        }
+        const uint32_t largest_dimension = std::max({Specification.Width, Specification.Height, Specification.Depth});
+        if (result == VK_SUCCESS && (Specification.MipLevelCount > std::bit_width(largest_dimension) || (image_type != VK_IMAGE_TYPE_3D && Specification.Depth != 1) || (image_view_type == Specifications::ImageViewType::TYPE_CUBE && (Specification.Width != Specification.Height || Specification.LayerCount != 6))))
+        {
+            result = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (result != VK_SUCCESS)
+        {
+            if (status)
+            {
+                *status = result;
+            }
+            device->CheckDeviceLost(result, "Image capability preflight");
+            return false;
+        }
+        VkImageCreateInfo info = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        info.flags = image_create_flags;
+        info.imageType = image_type;
+        info.format = Specification.ImageFormat;
+        info.extent = {Specification.Width, Specification.Height, Specification.Depth};
+        info.mipLevels = Specification.MipLevelCount;
+        info.arrayLayers = Specification.LayerCount;
+        info.samples = VK_SAMPLE_COUNT_1_BIT;
+        info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        info.usage = Specification.ImageUsage;
+        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        const auto domain = (info.usage & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) ? Core::Memory::GpuMemoryDomain::RenderTarget : Core::Memory::GpuMemoryDomain::DeviceTexture;
+        auto image = device->GpuMem.TryAllocateImage(info, domain, device->LogicalDevice, Specification.ImageAspectFlag, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.LayerCount, DebugName, &result);
+        if (status)
+        {
+            *status = result;
+        }
+        if (!image)
+        {
+            device->CheckDeviceLost(result, "Image allocation");
+            return false;
+        }
+        Device = device;
+        Layout = Rendering::Specifications::ImageLayout::UNDEFINED;
+        device->SetDebugObjectName(VK_OBJECT_TYPE_IMAGE, ToDebugObjectHandle(image.Handle), DebugName);
+        image.FrameIndex = device->SwapchainPtr && device->SwapchainPtr->CurrentFrame ? device->SwapchainPtr->CurrentFrame->Index : 0u;
+        m_buffer_image = image;
+        return true;
     }
 
     void ImageBuffer::ConstructAliasing(Hardwares::VulkanDevice* device, const BufferImage& backing)
@@ -2751,22 +3031,86 @@ namespace ZEngine::Hardwares
 
     VkImageView ImageBuffer::GetImageViewHandle(VkImageViewType view_type, const VkImageSubresourceRange& range)
     {
-        if (m_buffer_image.Handle == VK_NULL_HANDLE || range.aspectMask == 0 || range.levelCount == 0 || range.layerCount == 0)
+        return TryGetImageViewHandle(view_type, range);
+    }
+
+    VkImageView ImageBuffer::TryGetImageViewHandle(VkImageViewType view_type, const VkImageSubresourceRange& range, VkResult* status, PFN_vkCreateImageView dispatch)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (!Device || !m_buffer_image.Handle)
+        {
             return VK_NULL_HANDLE;
+        }
+        if (Device->IsDeviceLost.load(std::memory_order_acquire))
+        {
+            if (status)
+            {
+                *status = VK_ERROR_DEVICE_LOST;
+            }
+            return VK_NULL_HANDLE;
+        }
+        if (!range.aspectMask || (range.aspectMask & ~Specification.ImageAspectFlag) || !range.levelCount || !range.layerCount || range.baseMipLevel >= Specification.MipLevelCount || range.levelCount > Specification.MipLevelCount - range.baseMipLevel || range.baseArrayLayer >= Specification.LayerCount || range.layerCount > Specification.LayerCount - range.baseArrayLayer)
+        {
+            return VK_NULL_HANDLE;
+        }
+        const bool is_3d = Specification.BufferUsageType == Specifications::ImageBufferUsageType::SINGLE_3D_IMAGE;
+        const bool is_cube = Specification.BufferUsageType == Specifications::ImageBufferUsageType::CUBEMAP;
+        const bool valid_type = is_3d ? view_type == VK_IMAGE_VIEW_TYPE_3D : (view_type == VK_IMAGE_VIEW_TYPE_2D && range.layerCount == 1) || view_type == VK_IMAGE_VIEW_TYPE_2D_ARRAY || (is_cube && view_type == VK_IMAGE_VIEW_TYPE_CUBE && range.baseArrayLayer == 0 && range.layerCount == 6);
+        if (!valid_type)
+        {
+            return VK_NULL_HANDLE;
+        }
 
         const bool is_full_default_view = view_type == Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(Specification.ImageViewTypeValue)] && range.aspectMask == Specification.ImageAspectFlag && range.baseMipLevel == 0 && range.levelCount == Specification.MipLevelCount && range.baseArrayLayer == 0 && range.layerCount == Specification.LayerCount;
         if (is_full_default_view)
+        {
+            if (status && m_buffer_image.ViewHandle)
+            {
+                *status = VK_SUCCESS;
+            }
             return m_buffer_image.ViewHandle;
+        }
 
         for (const auto& view : m_cached_image_views)
         {
             if (view.ViewType == view_type && view.Range.aspectMask == range.aspectMask && view.Range.baseMipLevel == range.baseMipLevel && view.Range.levelCount == range.levelCount && view.Range.baseArrayLayer == range.baseArrayLayer && view.Range.layerCount == range.layerCount)
+            {
+                if (status)
+                {
+                    *status = VK_SUCCESS;
+                }
                 return view.Handle;
+            }
         }
-
-        const VkImageView image_view = Device->CreateImageView(m_buffer_image.Handle, Specification.ImageFormat, view_type, range);
-        if (image_view == VK_NULL_HANDLE)
+        if (m_cached_image_views.size() >= MaxCachedImageViews)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_TOO_MANY_OBJECTS;
+            }
             return VK_NULL_HANDLE;
+        }
+        if (!m_cached_image_views.m_slab)
+        {
+            m_cached_image_views.init(&Device->ImageViewCacheSlab, 0);
+        }
+        if (m_cached_image_views.size() == m_cached_image_views.capacity() && !m_cached_image_views.try_reserve(m_cached_image_views.capacity() ? m_cached_image_views.capacity() * 2 : 4))
+        {
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
+            return VK_NULL_HANDLE;
+        }
+        // No metadata allocation may occur after native creation succeeds.
+        const VkImageView image_view = Device->TryCreateImageView(m_buffer_image.Handle, Specification.ImageFormat, view_type, range, status, dispatch);
+        if (!image_view)
+        {
+            return VK_NULL_HANDLE;
+        }
         m_cached_image_views.push({.Range = range, .ViewType = view_type, .Handle = image_view});
         return image_view;
     }
@@ -2819,34 +3163,69 @@ namespace ZEngine::Hardwares
 
     Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name, uint32_t reserved_slots)
     {
-        std::unique_lock l(Mutex);
+        VkResult status = VK_SUCCESS;
+        auto handle = TryCreateTexture(spec, debug_name, reserved_slots, &status);
+        ZENGINE_VALIDATE_ASSERT(handle || status == VK_ERROR_TOO_MANY_OBJECTS, "Texture allocation failed")
+        return handle;
+    }
 
-        if (reserved_slots && GlobalTextures.Size() + reserved_slots >= MaxGlobalTexture)
-            return {};
-
-        auto             handle = GlobalTextures.Create();
-
-        if (!handle)
+    Rendering::Textures::TextureHandle VulkanDevice::TryCreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name, uint32_t reserved_slots, VkResult* status)
+    {
+        if (status)
         {
-            return Rendering::Textures::TextureHandle{};
+            *status = VK_ERROR_INITIALIZATION_FAILED;
         }
-
-        auto resource = GlobalTextures.Access(handle);
-
+        if (IsDeviceLost.load(std::memory_order_acquire))
+        {
+            if (status)
+            {
+                *status = VK_ERROR_DEVICE_LOST;
+            }
+            return {};
+        }
+        std::unique_lock lock(Mutex);
+        if (reserved_slots >= MaxGlobalTexture || GlobalTextures.Size() >= MaxGlobalTexture - reserved_slots)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_TOO_MANY_OBJECTS;
+            }
+            return {};
+        }
+        if (!spec.Width || !spec.Height || !spec.Depth || !spec.LayerCount || !spec.MipLevelCount || spec.MipLevelCount > std::bit_width(std::max({spec.Width, spec.Height, spec.Depth})) || spec.Format == Specifications::ImageFormat::UNDEFINED || static_cast<size_t>(spec.Format) >= std::size(Specifications::ImageFormatMap) || (spec.Is3D && (spec.IsCubemap || spec.LayerCount != 1)) || (!spec.Is3D && spec.Depth != 1) || (spec.IsCubemap && (spec.Width != spec.Height || spec.LayerCount != 6)))
+        {
+            return {};
+        }
+        auto handle = GlobalTextures.Create();
+        auto* resource = GlobalTextures.Access(handle);
         if (!resource)
         {
-            return Rendering::Textures::TextureHandle{};
+            if (status)
+            {
+                *status = VK_ERROR_TOO_MANY_OBJECTS;
+            }
+            return {};
         }
-
-        auto buff_handle       = ImageBufferManager.Create();
-        auto buffer_res        = ImageBufferManager.Access(buff_handle);
-
+        auto buff_handle = ImageBufferManager.Create();
+        auto* buffer_res = ImageBufferManager.Access(buff_handle);
+        if (!buffer_res)
+        {
+            GlobalTextures.Remove(handle);
+            if (status)
+            {
+                *status = VK_ERROR_TOO_MANY_OBJECTS;
+            }
+            return {};
+        }
         buffer_res->DebugName = debug_name;
         PopulateTextureResource(spec, resource, buffer_res, this);
-        buffer_res->Construct(this);
-
+        if (!buffer_res->TryConstruct(this, status))
+        {
+            ImageBufferManager.Remove(buff_handle);
+            GlobalTextures.Remove(handle);
+            return {};
+        }
         resource->BufferHandle = buff_handle;
-
         return handle;
     }
 
@@ -2897,6 +3276,11 @@ namespace ZEngine::Hardwares
     {
         std::unique_lock l(Mutex);
 
+        if (RRM && !static_cast<Rendering::RenderResourceManager*>(RRM)->BeginTextureVersionWrite(handle))
+        {
+            return false;
+        }
+
         auto             resource = GlobalTextures.Access(handle);
         if (!resource)
         {
@@ -2921,6 +3305,11 @@ namespace ZEngine::Hardwares
     bool VulkanDevice::ReconstructAliasingTexture(const Rendering::Textures::TextureHandle& handle, const Rendering::Specifications::TextureSpecification& spec, const Rendering::Textures::TextureHandle& source)
     {
         std::unique_lock lock(Mutex);
+
+        if (RRM && !static_cast<Rendering::RenderResourceManager*>(RRM)->BeginTextureVersionWrite(handle))
+        {
+            return false;
+        }
 
         auto* const texture        = GlobalTextures.Access(handle);
         auto* const source_texture = GlobalTextures.Access(source);
@@ -2951,16 +3340,16 @@ namespace ZEngine::Hardwares
             }
         }
 
-        auto scratch = ZGetScratch(Arena);
+        // Fixed storage bounds both the work and temporary memory of a pump.
+        // Descriptor writes borrow image-info pointers until vkUpdateDescriptorSets
+        // returns, so their backing storage must not grow while collecting a batch.
+        VkDescriptorImageInfo image_infos[BindlessTextureUpdateSlice] = {};
+        uint32_t              image_indices[BindlessTextureUpdateSlice] = {};
+        Textures::TextureHandle image_handles[BindlessTextureUpdateSlice] = {};
+        uint32_t              image_count = 0;
         {
-            const size_t              request_count = BindlessTextureSlotRequests.size();
-            Array<VkWriteDescriptorSet> write_descriptor_sets = {};
-            Array<VkDescriptorImageInfo> image_infos = {};
-            write_descriptor_sets.init(scratch.Arena, request_count > 0 ? request_count * 64 : 1);
-            image_infos.init(scratch.Arena, 64);
-
             Rendering::Textures::TextureHandle texture_handle = {};
-            while (TextureHandleToUpdates.pop(texture_handle))
+            for (uint32_t processed = 0; processed < BindlessTextureUpdateSlice && TextureHandleToUpdates.pop(texture_handle); ++processed)
             {
                 const auto* texture = GlobalTextures.Access(texture_handle);
                 if (!texture)
@@ -2973,34 +3362,68 @@ namespace ZEngine::Hardwares
                 }
                 auto* image_buffer = ImageBufferManager.Access(texture->BufferHandle);
                 if (!image_buffer)
-                    continue;
-                image_infos.push(image_buffer->GetDescriptorImageInfo());
-                const VkDescriptorImageInfo* image_info = &image_infos[image_infos.size() - 1];
-                for (const auto& request : BindlessTextureSlotRequests)
                 {
-                    write_descriptor_sets.push({
+                    continue;
+                }
+                image_infos[image_count]   = image_buffer->GetDescriptorImageInfo();
+                image_indices[image_count] = static_cast<uint32_t>(texture_handle.Index);
+                image_handles[image_count] = texture_handle;
+                ++image_count;
+            }
+            VkWriteDescriptorSet writes[BindlessTextureUpdateSlice] = {};
+            for (const auto& request : BindlessTextureSlotRequests)
+            {
+                for (uint32_t index = 0; index < image_count; ++index)
+                {
+                    writes[index] = {
                         .sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                         .dstSet           = request.DstSet,
                         .dstBinding       = request.Binding,
-                        .dstArrayElement  = static_cast<uint32_t>(texture_handle.Index),
+                        .dstArrayElement  = image_indices[index],
                         .descriptorCount  = 1,
                         .descriptorType   = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-                        .pImageInfo       = image_info,
-                    });
+                        .pImageInfo       = &image_infos[index],
+                    };
+                }
+                if (image_count)
+                {
+                    vkUpdateDescriptorSets(LogicalDevice, image_count, writes, 0, nullptr);
                 }
             }
-            if (!write_descriptor_sets.empty())
-                vkUpdateDescriptorSets(LogicalDevice, static_cast<uint32_t>(write_descriptor_sets.size()), write_descriptor_sets.data(), 0, nullptr);
+            for (uint32_t index = 0; index < image_count; ++index)
+            {
+                RecordSceneTextureDescriptorPublication(image_handles[index], image_infos[index]);
+            }
         }
-        ZReleaseScratch(scratch);
 
         // Preserve the existing one-frame fallback: the real descriptor write is
         // requeued and therefore becomes visible at the next graph frame begin.
-        Rendering::Textures::TextureHandle deferred_handle = {};
-        while (DeferredTextureDescriptorUpdates.pop(deferred_handle))
+        // Do not add another fallback/real pair ahead of an older real-write
+        // backlog. This also keeps the render-owned enqueue below queue capacity.
+        if (!TextureHandleToUpdates.empty())
         {
+            return;
+        }
+        Rendering::Textures::TextureHandle deferred_handle = {};
+        for (uint32_t processed = 0; processed < BindlessTextureUpdateSlice && DeferredTextureDescriptorUpdates.pop(deferred_handle); ++processed)
+        {
+            if (!GlobalTextures.IsLive(deferred_handle))
+            {
+                continue; // A stale generation must never overwrite a reused slot.
+            }
+            if (RRM && static_cast<RenderResourceManager*>(RRM)->IsTextureVersionPinned(deferred_handle))
+            {
+                // Retained consumers own exact descriptor contents too. A late
+                // duplicate decode notification cannot replace them with fallback.
+                RequestDescriptorUpdate(deferred_handle);
+                continue;
+            }
             if (FallbackDescriptorImageInfo.imageView != VK_NULL_HANDLE)
             {
+                if (deferred_handle.Index < MaxSceneDescriptorTextures)
+                {
+                    m_scene_texture_descriptors[deferred_handle.Index] = {};
+                }
                 for (const auto& request : BindlessTextureSlotRequests)
                 {
                     VkWriteDescriptorSet write = {
@@ -3027,11 +3450,20 @@ namespace ZEngine::Hardwares
 
     void VulkanDevice::DestroyTexture(const Rendering::Textures::TextureHandle& handle)
     {
+        auto* resources = RRM ? static_cast<Rendering::RenderResourceManager*>(RRM) : nullptr;
+        if (resources && resources->RetainTextureForRetirement(handle))
+        {
+            return;
+        }
         TextureDisposeEntry entry = {};
         entry.Handle              = handle;
         entry.TimelineValue       = SwapchainPtr->RenderTimelineNextValue;
         if (!TextureHandleToDispose.push(entry))
         {
+            if (resources && resources->RetainTextureForRetirement(handle, true))
+            {
+                return; // Fixed per-slot overflow storage retries on the render owner.
+            }
             ZENGINE_CORE_ERROR("[!] TextureHandleToDispose overflow — texture handle (index {}) leaked", handle.Index)
         }
     }
@@ -3039,9 +3471,25 @@ namespace ZEngine::Hardwares
     BufferView VulkanDevice::WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset, bool use_staging_ring, VkDeviceSize data_size)
     {
         if (out_ring_offset)
+        {
             *out_ring_offset = std::numeric_limits<uint32_t>::max();
+        }
 
-        if (!handle.Valid() || !(data) || !(command_buf))
+        if (!handle.Valid() || !(data) || !(command_buf) || (RRM && !static_cast<Rendering::RenderResourceManager*>(RRM)->BeginTextureVersionWrite(handle)))
+        {
+            return {};
+        }
+
+        return WriteTextureDataAfterAdmission(command_buf, handle, data, out_ring_offset, use_staging_ring, data_size);
+    }
+
+    BufferView VulkanDevice::WriteTextureDataAfterAdmission(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset, bool use_staging_ring, VkDeviceSize data_size)
+    {
+        if (out_ring_offset)
+        {
+            *out_ring_offset = std::numeric_limits<uint32_t>::max();
+        }
+        if (!handle.Valid() || !data || !command_buf)
         {
             return {};
         }
@@ -3049,11 +3497,15 @@ namespace ZEngine::Hardwares
         auto*    resource    = GlobalTextures.Access(handle);
         auto*    image_buf   = resource ? ImageBufferManager.Access(resource->BufferHandle) : nullptr;
         if (!resource || !image_buf)
+        {
             return {};
+        }
 
         const VkDeviceSize upload_size = data_size == 0 ? resource->BufferSize : data_size;
         if (upload_size == 0 || upload_size > resource->BufferSize)
+        {
             return {};
+        }
 
         uint32_t ring_offset = 0;
         void*    ring_ptr    = use_staging_ring ? GpuMem.Ring.Allocate(static_cast<uint32_t>(upload_size), 4, &ring_offset) : nullptr;
@@ -3068,7 +3520,9 @@ namespace ZEngine::Hardwares
             // Ring owns lifetime, caller must not free — but must call GpuMem.Ring.Submit
             // once it knows the timeline value this copy will signal (see out_ring_offset).
             if (out_ring_offset)
+            {
                 *out_ring_offset = ring_offset;
+            }
             return {};
         }
 
@@ -3131,22 +3585,104 @@ namespace ZEngine::Hardwares
         DeferredAsyncGPUOperations.push(operation);
     }
 
-    void VulkanDevice::AddBindlessTextureSlotRequest(const WriteDescriptorSetRequestKey& request)
+    bool VulkanDevice::AddBindlessTextureSlotRequest(const WriteDescriptorSetRequestKey& request)
     {
         for (const WriteDescriptorSetRequestKey& existing : BindlessTextureSlotRequests)
         {
             if (existing == request)
-                return;
+            {
+                return true;
+            }
+        }
+        if (m_bindless_targets_sealed || request.DstSet == VK_NULL_HANDLE || BindlessTextureSlotRequests.size() == MaxSceneDescriptorTargets || !Arena)
+        {
+            return false;
+        }
+        if (!BindlessTextureSlotRequests.capacity())
+        {
+            BindlessTextureSlotRequests.init(Arena, MaxSceneDescriptorTargets);
         }
         BindlessTextureSlotRequests.push(request);
+        return true;
     }
 
-    void VulkanDevice::RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle)
+    bool VulkanDevice::SealBindlessTextureTargets()
+    {
+        if (BindlessTextureSlotRequests.empty() || BindlessTextureSlotRequests.size() > MaxSceneDescriptorTargets)
+        {
+            return false;
+        }
+        m_bindless_targets_sealed = true;
+        return true;
+    }
+
+    bool VulkanDevice::IsSceneTextureDescriptorCurrent(Textures::TextureHandle texture, Helpers::Handle<ImageBuffer> image, uint64_t publication)
+    {
+        if (!m_bindless_targets_sealed || !publication || texture.Index >= MaxSceneDescriptorTextures || IsDeviceLost.load(std::memory_order_acquire))
+        {
+            return false;
+        }
+        const auto& record = m_scene_texture_descriptors[texture.Index];
+        const auto* resource = GlobalTextures.Access(texture);
+        auto* buffer = resource ? ImageBufferManager.Access(image) : nullptr;
+        if (!resource || !buffer || resource->BufferHandle.Index != image.Index || resource->BufferHandle.Generation != image.Generation || record.Texture.Generation != texture.Generation || record.Image.Index != image.Index || record.Image.Generation != image.Generation || record.Version != publication)
+        {
+            return false;
+        }
+        const auto info = buffer->GetDescriptorImageInfo();
+        return info.imageView != VK_NULL_HANDLE && record.Info.imageView == info.imageView && record.Info.imageLayout == info.imageLayout;
+    }
+
+    SceneTextureDescriptorState VulkanDevice::PrepareSceneTextureDescriptor(Textures::TextureHandle texture, Helpers::Handle<ImageBuffer> image, uint64_t* publication)
+    {
+        const auto* resource = GlobalTextures.Access(texture);
+        if (!publication || !m_bindless_targets_sealed || !LogicalDevice || !resource || texture.Index >= MaxSceneDescriptorTextures || texture.Index >= MaxGlobalTexture || resource->BufferHandle.Index != image.Index || resource->BufferHandle.Generation != image.Generation || !ImageBufferManager.IsLive(image) || IsDeviceLost.load(std::memory_order_acquire))
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        auto& record = m_scene_texture_descriptors[texture.Index];
+        if (IsSceneTextureDescriptorCurrent(texture, image, record.Version))
+        {
+            *publication = record.Version;
+            return SceneTextureDescriptorState::Ready;
+        }
+        if (m_scene_descriptor_sequence == UINT64_MAX)
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        if (record.Queued && record.Texture.Generation == texture.Generation && record.Image.Index == image.Index && record.Image.Generation == image.Generation)
+        {
+            return SceneTextureDescriptorState::Pending;
+        }
+        if (!TextureHandleToUpdates.push(texture))
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        record = {.Texture = texture, .Image = image, .Queued = true};
+        return SceneTextureDescriptorState::Pending;
+    }
+
+    void VulkanDevice::RecordSceneTextureDescriptorPublication(Textures::TextureHandle texture, const VkDescriptorImageInfo& info)
+    {
+        if (!m_bindless_targets_sealed || texture.Index >= MaxSceneDescriptorTextures || info.imageView == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        auto& record = m_scene_texture_descriptors[texture.Index];
+        if (IsSceneTextureDescriptorCurrent(texture, GlobalTextures.Access(texture)->BufferHandle, record.Version))
+        {
+            record.Queued = false; // Idempotent writes do not revoke existing consumers.
+            return;
+        }
+        record = {.Texture = texture, .Image = GlobalTextures.Access(texture)->BufferHandle, .Info = info, .Version = m_scene_descriptor_sequence == UINT64_MAX ? 0 : ++m_scene_descriptor_sequence};
+    }
+
+    bool VulkanDevice::RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle)
     {
         // Push to the deferred queue only — the render thread drains this and writes
         // the fallback then the real image, both from a single thread so vkUpdateDescriptorSets
         // is never called concurrently with Present()'s own descriptor batch.
-        DeferredTextureDescriptorUpdates.push(handle);
+        return DeferredTextureDescriptorUpdates.push(handle);
     }
 
 } // namespace ZEngine::Hardwares

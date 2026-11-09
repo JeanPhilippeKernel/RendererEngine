@@ -4,6 +4,7 @@
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 0
 
 #include <ZEngine/Core/Memory/GpuAllocator.h>
+#include <ZEngine/Hardwares/DeferredFreeQueue.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/ZEngineDef.h>
@@ -29,6 +30,9 @@ namespace ZEngine::Core::Memory
 {
     void GpuAllocator::Initialize(VkPhysicalDevice physical_device, VkDevice device, VkInstance instance, bool has_memory_budget_ext, bool has_buffer_device_address_ext)
     {
+        m_allocations_initialized             = false;
+        m_free_allocation                     = UINT32_MAX;
+        m_allocation_statistics               = {.Capacity = AllocationCapacity};
         VmaAllocatorCreateInfo allocator_info = {.flags = VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT};
         allocator_info.physicalDevice         = physical_device;
         allocator_info.device                 = device;
@@ -160,12 +164,12 @@ namespace ZEngine::Core::Memory
         // benefit from VMA's automatic dedicated-allocation promotion; pooling would work
         // against that.
 
-        Ring.Initialize(Allocator, Pools[static_cast<uint8_t>(GpuMemoryDomain::HostStaging)]);
+        Ring.Initialize(*this);
     }
 
     void GpuAllocator::Shutdown()
     {
-        Ring.Shutdown(Allocator);
+        Ring.Shutdown(*this);
 
         VmaTotalStatistics stats = {};
         vmaCalculateStatistics(Allocator, &stats);
@@ -188,6 +192,44 @@ namespace ZEngine::Core::Memory
 
     BufferView GpuAllocator::AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, GpuMemoryDomain domain, const char* debug_name)
     {
+        auto buffer = TryAllocateBuffer(size, usage, domain, debug_name);
+        ZENGINE_VALIDATE_ASSERT(buffer, "Failed to allocate buffer");
+        return buffer;
+    }
+
+    BufferView GpuAllocator::TryAllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, GpuMemoryDomain domain, const char* debug_name, VkResult* status)
+    {
+        return TryAllocateBufferWithPolicy(size, usage, domain, debug_name, status, false);
+    }
+
+    BufferView GpuAllocator::TryAllocateBufferWithPolicy(VkDeviceSize size, VkBufferUsageFlags usage, GpuMemoryDomain domain, const char* debug_name, VkResult* status, bool prefer_device)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (!Allocator || !size || !usage || domain >= GpuMemoryDomain::Count)
+        {
+            return {};
+        }
+        auto retirement = RetirementQueue ? RetirementQueue->Reserve() : Hardwares::DeferredFreeQueue::Lease{};
+        if (RetirementQueue && !retirement)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
+            return {};
+        }
+        const auto record = ReserveAllocation();
+        if (record == UINT32_MAX)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
+            return {};
+        }
         VkBufferCreateInfo buffer_create_info          = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         buffer_create_info.size                        = size;
         buffer_create_info.usage                       = usage;
@@ -219,7 +261,7 @@ namespace ZEngine::Core::Memory
 
         if (domain == GpuMemoryDomain::HostStaging)
         {
-            allocation_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+            allocation_create_info.usage = prefer_device ? VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE : VMA_MEMORY_USAGE_AUTO;
             allocation_create_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
         }
 
@@ -238,40 +280,131 @@ namespace ZEngine::Core::Memory
             allocation_create_info.pool = Pools[static_cast<uint8_t>(domain)];
         }
 
-        BufferView        buffer_view     = {.DebugName = debug_name, .Domain = domain, .Size = size, .Usage = usage};
+        BufferView        buffer_view     = {.DebugName = debug_name, .Domain = domain, .Size = size, .Usage = usage, .AllocationRecord = record};
         VmaAllocationInfo allocation_info = {};
-        VkResult          result          = vmaCreateBuffer(Allocator, &buffer_create_info, &allocation_create_info, &buffer_view.Handle, &buffer_view.Allocation, &allocation_info);
+        VmaAllocatorInfo  allocator_info  = {};
+        vmaGetAllocatorInfo(Allocator, &allocator_info);
+        VkResult result = vkCreateBuffer(allocator_info.device, &buffer_create_info, nullptr, &buffer_view.Handle);
+        if (result != VK_SUCCESS)
+        {
+            ReleaseAllocation(record, nullptr);
+            if (status)
+            {
+                *status = result;
+            }
+            return {};
+        }
+        if (result == VK_SUCCESS)
+        {
+            VkMemoryRequirements requirements = {};
+            vkGetBufferMemoryRequirements(allocator_info.device, buffer_view.Handle, &requirements);
+            if (!AdmitAllocationBytes(record, requirements.size, domain))
+            {
+                result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            }
+        }
+        // Preserve VMA's AUTO memory-type policy, then allocate the already-created
+        // object with that exact type. AUTO is not legal in AllocateMemoryForBuffer.
+        // Pool allocation needs no selection; fallback reruns the original policy.
+        const auto allocate_memory = [&] {
+            auto selected = allocation_create_info;
+            if (!selected.pool)
+            {
+                uint32_t   memory_type = 0;
+                const auto selection   = vmaFindMemoryTypeIndexForBufferInfo(Allocator, &buffer_create_info, &selected, &memory_type);
+                if (selection != VK_SUCCESS)
+                {
+                    return selection;
+                }
+                selected.memoryTypeBits = uint32_t{1} << memory_type;
+            }
+            selected.usage = VMA_MEMORY_USAGE_UNKNOWN;
+            return vmaAllocateMemoryForBuffer(Allocator, buffer_view.Handle, &selected, &buffer_view.Allocation, &allocation_info);
+        };
+        const bool admitted = result == VK_SUCCESS;
+        if (admitted)
+        {
+            result = allocate_memory();
+        }
         // VMA signals VmaPool exhaustion via VK_ERROR_OUT_OF_DEVICE_MEMORY, not
         // VK_ERROR_OUT_OF_POOL_MEMORY (that's for VkDescriptorPool, unrelated).
-        if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY && allocation_create_info.pool != VK_NULL_HANDLE)
+        if (admitted && result == VK_ERROR_OUT_OF_DEVICE_MEMORY && allocation_create_info.pool != VK_NULL_HANDLE)
         {
             ZENGINE_CORE_WARN("[GPU] Pool for domain {} exhausted — falling back to default pool", static_cast<int>(domain))
             allocation_create_info.pool = VK_NULL_HANDLE;
-            result                      = vmaCreateBuffer(Allocator, &buffer_create_info, &allocation_create_info, &buffer_view.Handle, &buffer_view.Allocation, &allocation_info);
+            result                      = allocate_memory();
         }
-        ZENGINE_VALIDATE_ASSERT(result == VK_SUCCESS, "Failed to allocate buffer");
+        if (result == VK_SUCCESS)
+        {
+            result = vmaBindBufferMemory(Allocator, buffer_view.Allocation, buffer_view.Handle);
+        }
+        if (status)
+        {
+            *status = result;
+        }
+        if (result != VK_SUCCESS)
+        {
+            vmaDestroyBuffer(Allocator, buffer_view.Handle, buffer_view.Allocation);
+            ReleaseAllocation(record, nullptr);
+            return {};
+        }
+        CommitAllocation(record, buffer_view.Allocation);
         vmaSetAllocationName(Allocator, buffer_view.Allocation, debug_name);
-        buffer_view.MappedData = allocation_info.pMappedData;
+        buffer_view.MappedData            = allocation_info.pMappedData;
+        buffer_view.RetirementReservation = retirement.Detach();
         return buffer_view;
+    }
+
+    bool GpuAllocator::WriteHostBuffer(const BufferView& buffer, const void* data, size_t size, VkDeviceSize offset, VkResult* status)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_MEMORY_MAP_FAILED;
+        }
+        if (!Allocator || !buffer || !buffer.Allocation || !buffer.OwnsAllocation || !buffer.MappedData || !data || !size || offset > buffer.Size || size > buffer.Size - offset || offset > SIZE_MAX || size > SIZE_MAX - static_cast<size_t>(offset))
+        {
+            return false;
+        }
+        if (Helpers::secure_memcpy(static_cast<uint8_t*>(buffer.MappedData) + static_cast<size_t>(offset), size, data, size) != Helpers::MEMORY_OP_SUCCESS)
+        {
+            return false;
+        }
+        const auto result = vmaFlushAllocation(Allocator, buffer.Allocation, offset, size);
+        if (status)
+        {
+            *status = result;
+        }
+        return result == VK_SUCCESS;
     }
 
     BufferView GpuAllocator::AllocateAliasingBuffer(const BufferView& backing, VkDeviceSize size, VkBufferUsageFlags usage, const char* debug_name)
     {
-        if (backing.Handle == VK_NULL_HANDLE || backing.Allocation == nullptr || !backing.OwnsAllocation || size == 0 || usage == 0)
+        auto retirement = RetirementQueue ? RetirementQueue->Reserve() : Hardwares::DeferredFreeQueue::Lease{};
+        if (RetirementQueue && !retirement)
+        {
             return {};
+        }
+        if (backing.Handle == VK_NULL_HANDLE || backing.Allocation == nullptr || !backing.OwnsAllocation || size == 0 || size > backing.Size || usage == 0 || !RetainAllocation(backing.AllocationRecord, backing.Allocation))
+        {
+            return {};
+        }
 
         VkBufferCreateInfo buffer_create_info = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         buffer_create_info.size               = size;
         buffer_create_info.usage              = usage;
         buffer_create_info.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;
 
-        BufferView alias                      = {.DebugName = debug_name, .Domain = backing.Domain, .Size = size, .Usage = usage, .OwnsAllocation = false};
+        BufferView alias                      = {.DebugName = debug_name, .Domain = backing.Domain, .Allocation = backing.Allocation, .Size = size, .Usage = usage, .OwnsAllocation = false, .AllocationRecord = backing.AllocationRecord};
         if (vmaCreateAliasingBuffer(Allocator, backing.Allocation, &buffer_create_info, &alias.Handle) != VK_SUCCESS)
+        {
+            ReleaseAllocation(backing.AllocationRecord, backing.Allocation);
             return {};
+        }
+        alias.RetirementReservation = retirement.Detach();
         return alias;
     }
 
-    static bool CreateDefaultImageView(VkDevice device, const VkImageCreateInfo& image_info, VkImage image, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, VkImageView* output)
+    static VkResult CreateDefaultImageView(VkDevice device, const VkImageCreateInfo& image_info, VkImage image, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, VkImageView* output)
     {
         VkImageViewCreateInfo view_create_info           = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
         view_create_info.image                           = image;
@@ -286,11 +419,182 @@ namespace ZEngine::Core::Memory
         view_create_info.subresourceRange.levelCount     = image_info.mipLevels;
         view_create_info.subresourceRange.baseArrayLayer = 0;
         view_create_info.subresourceRange.layerCount     = layer_count;
-        return vkCreateImageView(device, &view_create_info, nullptr, output) == VK_SUCCESS;
+        return vkCreateImageView(device, &view_create_info, nullptr, output);
     }
 
     BufferImage GpuAllocator::AllocateImage(VkImageCreateInfo& image_info, GpuMemoryDomain domain, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name)
     {
+        auto image = TryAllocateImage(image_info, domain, device, aspect, view_type, layer_count, debug_name);
+        ZENGINE_VALIDATE_ASSERT(image, "Failed to allocate image or image view")
+        return image;
+    }
+
+    uint32_t GpuAllocator::ReserveAllocation()
+    {
+        std::lock_guard lock(m_allocation_mutex);
+        if (!m_allocations_initialized)
+        {
+            for (uint32_t slot = 0; slot < AllocationCapacity; ++slot)
+            {
+                m_allocations[slot] = {.NextFree = slot + 1 < AllocationCapacity ? slot + 1 : UINT32_MAX};
+            }
+            m_free_allocation         = 0;
+            m_allocations_initialized = true;
+        }
+        const auto index = m_free_allocation;
+        if (index != UINT32_MAX)
+        {
+            m_free_allocation    = m_allocations[index].NextFree;
+            m_allocations[index] = {.References = 1};
+            ++m_allocation_statistics.ReservedRecords;
+        }
+        return index;
+    }
+
+    void GpuAllocator::CommitAllocation(uint32_t index, VmaAllocation allocation)
+    {
+        const auto      bytes = GetAllocationSize(allocation);
+        std::lock_guard lock(m_allocation_mutex);
+        ZENGINE_VALIDATE_ASSERT(index < AllocationCapacity && allocation, "Invalid GPU allocation commit")
+        auto& record = m_allocations[index];
+        ZENGINE_VALIDATE_ASSERT(record.References == 1 && !record.Allocation, "GPU allocation already committed")
+        record.Allocation = allocation;
+        ZENGINE_VALIDATE_ASSERT(bytes <= record.Bytes, "GPU allocation exceeds admitted native requirements")
+        record.LiveBytes = bytes;
+        ++m_allocation_statistics.AllocationCount;
+        m_allocation_statistics.AllocationBytes += bytes;
+        if (m_allocation_statistics.AllocationCount > m_allocation_statistics.PeakAllocationCount)
+        {
+            m_allocation_statistics.PeakAllocationCount = m_allocation_statistics.AllocationCount;
+        }
+        if (m_allocation_statistics.AllocationBytes > m_allocation_statistics.PeakAllocationBytes)
+        {
+            m_allocation_statistics.PeakAllocationBytes = m_allocation_statistics.AllocationBytes;
+        }
+    }
+
+    bool GpuAllocator::RetainAllocation(uint32_t index, VmaAllocation allocation)
+    {
+        if (index >= AllocationCapacity || !allocation)
+        {
+            return false;
+        }
+        std::lock_guard lock(m_allocation_mutex);
+        auto&           record = m_allocations[index];
+        if (!record.References || record.Allocation != allocation || record.References == UINT32_MAX)
+        {
+            return false;
+        }
+        ++record.References;
+        return true;
+    }
+
+    GpuAllocationStatistics GpuAllocator::GetAllocationStatistics() const
+    {
+        std::lock_guard lock(m_allocation_mutex);
+        return m_allocation_statistics;
+    }
+
+    GpuAllocationLimits GpuAllocator::GetAllocationLimits() const
+    {
+        std::lock_guard lock(m_allocation_mutex);
+        return m_allocation_limits;
+    }
+
+    bool GpuAllocator::SetAllocationLimits(const GpuAllocationLimits& limits)
+    {
+        std::lock_guard lock(m_allocation_mutex);
+        if (limits.TotalBytes < m_allocation_statistics.AdmittedBytes)
+        {
+            return false;
+        }
+        for (uint32_t domain = 0; domain < static_cast<uint32_t>(GpuMemoryDomain::Count); ++domain)
+        {
+            if (limits.DomainBytes[domain] < m_allocation_statistics.DomainAdmittedBytes[domain])
+            {
+                return false;
+            }
+        }
+        m_allocation_limits = limits;
+        return true;
+    }
+
+    bool GpuAllocator::AdmitAllocationBytes(uint32_t index, VkDeviceSize bytes, GpuMemoryDomain domain)
+    {
+        std::lock_guard lock(m_allocation_mutex);
+        ZENGINE_VALIDATE_ASSERT(index < AllocationCapacity && domain < GpuMemoryDomain::Count, "Invalid GPU memory admission")
+        auto& record = m_allocations[index];
+        ZENGINE_VALIDATE_ASSERT(record.References == 1 && !record.Allocation && !record.Bytes, "GPU allocation already charged")
+        const auto domain_index = static_cast<uint32_t>(domain);
+        auto&      domain_bytes = m_allocation_statistics.DomainAdmittedBytes[domain_index];
+        if (!bytes || bytes > m_allocation_limits.TotalBytes - m_allocation_statistics.AdmittedBytes || bytes > m_allocation_limits.DomainBytes[domain_index] - domain_bytes)
+        {
+            return false;
+        }
+        record.Bytes                           = bytes;
+        record.Domain                          = domain;
+        m_allocation_statistics.AdmittedBytes += bytes;
+        domain_bytes                          += bytes;
+        if (m_allocation_statistics.AdmittedBytes > m_allocation_statistics.PeakAdmittedBytes)
+        {
+            m_allocation_statistics.PeakAdmittedBytes = m_allocation_statistics.AdmittedBytes;
+        }
+        return true;
+    }
+
+    void GpuAllocator::ReleaseAllocation(uint32_t index, VmaAllocation allocation)
+    {
+        std::lock_guard lock(m_allocation_mutex);
+        ZENGINE_VALIDATE_ASSERT(index < AllocationCapacity, "Invalid shared GPU allocation record")
+        auto& record = m_allocations[index];
+        ZENGINE_VALIDATE_ASSERT(record.References && record.Allocation == allocation, "Invalid shared GPU allocation release")
+        if (--record.References == 0)
+        {
+            if (allocation)
+            {
+                vmaFreeMemory(Allocator, allocation);
+                --m_allocation_statistics.AllocationCount;
+                m_allocation_statistics.AllocationBytes -= record.LiveBytes;
+            }
+            m_allocation_statistics.AdmittedBytes -= record.Bytes;
+            if (record.Bytes)
+            {
+                m_allocation_statistics.DomainAdmittedBytes[static_cast<uint32_t>(record.Domain)] -= record.Bytes;
+            }
+            --m_allocation_statistics.ReservedRecords;
+            record            = {.NextFree = m_free_allocation};
+            m_free_allocation = index;
+        }
+    }
+
+    BufferImage GpuAllocator::TryAllocateImage(VkImageCreateInfo& image_info, GpuMemoryDomain domain, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name, VkResult* status)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (!Allocator || !device || domain >= GpuMemoryDomain::Count || !image_info.extent.width || !image_info.extent.height || !image_info.extent.depth || !image_info.mipLevels || !image_info.arrayLayers || !layer_count)
+        {
+            return {};
+        }
+        auto retirement = RetirementQueue ? RetirementQueue->Reserve() : Hardwares::DeferredFreeQueue::Lease{};
+        if (RetirementQueue && !retirement)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
+            return {};
+        }
+        const auto record = ReserveAllocation();
+        if (record == UINT32_MAX)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
+            return {};
+        }
         VmaAllocationCreateInfo allocation_create_info = {.flags = VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT};
         if (domain == GpuMemoryDomain::DeviceGeometry || domain == GpuMemoryDomain::DeviceTexture || domain == GpuMemoryDomain::RenderTarget || domain == GpuMemoryDomain::HostUniform || domain == GpuMemoryDomain::HostStaging)
         {
@@ -302,62 +606,177 @@ namespace ZEngine::Core::Memory
             allocation_create_info.pool = Pools[static_cast<uint8_t>(domain)];
         }
 
-        BufferImage buffer_image = {.DebugName = debug_name, .Domain = domain};
-        VkResult    result       = vmaCreateImage(Allocator, &image_info, &allocation_create_info, &buffer_image.Handle, &buffer_image.Allocation, nullptr);
+        BufferImage buffer_image = {.DebugName = debug_name, .Domain = domain, .AllocationRecord = record};
+        VkResult    result       = vkCreateImage(device, &image_info, nullptr, &buffer_image.Handle);
+        if (result != VK_SUCCESS)
+        {
+            ReleaseAllocation(record, nullptr);
+            if (status)
+            {
+                *status = result;
+            }
+            return {};
+        }
+        if (result == VK_SUCCESS)
+        {
+            VkMemoryRequirements requirements = {};
+            vkGetImageMemoryRequirements(device, buffer_image.Handle, &requirements);
+            if (!AdmitAllocationBytes(record, requirements.size, domain))
+            {
+                result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            }
+        }
+        const auto allocate_memory = [&] {
+            auto selected = allocation_create_info;
+            if (!selected.pool)
+            {
+                uint32_t   memory_type = 0;
+                const auto selection   = vmaFindMemoryTypeIndexForImageInfo(Allocator, &image_info, &selected, &memory_type);
+                if (selection != VK_SUCCESS)
+                {
+                    return selection;
+                }
+                selected.memoryTypeBits = uint32_t{1} << memory_type;
+            }
+            selected.usage = VMA_MEMORY_USAGE_UNKNOWN;
+            return vmaAllocateMemoryForImage(Allocator, buffer_image.Handle, &selected, &buffer_image.Allocation, nullptr);
+        };
+        const bool admitted = result == VK_SUCCESS;
+        if (admitted)
+        {
+            result = allocate_memory();
+        }
         // VMA signals VmaPool exhaustion via VK_ERROR_OUT_OF_DEVICE_MEMORY, not
         // VK_ERROR_OUT_OF_POOL_MEMORY (that's for VkDescriptorPool, unrelated).
-        if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY && allocation_create_info.pool != VK_NULL_HANDLE)
+        if (admitted && result == VK_ERROR_OUT_OF_DEVICE_MEMORY && allocation_create_info.pool != VK_NULL_HANDLE)
         {
             ZENGINE_CORE_WARN("[GPU] Pool for domain {} exhausted — falling back to default pool", static_cast<int>(domain))
             allocation_create_info.pool = VK_NULL_HANDLE;
-            result                      = vmaCreateImage(Allocator, &image_info, &allocation_create_info, &buffer_image.Handle, &buffer_image.Allocation, nullptr);
+            result                      = allocate_memory();
         }
-        ZENGINE_VALIDATE_ASSERT(result == VK_SUCCESS, "Failed to allocate image");
+        if (result == VK_SUCCESS)
+        {
+            result = vmaBindImageMemory(Allocator, buffer_image.Allocation, buffer_image.Handle);
+        }
+        if (result != VK_SUCCESS)
+        {
+            vmaDestroyImage(Allocator, buffer_image.Handle, buffer_image.Allocation);
+            ReleaseAllocation(record, nullptr);
+            if (status)
+            {
+                *status = result;
+            }
+            return {};
+        }
+        CommitAllocation(record, buffer_image.Allocation);
         vmaSetAllocationName(Allocator, buffer_image.Allocation, debug_name);
 
-        ZENGINE_VALIDATE_ASSERT(CreateDefaultImageView(device, image_info, buffer_image.Handle, aspect, view_type, layer_count, &buffer_image.ViewHandle), "Failed to create image view");
+        result = CreateDefaultImageView(device, image_info, buffer_image.Handle, aspect, view_type, layer_count, &buffer_image.ViewHandle);
+        if (status)
+        {
+            *status = result;
+        }
+        if (result != VK_SUCCESS)
+        {
+            vmaDestroyImage(Allocator, buffer_image.Handle, nullptr);
+            ReleaseAllocation(record, buffer_image.Allocation);
+            return {};
+        }
 
+        buffer_image.RetirementReservation = retirement.Detach();
         return buffer_image;
     }
 
-    BufferImage GpuAllocator::AllocateAliasingImage(const BufferImage& backing, const VkImageCreateInfo& image_info, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name)
+    BufferImage GpuAllocator::AllocateAliasingImage(const BufferImage& backing, const VkImageCreateInfo& image_info, VkDevice device, VkImageAspectFlagBits aspect, VkImageViewType view_type, uint32_t layer_count, const char* debug_name, VkResult* status)
     {
-        if (backing.Handle == VK_NULL_HANDLE || backing.Allocation == nullptr || !backing.OwnsAllocation)
-            return {};
-
-        BufferImage alias = {.DebugName = debug_name, .Domain = backing.Domain, .OwnsAllocation = false};
-        if (vmaCreateAliasingImage(Allocator, backing.Allocation, &image_info, &alias.Handle) != VK_SUCCESS)
-            return {};
-        if (!CreateDefaultImageView(device, image_info, alias.Handle, aspect, view_type, layer_count, &alias.ViewHandle))
+        if (status)
         {
-            vmaDestroyImage(Allocator, alias.Handle, nullptr);
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        auto retirement = RetirementQueue ? RetirementQueue->Reserve() : Hardwares::DeferredFreeQueue::Lease{};
+        if (RetirementQueue && !retirement)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_HOST_MEMORY;
+            }
             return {};
         }
+        if (backing.Handle == VK_NULL_HANDLE || backing.Allocation == nullptr || !backing.OwnsAllocation || !RetainAllocation(backing.AllocationRecord, backing.Allocation))
+        {
+            return {};
+        }
+
+        BufferImage alias  = {.DebugName = debug_name, .Domain = backing.Domain, .Allocation = backing.Allocation, .OwnsAllocation = false, .AllocationRecord = backing.AllocationRecord};
+        VkResult    result = vmaCreateAliasingImage(Allocator, backing.Allocation, &image_info, &alias.Handle);
+        if (status)
+        {
+            *status = result;
+        }
+        if (result != VK_SUCCESS)
+        {
+            ReleaseAllocation(backing.AllocationRecord, backing.Allocation);
+            return {};
+        }
+        result = CreateDefaultImageView(device, image_info, alias.Handle, aspect, view_type, layer_count, &alias.ViewHandle);
+        if (status)
+        {
+            *status = result;
+        }
+        if (result != VK_SUCCESS)
+        {
+            vmaDestroyImage(Allocator, alias.Handle, nullptr);
+            ReleaseAllocation(backing.AllocationRecord, backing.Allocation);
+            return {};
+        }
+        alias.RetirementReservation = retirement.Detach();
         return alias;
     }
 
     void GpuAllocator::FreeBuffer(BufferView& buffer)
     {
-        vmaDestroyBuffer(Allocator, buffer.Handle, buffer.OwnsAllocation ? buffer.Allocation : nullptr);
-        buffer.Handle         = VK_NULL_HANDLE;
-        buffer.Allocation     = nullptr;
-        buffer.Size           = 0;
-        buffer.Usage          = 0;
-        buffer.MappedData     = nullptr;
-        buffer.OwnsAllocation = true;
+        if (!buffer)
+        {
+            return;
+        }
+        vmaDestroyBuffer(Allocator, buffer.Handle, nullptr);
+        ReleaseAllocation(buffer.AllocationRecord, buffer.Allocation);
+        if (RetirementQueue)
+        {
+            RetirementQueue->CancelReservation(buffer.RetirementReservation);
+        }
+        buffer.Handle                = VK_NULL_HANDLE;
+        buffer.Allocation            = nullptr;
+        buffer.Size                  = 0;
+        buffer.Usage                 = 0;
+        buffer.MappedData            = nullptr;
+        buffer.OwnsAllocation        = true;
+        buffer.AllocationRecord      = UINT32_MAX;
+        buffer.RetirementReservation = 0;
     }
 
     void GpuAllocator::FreeImage(BufferImage& image, VkDevice device)
     {
+        if (!image)
+        {
+            return;
+        }
         if (image.ViewHandle != VK_NULL_HANDLE)
         {
             vkDestroyImageView(device, image.ViewHandle, nullptr);
             image.ViewHandle = VK_NULL_HANDLE;
         }
-        vmaDestroyImage(Allocator, image.Handle, image.OwnsAllocation ? image.Allocation : nullptr);
-        image.Handle         = VK_NULL_HANDLE;
-        image.Allocation     = nullptr;
-        image.OwnsAllocation = true;
+        vmaDestroyImage(Allocator, image.Handle, nullptr);
+        ReleaseAllocation(image.AllocationRecord, image.Allocation);
+        if (RetirementQueue)
+        {
+            RetirementQueue->CancelReservation(image.RetirementReservation);
+        }
+        image.Handle                = VK_NULL_HANDLE;
+        image.Allocation            = nullptr;
+        image.OwnsAllocation        = true;
+        image.AllocationRecord      = UINT32_MAX;
+        image.RetirementReservation = 0;
     }
 
     void GpuAllocator::SampleBudgets()
@@ -450,26 +869,28 @@ namespace ZEngine::Core::Memory
         return vmaInvalidateAllocation(Allocator, allocation, offset, size) == VK_SUCCESS;
     }
 
-    void StagingRingBuffer::Initialize(VmaAllocator alloc, VmaPool pool)
+    void StagingRingBuffer::Initialize(GpuAllocator& allocator)
     {
-        VkBufferCreateInfo buffer_create_info          = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        buffer_create_info.size                        = kCapacity;
-        buffer_create_info.usage                       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        buffer_create_info.sharingMode                 = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo allocation_create_info = {.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT};
-        allocation_create_info.usage                   = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-        allocation_create_info.pool                    = pool; // shares the GpuAllocator-owned HostStaging pool when one exists
-        VmaAllocationInfo result                       = {};
-        ZENGINE_VALIDATE_ASSERT(vmaCreateBuffer(alloc, &buffer_create_info, &allocation_create_info, &Buffer, &Allocation, &result) == VK_SUCCESS, "Failed to allocate buffer");
-        vmaSetAllocationName(alloc, Allocation, DebugName);
-
-        MappedPtr = result.pMappedData;
+        // Retain the ring's device-preferred policy on discrete GPUs while using
+        // the same pre-allocation admission and final-release accounting as uploads.
+        Backing = allocator.TryAllocateBufferWithPolicy(kCapacity, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging, DebugName, nullptr, true);
+        ZENGINE_VALIDATE_ASSERT(Backing, "Failed to allocate staging ring")
+        Buffer     = Backing.Handle;
+        Allocation = Backing.Allocation;
+        MappedPtr  = Backing.MappedData;
     }
 
-    void StagingRingBuffer::Shutdown(VmaAllocator alloc)
+    void StagingRingBuffer::Shutdown(GpuAllocator& allocator)
     {
-        vmaDestroyBuffer(alloc, Buffer, Allocation);
+        allocator.FreeBuffer(Backing);
+        Buffer     = VK_NULL_HANDLE;
+        Allocation = nullptr;
+        MappedPtr  = nullptr;
+        WritePos   = 0;
+        ReadPos    = 0;
+        ChunkHead  = 0;
+        ChunkTail  = 0;
+        ChunkCount = 0;
     }
 
     void* StagingRingBuffer::Allocate(uint32_t size, uint32_t alignment, uint32_t* out_vk_offset)

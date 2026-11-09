@@ -4,7 +4,10 @@
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
 #include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
 #include <ZEngine/Rendering/Renderers/RenderRecordingWorkers.h>
+#include <ZEngine/Rendering/Renderers/RendererContracts.h>
+#include <ZEngine/Rendering/Renderers/SceneDescriptorRecipes.h>
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -14,6 +17,33 @@ using namespace ZEngine::Helpers;
 
 namespace ZEngine::Rendering::Renderers
 {
+    SceneRenderTarget RGScenePipelineProfile::ResolveAttachmentTarget(uint32_t index, bool composited) const
+    {
+        if (index >= AttachmentCount || index >= MaxAttachments)
+        {
+            return SceneRenderTarget::Count;
+        }
+        const auto target = AttachmentTargets[index].Target;
+        return CompositedHdrAttachment && composited && target == SceneRenderTarget::HdrColor ? SceneRenderTarget::HdrComposited : target;
+    }
+
+    bool RGScenePipelineProfile::Matches(const Specifications::AttachmentSpecification& specification) const
+    {
+        if (AttachmentCount == 0 || AttachmentCount > MaxAttachments || specification.ColorsMap.size() != AttachmentCount)
+        {
+            return false;
+        }
+        for (uint32_t index = 0; index < AttachmentCount; ++index)
+        {
+            const auto* attachment = specification.ColorsMap.find(index);
+            if (!attachment || attachment->Format != Formats[index])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     float RGTimestampDurationMilliseconds(uint64_t begin_timestamp, uint64_t end_timestamp, uint32_t valid_bits, float timestamp_period)
     {
         if (valid_bits == 0 || timestamp_period <= 0.0f)
@@ -212,7 +242,9 @@ namespace ZEngine::Rendering::Renderers
                 for (VkQueryPool& frame_pool : storage.FramePools)
                 {
                     if (graph.Device && graph.Device->LogicalDevice != VK_NULL_HANDLE && frame_pool != VK_NULL_HANDLE)
-                        vkDestroyQueryPool(graph.Device->LogicalDevice, frame_pool, nullptr);
+                    {
+                        graph.Device->PendingFree.DestroyNative(Rendering::DeviceResourceType::QUERYPOOL, frame_pool, [&] { vkDestroyQueryPool(graph.Device->LogicalDevice, frame_pool, nullptr); });
+                    }
                     frame_pool = VK_NULL_HANDLE;
                 }
                 storage.FramePools.clear();
@@ -316,24 +348,48 @@ namespace ZEngine::Rendering::Renderers
             return pass.Handle->Specification.Type == Specifications::RenderPassType::COMPUTE;
         }
 
-        void EnsurePassPipelineOnRenderThread(RGPass& pass)
+        Pipelines::IPipeline* GetBackendPipeline(RenderPasses::RenderPass* backend)
         {
-            if (!pass.Handle)
-                return;
+            if (!backend)
+            {
+                return nullptr;
+            }
+            if (backend->Specification.Type == Specifications::RenderPassType::GRAPHIC)
+            {
+                return static_cast<RenderPasses::GraphicPass*>(backend)->Pipeline;
+            }
+            if (backend->Specification.Type == Specifications::RenderPassType::COMPUTE)
+            {
+                return static_cast<RenderPasses::ComputePass*>(backend)->Pipeline;
+            }
+            return nullptr;
+        }
 
-            if (pass.Handle->Specification.Type == Specifications::RenderPassType::GRAPHIC)
+        Pipelines::PSOPreparationState EnsurePassPipelineOnRenderThread(RGPass& pass)
+        {
+            if (!pass.RequiresRenderPass)
             {
-                auto* graphics = static_cast<RenderPasses::GraphicPass*>(pass.Handle);
-                if (graphics->Pipeline)
-                    graphics->Pipeline->EnsureCurrent();
-                return;
+                return Pipelines::PSOPreparationState::Ready;
             }
-            if (pass.Handle->Specification.Type == Specifications::RenderPassType::COMPUTE)
+            if (!pass.Handle)
             {
-                auto* compute = static_cast<RenderPasses::ComputePass*>(pass.Handle);
-                if (compute->Pipeline)
-                    compute->Pipeline->EnsureCurrent();
+                return Pipelines::PSOPreparationState::Failed;
             }
+
+            auto* pipeline = GetBackendPipeline(pass.Handle);
+            if (!pipeline)
+            {
+                return Pipelines::PSOPreparationState::Failed;
+            }
+            if (pass.Persistent && pass.Persistent->ScenePipelineProfile.Usage != RGScenePipelineUsage::None)
+            {
+                const auto state = pipeline->PrepareAsync();
+                // The candidate transaction independently owns its generation
+                // through handoff. Ordinary frames must not freeze hot reload.
+                pipeline->ReleasePreparationGeneration();
+                return state;
+            }
+            return pipeline->EnsureCurrent() ? Pipelines::PSOPreparationState::Ready : Pipelines::PSOPreparationState::Failed;
         }
 
         struct RenderGraphSecondaryRecordTask
@@ -342,6 +398,9 @@ namespace ZEngine::Rendering::Renderers
             const RGTopologyLevel* Level      = nullptr;
             uint32_t               Worker     = UINT32_MAX;
             uint8_t                FrameIndex = 0;
+#if ZENGINE_PROFILING
+            std::chrono::steady_clock::time_point DispatchedAt = {};
+#endif
         };
 
         void RecordGraphSecondary(RenderGraph* graph, RGPass& pass, uint8_t frame_index)
@@ -369,6 +428,13 @@ namespace ZEngine::Rendering::Renderers
         void RecordGraphSecondaryWorkerBatch(void* context)
         {
             auto& task = *static_cast<RenderGraphSecondaryRecordTask*>(context);
+#if ZENGINE_PROFILING
+            // Creation-to-entry latency includes mailbox dispatch and wake-up;
+            // it is not a direct OS scheduler/preemption measurement.
+            const double dispatch_delay_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - task.DispatchedAt).count();
+            ZENGINE_PROFILE_VALUE("SceneLoad.RecordingWorker.DispatchDelayMs", dispatch_delay_ms);
+#endif
+            ZENGINE_PROFILE_SCOPE("SceneLoad.RecordingWorker.Task");
             if (task.Graph && task.Level)
             {
                 for (uint32_t pass_index : task.Level->PassIndices)
@@ -855,6 +921,27 @@ namespace ZEngine::Rendering::Renderers
         };
     }
 
+    VkImageMemoryBarrier2 BuildRGStreamingAcquireBarrier(const Hardwares::StreamingUploadTicket& ticket, const RGResourceState& destination, uint32_t consumer_family, VkImage image, const RGSubresourceRange& range)
+    {
+        const bool transfers_ownership = ticket.ProducerQueueFamily != VK_QUEUE_FAMILY_IGNORED && ticket.ProducerQueueFamily != consumer_family;
+        return {
+            .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask        = VK_PIPELINE_STAGE_2_NONE,
+            .srcAccessMask       = 0,
+            .dstStageMask        = destination.Stage,
+            .dstAccessMask       = destination.Access,
+            // Vulkan requires identical old/new layouts on both halves of an
+            // ownership transfer. Within one family the producer already changed
+            // the layout, so repeating that transition would instead be invalid.
+            .oldLayout           = transfers_ownership ? ticket.PreReleaseLayout : ticket.PostReleaseLayout,
+            .newLayout           = ticket.PostReleaseLayout,
+            .srcQueueFamilyIndex = transfers_ownership ? ticket.ProducerQueueFamily : VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = transfers_ownership ? consumer_family : VK_QUEUE_FAMILY_IGNORED,
+            .image               = image,
+            .subresourceRange    = ToVkSubresourceRange(range),
+        };
+    }
+
     struct RGDynamicRenderingBeginResult
     {
         bool Began         = false;
@@ -878,7 +965,7 @@ namespace ZEngine::Rendering::Renderers
         return clear_value;
     }
 
-    static bool GetGraphAttachmentView(RenderGraph* graph, const RGResource& resource, const RGPassResource& use, VkImageView* image_view, VkFormat* image_format, uint32_t* width, uint32_t* height, uint32_t* layer_count, VkClearValue* clear_value)
+    static bool GetGraphAttachmentView(RenderGraph* graph, const RGResource& resource, const RGPassResource& use, VkImageView* image_view, VkFormat* image_format, uint32_t* width, uint32_t* height, uint32_t* layer_count, VkClearValue* clear_value, bool allow_view_creation = true)
     {
         if (resource.Kind == RGResourceKind::Swapchain)
         {
@@ -914,12 +1001,24 @@ namespace ZEngine::Rendering::Renderers
 
         const VkImageSubresourceRange vk_range  = ToVkSubresourceRange(range);
         const VkImageViewType         view_type = range.LayerCount == 1 ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-        *image_view                             = image_buffer->GetImageViewHandle(view_type, vk_range);
-        *image_format                           = image_buffer->Specification.ImageFormat;
-        *width                                  = std::max(1u, texture->Width >> range.BaseMipLevel);
-        *height                                 = std::max(1u, texture->Height >> range.BaseMipLevel);
-        *layer_count                            = range.LayerCount;
-        *clear_value                            = GetTextureClearValue(*texture);
+        if (!allow_view_creation)
+        {
+            const auto& specification = image_buffer->Specification;
+            if (view_type != VK_IMAGE_VIEW_TYPE_2D || specification.ImageViewTypeValue != Specifications::ImageViewType::TYPE_2D || range.BaseMipLevel || range.BaseArrayLayer || range.LevelCount != specification.MipLevelCount || range.LayerCount != specification.LayerCount || range.AspectMask != specification.ImageAspectFlag)
+            {
+                return false;
+            }
+            *image_view = image_buffer->GetImageViewHandle();
+        }
+        else
+        {
+            *image_view = image_buffer->GetImageViewHandle(view_type, vk_range);
+        }
+        *image_format = image_buffer->Specification.ImageFormat;
+        *width        = std::max(1u, texture->Width >> range.BaseMipLevel);
+        *height       = std::max(1u, texture->Height >> range.BaseMipLevel);
+        *layer_count  = range.LayerCount;
+        *clear_value  = GetTextureClearValue(*texture);
         return *image_view != VK_NULL_HANDLE;
     }
 
@@ -1108,13 +1207,27 @@ namespace ZEngine::Rendering::Renderers
         return {};
     }
 
-    void RGTransientPool::Register(Textures::TextureHandle handle, const Specifications::TextureSpecification& spec, uint32_t last_pass)
+    RGTransientSlot* RGTransientPool::Register(Textures::TextureHandle handle, const Specifications::TextureSpecification& spec, uint32_t last_pass)
     {
-        auto& slot         = Slots.push_use({});
+        RGTransientSlot* available = nullptr;
+        for (auto& candidate : Slots)
+        {
+            if (!candidate.Handle.Valid())
+            {
+                available = &candidate;
+                break;
+            }
+        }
+        auto& slot         = available ? *available : Slots.push_use({});
         slot.Handle        = handle;
         slot.Spec          = spec;
         slot.FreeAfterPass = last_pass;
-        slot.Aliases.init(m_arena, 4);
+        slot.Aliases.clear();
+        if (!slot.Aliases.data())
+        {
+            slot.Aliases.init(m_arena, 4);
+        }
+        return &slot;
     }
 
     void RGTransientPool::MarkInUse(Textures::TextureHandle handle, uint32_t last_pass)
@@ -1346,12 +1459,1002 @@ namespace ZEngine::Rendering::Renderers
         ResourceInspector->Initialize(this);
     }
 
-    void RenderGraph::AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const cb)
+    void RenderGraph::AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const cb, RGScenePipelineProfile scene_pipeline)
     {
         ZENGINE_VALIDATE_ASSERT(pass_name != nullptr && cb != nullptr, "Render graph callback pass is invalid")
-        auto& pass    = PersistentPasses.push_use({});
-        pass.Name     = pass_name;
-        pass.Callback = cb;
+        auto& pass                = PersistentPasses.push_use({});
+        pass.Name                 = pass_name;
+        pass.Callback             = cb;
+        pass.ScenePipelineProfile = scene_pipeline;
+    }
+
+    bool RenderGraph::BeginScenePipelinePreparation(RGScenePipelineUsage usage)
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.PipelineAdmission");
+        if (m_scene_pipeline_state != RGScenePipelinePreparationState::Idle || !Device || !Device->PipelineStateCache || usage == RGScenePipelineUsage::None)
+        {
+            return false;
+        }
+        uint32_t selected = 0;
+        uint32_t declared = 0;
+        for (const auto& pass : PersistentPasses)
+        {
+            if (pass.ScenePipelineProfile.Usage != RGScenePipelineUsage::None && ++declared > MaxScenePipelineVariants)
+            {
+                return false;
+            }
+            if ((static_cast<uint8_t>(pass.ScenePipelineProfile.Usage) & static_cast<uint8_t>(usage)) == 0)
+            {
+                continue;
+            }
+            if (++selected > MaxScenePipelineVariants || !pass.Callback || !pass.Callback->RequiresRenderPass())
+            {
+                return false;
+            }
+            const auto type  = pass.Callback->GetPipelineType();
+            const auto count = pass.ScenePipelineProfile.AttachmentCount;
+            if (pass.ScenePipelineProfile.Targets & ~((1u << SceneTargetCapacity) - 1u))
+            {
+                return false;
+            }
+            if ((type != Specifications::RenderPassType::GRAPHIC && type != Specifications::RenderPassType::COMPUTE) || (type == Specifications::RenderPassType::COMPUTE && (count != 0 || !pass.Callback->GetComputeShaderName())) || (type == Specifications::RenderPassType::GRAPHIC && (count == 0 || count > RGScenePipelineProfile::MaxAttachments)))
+            {
+                return false;
+            }
+            for (uint32_t index = 0; index < count; ++index)
+            {
+                const auto format = pass.ScenePipelineProfile.Formats[index];
+                if (format == Specifications::ImageFormat::UNDEFINED || static_cast<uint32_t>(format) > static_cast<uint32_t>(Specifications::ImageFormat::R32_UINT))
+                {
+                    return false;
+                }
+                const auto target = pass.ScenePipelineProfile.AttachmentTargets[index].Target;
+                if (target != SceneRenderTarget::Count && (static_cast<uint32_t>(target) >= SceneTargetCapacity || DescribeSceneTarget(target, 1, 1).Spec.Format != format || DescribeSceneTarget(target, 1, 1).Spec.Is3D))
+                {
+                    return false;
+                }
+                const auto& recipe = pass.ScenePipelineProfile.AttachmentTargets[index];
+                if (static_cast<uint32_t>(recipe.Load) > static_cast<uint32_t>(Specifications::LoadOperation::DONT_CARE) || (recipe.DepthRead && (format != Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE || recipe.Load != Specifications::LoadOperation::LOAD || index != 0)))
+                {
+                    return false;
+                }
+            }
+        }
+        if (selected == 0)
+        {
+            return false;
+        }
+        m_prepared_target_mask = 0;
+        for (const auto& pass : PersistentPasses)
+        {
+            if ((static_cast<uint8_t>(pass.ScenePipelineProfile.Usage) & static_cast<uint8_t>(usage)) != 0)
+            {
+                m_prepared_target_mask |= pass.ScenePipelineProfile.Targets;
+                for (uint32_t index = 0; index < pass.ScenePipelineProfile.AttachmentCount; ++index)
+                {
+                    const auto target = pass.ScenePipelineProfile.AttachmentTargets[index].Target;
+                    if (target != SceneRenderTarget::Count)
+                    {
+                        m_prepared_target_mask |= SceneTargetMask(target);
+                    }
+                }
+            }
+        }
+        m_scene_pipeline_usage        = usage;
+        m_scene_pipeline_state        = RGScenePipelinePreparationState::Preparing;
+        m_scene_pipeline_cursor       = 0;
+        m_scene_descriptor_state      = RGScenePipelinePreparationState::Idle;
+        m_scene_descriptors_activated = false;
+        m_prepared_attachment_cursor  = 0;
+        m_prepared_attachments_ready  = false;
+        m_prepared_use_composited     = false;
+        m_prepared_backend_cursor     = 0;
+        m_prepared_backends_ready     = false;
+        for (auto& pass : PersistentPasses)
+        {
+            pass.ScenePipelineState           = Pipelines::PSOPreparationState::Unavailable;
+            pass.PreparedSceneDescriptorFrame = 0;
+            pass.SceneDescriptorsAdopted      = false;
+            pass.PreparedSceneAttachments     = {};
+            pass.SceneAttachmentsAdopted      = false;
+            pass.SceneBackendReady            = false;
+        }
+        return true;
+    }
+
+    RGScenePipelinePreparationState RenderGraph::PollScenePipelinePreparation(uint32_t max_variants)
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.PipelinePreparation");
+        if (m_scene_pipeline_state != RGScenePipelinePreparationState::Preparing || max_variants == 0)
+        {
+            return m_scene_pipeline_state;
+        }
+        uint32_t visited  = 0;
+        uint32_t prepared = 0;
+        while (visited < PersistentPasses.size() && prepared < max_variants)
+        {
+            auto& pass              = PersistentPasses[m_scene_pipeline_cursor];
+            m_scene_pipeline_cursor = (m_scene_pipeline_cursor + 1) % static_cast<uint32_t>(PersistentPasses.size());
+            ++visited;
+            if ((static_cast<uint8_t>(pass.ScenePipelineProfile.Usage) & static_cast<uint8_t>(m_scene_pipeline_usage)) == 0 || pass.ScenePipelineState == Pipelines::PSOPreparationState::Ready)
+            {
+                continue;
+            }
+            ++prepared;
+            if (!pass.PreparedScenePipeline)
+            {
+                if (pass.Callback->GetPipelineType() == Specifications::RenderPassType::COMPUTE)
+                {
+                    auto* storage = Device->Arena->TryResize(nullptr, 0, sizeof(Pipelines::ComputePipeline), alignof(Pipelines::ComputePipeline));
+                    if (!storage)
+                    {
+                        m_scene_pipeline_state = RGScenePipelinePreparationState::Failed;
+                        return m_scene_pipeline_state;
+                    }
+                    auto* pipeline             = new (storage) Pipelines::ComputePipeline{};
+                    pass.PreparedScenePipeline = pipeline;
+                }
+                else
+                {
+                    VkResult status = VK_SUCCESS;
+                    if (!pass.PreparedSceneAttachment)
+                    {
+                        Core::Memory::ArenaCheckpoint           checkpoint(Device->Arena);
+                        Specifications::AttachmentSpecification specification = {};
+                        specification.BindPoint                               = Specifications::PipelineBindPoint::GRAPHIC;
+                        void* storage                                         = nullptr;
+                        if (!specification.ColorsMap.try_init(Device->Arena, RGScenePipelineProfile::MaxAttachments) || !(storage = Device->Arena->TryResize(nullptr, 0, sizeof(RenderPasses::Attachment), alignof(RenderPasses::Attachment))))
+                        {
+                            status = VK_ERROR_OUT_OF_HOST_MEMORY;
+                        }
+                        else
+                        {
+                            for (uint32_t index = 0; index < pass.ScenePipelineProfile.AttachmentCount; ++index)
+                            {
+                                const auto format              = pass.ScenePipelineProfile.Formats[index];
+                                const bool depth               = format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE || format == Specifications::ImageFormat::DEPTH16_UNORM || format == Specifications::ImageFormat::DEPTH16_UNORM_S8_UINT || format == Specifications::ImageFormat::DEPTH24_UNORM_S8_UINT || format == Specifications::ImageFormat::DEPTH32_SFLOAT_S8_UINT;
+                                const auto layout              = depth ? Specifications::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : Specifications::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+                                const auto load                = pass.ScenePipelineProfile.AttachmentTargets[index].Load;
+                                specification.ColorsMap[index] = {
+                                    .Format          = format,
+                                    .Load            = load,
+                                    .Store           = Specifications::StoreOperation::STORE,
+                                    .Initial         = load == Specifications::LoadOperation::CLEAR ? Specifications::ImageLayout::UNDEFINED : layout,
+                                    .Final           = layout,
+                                    .ReferenceLayout = layout,
+                                };
+                            }
+                            pass.PreparedSceneAttachment = new (storage) RenderPasses::Attachment(Device, std::move(specification), &status);
+                            checkpoint.Commit(); // A refused native object keeps reusable metadata.
+                        }
+                    }
+                    else
+                    {
+                        (void) pass.PreparedSceneAttachment->TryPrepare(&status);
+                    }
+                    if (status != VK_SUCCESS)
+                    {
+                        ZENGINE_CORE_ERROR("[RenderGraph] Required scene render pass '{}' refused preparation ({})", pass.Name ? pass.Name : "?", static_cast<int>(status))
+                        m_scene_pipeline_state = RGScenePipelinePreparationState::Failed;
+                        return m_scene_pipeline_state;
+                    }
+                    Core::Memory::ArenaCheckpoint        checkpoint(Device->Arena);
+                    Specifications::GraphicsPipelineDesc description = {};
+                    if (!pass.Callback->TryBuildGraphicsPipelineDescription(Device->Arena, &description) || description.VertexInputBindingSpecifications.size() > Pipelines::kMaxPSOVertexBindings || description.VertexInputAttributeSpecifications.size() > Pipelines::kMaxPSOVertexAttributes)
+                    {
+                        m_scene_pipeline_state = RGScenePipelinePreparationState::Failed;
+                        return m_scene_pipeline_state;
+                    }
+                    auto* storage = Device->Arena->TryResize(nullptr, 0, sizeof(Pipelines::GraphicPipeline), alignof(Pipelines::GraphicPipeline));
+                    if (!storage)
+                    {
+                        m_scene_pipeline_state = RGScenePipelinePreparationState::Failed;
+                        return m_scene_pipeline_state;
+                    }
+                    auto* pipeline             = new (storage) Pipelines::GraphicPipeline{};
+                    pipeline->Description      = std::move(description);
+                    pass.PreparedScenePipeline = pipeline;
+                    checkpoint.Commit();
+                }
+            }
+            // Shader lookup may retain an independent failed-slot arena or VFS
+            // allocations. It must run after the exclusive recipe checkpoint.
+            // A failed first attempt keeps its bounded recipe for a later request.
+            if (!pass.PreparedScenePipeline->Shader)
+            {
+                if (pass.Callback->GetPipelineType() == Specifications::RenderPassType::COMPUTE)
+                {
+                    static_cast<Pipelines::ComputePipeline*>(pass.PreparedScenePipeline)->Initialize(Device, pass.Callback->GetComputeShaderName(), pass.Callback->GetComputePushConstantSize());
+                }
+                else
+                {
+                    auto* pipeline    = static_cast<Pipelines::GraphicPipeline*>(pass.PreparedScenePipeline);
+                    auto  description = std::move(pipeline->Description);
+                    pipeline->Initialize(Device, std::move(description), pass.PreparedSceneAttachment);
+                }
+            }
+            pass.ScenePipelineState = pass.PreparedScenePipeline->PrepareAsync();
+            if (pass.ScenePipelineState == Pipelines::PSOPreparationState::Failed || pass.ScenePipelineState == Pipelines::PSOPreparationState::Unavailable)
+            {
+                ZENGINE_CORE_ERROR("[RenderGraph] Required scene pipeline '{}' could not be prepared", pass.Name ? pass.Name : "?")
+                m_scene_pipeline_state = RGScenePipelinePreparationState::Failed;
+                return m_scene_pipeline_state;
+            }
+        }
+        for (const auto& pass : PersistentPasses)
+        {
+            if ((static_cast<uint8_t>(pass.ScenePipelineProfile.Usage) & static_cast<uint8_t>(m_scene_pipeline_usage)) != 0 && pass.ScenePipelineState != Pipelines::PSOPreparationState::Ready)
+            {
+                return m_scene_pipeline_state;
+            }
+        }
+        m_scene_pipeline_state = RGScenePipelinePreparationState::Ready;
+        return m_scene_pipeline_state;
+    }
+
+    RGScenePipelinePreparationState RenderGraph::PollSceneTargetPreparation(const Scenes::PreparedSceneFrame& frame, uint32_t max_operations)
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.TargetPreparation");
+        if (!m_prepared_target_mask || m_prepared_targets_ready)
+        {
+            return RGScenePipelinePreparationState::Ready;
+        }
+        if (!Device || !Device->RRM || !frame.View.Captured || !frame.View.Width || !frame.View.Height)
+        {
+            return RGScenePipelinePreparationState::Failed;
+        }
+        if (m_prepared_target_cursor && (frame.View.Width != m_prepared_target_view.Width || frame.View.Height != m_prepared_target_view.Height || frame.View.ResizeSequence != m_prepared_target_view.ResizeSequence))
+        {
+            return RGScenePipelinePreparationState::Failed;
+        }
+        m_prepared_target_view = frame.View;
+        auto*    resources     = static_cast<RenderResourceManager*>(Device->RRM);
+        uint32_t operations    = 0;
+        while (m_prepared_target_cursor < SceneTargetCapacity)
+        {
+            const auto target = static_cast<SceneRenderTarget>(m_prepared_target_cursor);
+            if (!(m_prepared_target_mask & SceneTargetMask(target)))
+            {
+                ++m_prepared_target_cursor;
+                continue;
+            }
+            if (operations == max_operations)
+            {
+                return RGScenePipelinePreparationState::Preparing;
+            }
+            auto& entry       = m_prepared_targets[m_prepared_target_count];
+            entry.Kind        = target;
+            entry.Declaration = DescribeSceneTarget(target, frame.View.Width, frame.View.Height);
+            entry.Handle      = Device->TryCreateTexture(entry.Declaration.Spec, entry.Declaration.Name);
+            if (!entry.Handle.Valid())
+            {
+                return RGScenePipelinePreparationState::Failed;
+            }
+            entry.Pin = resources->PinGraphTextureVersion(entry.Handle);
+            if (!entry.Pin)
+            {
+                Device->DestroyTexture(entry.Handle);
+                entry.Handle = {};
+                return RGScenePipelinePreparationState::Failed;
+            }
+            // Reserve reusable pool metadata before publication. Existing image
+            // handles, resource declarations and descriptor contents stay intact.
+            if (TransientPool.Slots.size() <= m_prepared_target_count)
+            {
+                auto& slot = TransientPool.Slots.push_use({});
+                slot.Aliases.init(Device->Arena, 4);
+            }
+            ++m_prepared_target_count;
+            ++m_prepared_target_cursor;
+            ++operations;
+        }
+        m_prepared_targets_ready = true;
+        return RGScenePipelinePreparationState::Ready;
+    }
+
+    RGScenePipelinePreparationState RenderGraph::PollSceneAttachmentPreparation(uint32_t max_operations, const SceneDescriptorEnvironment& environment)
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.AttachmentPreparation");
+        if (m_prepared_attachment_cursor && m_prepared_use_composited != environment.UseCompositedSceneColor)
+        {
+            return RGScenePipelinePreparationState::Failed;
+        }
+        m_prepared_use_composited = environment.UseCompositedSceneColor;
+        if (m_prepared_attachments_ready)
+        {
+            return RGScenePipelinePreparationState::Ready;
+        }
+        uint32_t operations = 0;
+        while (m_prepared_attachment_cursor < PersistentPasses.size())
+        {
+            auto&       pass    = PersistentPasses[m_prepared_attachment_cursor];
+            const auto& profile = pass.ScenePipelineProfile;
+            if ((static_cast<uint8_t>(profile.Usage) & static_cast<uint8_t>(m_scene_pipeline_usage)) == 0 || pass.Callback->GetPipelineType() == Specifications::RenderPassType::COMPUTE)
+            {
+                ++m_prepared_attachment_cursor;
+                continue;
+            }
+            if (operations == max_operations)
+            {
+                return RGScenePipelinePreparationState::Preparing;
+            }
+            if (!pass.PreparedSceneAttachment || !profile.Matches(pass.PreparedSceneAttachment->GetSpecification()))
+            {
+                return RGScenePipelinePreparationState::Failed;
+            }
+            RGPreparedSceneAttachments incoming = {};
+            for (uint32_t index = 0; index < profile.AttachmentCount; ++index)
+            {
+                const auto  target  = profile.ResolveAttachmentTarget(index, environment.UseCompositedSceneColor);
+                const auto* pin     = GetPreparedSceneTarget(target);
+                const auto* texture = pin ? Device->GlobalTextures.Access(pin->Get()->Handle) : nullptr;
+                auto*       image   = texture ? Device->ImageBufferManager.Access(texture->BufferHandle) : nullptr;
+                if (!image || texture->Specification.Format != profile.Formats[index] || image->Specification.ImageViewTypeValue != Specifications::ImageViewType::TYPE_2D || image->Specification.MipLevelCount != 1 || image->Specification.LayerCount != 1 || !image->GetImageViewHandle())
+                {
+                    return RGScenePipelinePreparationState::Failed;
+                }
+                if (index && (incoming.Width != texture->Width || incoming.Height != texture->Height))
+                {
+                    return RGScenePipelinePreparationState::Failed;
+                }
+                incoming.Views[incoming.Count++] = image->GetImageViewHandle();
+                incoming.Width                   = texture->Width;
+                incoming.Height                  = texture->Height;
+                incoming.Layers                  = 1;
+            }
+            auto properties = Device->PhysicalDeviceProperties.properties;
+            if (!properties.limits.maxFramebufferWidth)
+            {
+                if (!Device->PhysicalDevice)
+                {
+                    return RGScenePipelinePreparationState::Failed;
+                }
+                vkGetPhysicalDeviceProperties(Device->PhysicalDevice, &properties);
+            }
+            if (!incoming.Width || !incoming.Height || incoming.Width > properties.limits.maxFramebufferWidth || incoming.Height > properties.limits.maxFramebufferHeight || incoming.Layers > properties.limits.maxFramebufferLayers)
+            {
+                return RGScenePipelinePreparationState::Failed;
+            }
+            if (!Device->PhysicalDeviceSupportDynamicRendering)
+            {
+                VkResult status = VK_SUCCESS;
+                if (!Buffers::FramebufferVNext::TryPrepare(Device, {incoming.Views, incoming.Count}, pass.PreparedSceneAttachment->GetHandle(), incoming.Width, incoming.Height, incoming.Layers, &pass.PreparedFramebuffer, &status))
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Candidate framebuffer '{}' admission failed ({})", pass.Name ? pass.Name : "?", static_cast<int32_t>(status))
+                    return RGScenePipelinePreparationState::Failed;
+                }
+            }
+            incoming.Ready                = true;
+            pass.PreparedSceneAttachments = incoming;
+            ++m_prepared_attachment_cursor;
+            ++operations;
+        }
+        m_prepared_attachments_ready = true;
+        return RGScenePipelinePreparationState::Ready;
+    }
+
+    RGScenePipelinePreparationState RenderGraph::PollSceneBackendPreparation(uint32_t max_operations)
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.BackendPreparation");
+        if (m_prepared_backends_ready)
+        {
+            return RGScenePipelinePreparationState::Ready;
+        }
+        uint32_t operations = 0;
+        while (m_prepared_backend_cursor < PersistentPasses.size())
+        {
+            auto&       pass    = PersistentPasses[m_prepared_backend_cursor];
+            const auto& profile = pass.ScenePipelineProfile;
+            if ((static_cast<uint8_t>(profile.Usage) & static_cast<uint8_t>(m_scene_pipeline_usage)) == 0)
+            {
+                ++m_prepared_backend_cursor;
+                continue;
+            }
+            if (operations == max_operations)
+            {
+                return RGScenePipelinePreparationState::Preparing;
+            }
+            ++operations;
+            const auto type = pass.Callback->GetPipelineType();
+            if (!pass.PreparedSceneBackend)
+            {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Render.BackendConstruction");
+                if (!pass.PreparedScenePipeline || !pass.PreparedScenePipeline->Shader)
+                {
+                    return RGScenePipelinePreparationState::Failed;
+                }
+                Core::Memory::ArenaCheckpoint           checkpoint(Device->Arena);
+                Specifications::RenderPassSpecification specification = {};
+                specification.DebugName                               = pass.Name;
+                specification.Type                                    = type;
+                if (type == Specifications::RenderPassType::GRAPHIC)
+                {
+                    const auto reserve = [&](auto& array) {
+                        array.m_allocator = Device->Arena;
+                        return array.try_reserve(RGScenePipelineProfile::MaxAttachments);
+                    };
+                    auto* storage = Device->Arena->TryResize(nullptr, 0, sizeof(RenderPasses::GraphicPass), alignof(RenderPasses::GraphicPass));
+                    if (!storage || !Specifications::TryCloneGraphicsPipelineDesc(static_cast<Pipelines::GraphicPipeline*>(pass.PreparedScenePipeline)->Description, Device->Arena, &specification.PipelineDescription) || !reserve(specification.Inputs) || !reserve(specification.ExternalOutputs) || !reserve(specification.ExternalOutputLoadOps))
+                    {
+                        return RGScenePipelinePreparationState::Failed;
+                    }
+                    auto* backend = new (storage) RenderPasses::GraphicPass{};
+                    // Empty, reserved lists are populated below before this
+                    // private backend becomes ready. No native pass is created.
+                    if (!backend->TryInitializePrepared(Device, std::move(specification), pass.PreparedSceneAttachment, pass.PreparedScenePipeline->Shader))
+                    {
+                        backend->~GraphicPass();
+                        return RGScenePipelinePreparationState::Failed;
+                    }
+                    pass.PreparedSceneBackend = backend;
+                }
+                else
+                {
+                    specification.ComputeShaderName       = pass.Callback->GetComputeShaderName();
+                    specification.ComputePushConstantSize = pass.Callback->GetComputePushConstantSize();
+                    auto* storage                         = Device->Arena->TryResize(nullptr, 0, sizeof(RenderPasses::ComputePass), alignof(RenderPasses::ComputePass));
+                    if (!storage)
+                    {
+                        return RGScenePipelinePreparationState::Failed;
+                    }
+                    auto* backend = new (storage) RenderPasses::ComputePass{};
+                    if (!backend->TryInitializePrepared(Device, std::move(specification), pass.PreparedScenePipeline->Shader))
+                    {
+                        backend->~ComputePass();
+                        return RGScenePipelinePreparationState::Failed;
+                    }
+                    pass.PreparedSceneBackend = backend;
+                }
+                checkpoint.Commit();
+            }
+            auto* backend = pass.PreparedSceneBackend;
+            if (!backend || backend == pass.Handle || backend->Specification.Type != type)
+            {
+                return RGScenePipelinePreparationState::Failed;
+            }
+            auto* pipeline = GetBackendPipeline(backend);
+            if (!pipeline || !pass.PreparedScenePipeline || pipeline->Shader != pass.PreparedScenePipeline->Shader)
+            {
+                return RGScenePipelinePreparationState::Failed;
+            }
+            {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Render.BackendBindingReset");
+                static_cast<RenderPasses::DescriptorBoundPass*>(backend)->ResetSceneBindings();
+            }
+            if (type == Specifications::RenderPassType::GRAPHIC)
+            {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Render.BackendTargetUpdate");
+                auto* graphics = static_cast<RenderPasses::GraphicPass*>(backend);
+                if (!graphics->Attachment || !profile.Matches(graphics->Attachment->GetSpecification()))
+                {
+                    return RGScenePipelinePreparationState::Failed;
+                }
+                auto& specification = backend->Specification;
+                specification.Inputs.clear();
+                specification.ExternalOutputs.clear();
+                specification.ExternalOutputLoadOps.clear();
+                for (uint32_t index = 0; index < profile.AttachmentCount; ++index)
+                {
+                    const auto* pin        = GetPreparedSceneTarget(profile.ResolveAttachmentTarget(index, m_prepared_use_composited));
+                    const auto* attachment = graphics->Attachment->GetSpecification().ColorsMap.find(index);
+                    if (!pin || !attachment || attachment->Load != profile.AttachmentTargets[index].Load || attachment->Store != Specifications::StoreOperation::STORE)
+                    {
+                        return RGScenePipelinePreparationState::Failed;
+                    }
+                    if (profile.AttachmentTargets[index].DepthRead)
+                    {
+                        specification.Inputs.push(pin->Get()->Handle);
+                    }
+                    else
+                    {
+                        specification.ExternalOutputs.push(pin->Get()->Handle);
+                        specification.ExternalOutputLoadOps.push(profile.AttachmentTargets[index].Load);
+                    }
+                }
+                graphics->UpdateRenderTargets();
+            }
+            const auto state = [&]() {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Render.BackendPipelinePreparation");
+                return pipeline->PrepareAsync();
+            }();
+            if (state == Pipelines::PSOPreparationState::Failed || state == Pipelines::PSOPreparationState::Unavailable)
+            {
+                return RGScenePipelinePreparationState::Failed;
+            }
+            if (state != Pipelines::PSOPreparationState::Ready)
+            {
+                return RGScenePipelinePreparationState::Preparing;
+            }
+            if (pipeline->Handle != pass.PreparedScenePipeline->Handle || pipeline->Layout != pass.PreparedScenePipeline->Layout || pipeline->BakedShaderGeneration != pass.PreparedScenePipeline->BakedShaderGeneration)
+            {
+                ZENGINE_CORE_ERROR("[RenderGraph] Backend '{}' differs from its prepared pipeline version", pass.Name ? pass.Name : "?")
+                return RGScenePipelinePreparationState::Failed;
+            }
+            pass.SceneBackendReady = true;
+            ++m_prepared_backend_cursor;
+        }
+        m_prepared_backends_ready = true;
+        return RGScenePipelinePreparationState::Ready;
+    }
+
+    bool RenderGraph::HasPreparedSceneTargets(uint32_t width, uint32_t height) const
+    {
+        return m_prepared_target_mask && m_prepared_targets_ready && m_prepared_attachments_ready && m_prepared_backends_ready && !m_prepared_targets_adopted && m_scene_descriptor_state == RGScenePipelinePreparationState::Ready && m_prepared_target_view.Width == width && m_prepared_target_view.Height == height;
+    }
+
+    const RenderResourceManager::TextureVersionPin* RenderGraph::GetPreparedSceneTarget(SceneRenderTarget target) const
+    {
+        for (const auto& entry : m_prepared_targets)
+        {
+            if (entry.Kind == target && entry.Pin)
+            {
+                return &entry.Pin;
+            }
+        }
+        return nullptr;
+    }
+
+    bool RenderGraph::AdoptPreparedSceneTargets()
+    {
+        if (!m_prepared_target_mask || m_prepared_targets_adopted)
+        {
+            return true;
+        }
+        if (!m_prepared_targets_ready || !m_prepared_attachments_ready || !m_prepared_backends_ready || TransientPool.Slots.size() < m_prepared_target_count)
+        {
+            return false;
+        }
+        for (uint32_t index = 0; index < m_prepared_target_count; ++index)
+        {
+            if (!m_prepared_targets[index].Handle.Valid() || !m_prepared_targets[index].Pin || TransientPool.Slots[index].Aliases.capacity() == 0)
+            {
+                return false;
+            }
+        }
+        for (const auto& pass : PersistentPasses)
+        {
+            if ((static_cast<uint8_t>(pass.ScenePipelineProfile.Usage) & static_cast<uint8_t>(m_scene_pipeline_usage)) != 0 && (!pass.SceneBackendReady || !pass.PreparedSceneBackend || pass.PreparedSceneBackend == pass.Handle))
+            {
+                return false;
+            }
+            if ((static_cast<uint8_t>(pass.ScenePipelineProfile.Usage) & static_cast<uint8_t>(m_scene_pipeline_usage)) != 0 && pass.Callback->GetPipelineType() == Specifications::RenderPassType::GRAPHIC && (!pass.PreparedSceneAttachments.Ready || (!Device->PhysicalDeviceSupportDynamicRendering && (!pass.PreparedFramebuffer || !pass.PreparedFramebuffer->Handle))))
+            {
+                return false;
+            }
+        }
+        // Retire framebuffers before the views they reference. This only queues
+        // retirement; accepted GPU work keeps its independent completion gates.
+        for (auto& pass : PersistentPasses)
+        {
+            if (pass.Framebuffer && pass.Framebuffer->Handle)
+            {
+                Hardwares::DeferredFreeEntry entry = {};
+                entry.Data.Vk                      = {pass.Framebuffer->Handle, Rendering::DeviceResourceType::FRAMEBUFFER, nullptr};
+                Device->DeferFree(entry);
+                pass.Framebuffer->Handle = VK_NULL_HANDLE;
+            }
+        }
+        for (auto& slot : TransientPool.Slots)
+        {
+            for (const auto& alias : slot.Aliases)
+            {
+                if (alias.Handle.Valid() && (alias.Handle.Index != slot.Handle.Index || alias.Handle.Generation != slot.Handle.Generation))
+                {
+                    Device->DestroyTexture(alias.Handle);
+                }
+            }
+            if (slot.Handle.Valid())
+            {
+                Device->DestroyTexture(slot.Handle);
+            }
+            slot.Handle        = {};
+            slot.Spec          = {};
+            slot.FreeAfterPass = 0;
+            slot.Aliases.clear();
+        }
+        for (uint32_t index = 0; index < m_prepared_target_count; ++index)
+        {
+            auto& entry = m_prepared_targets[index];
+            auto& slot  = TransientPool.Slots[index];
+            slot.Handle = entry.Handle;
+            slot.Spec   = entry.Declaration.Spec;
+            slot.Aliases.push({.Name = entry.Declaration.Name, .Handle = entry.Handle, .Spec = entry.Declaration.Spec});
+            entry.Handle = {}; // Pool owns destruction after the transfer.
+        }
+        for (auto& pass : PersistentPasses)
+        {
+            const auto& incoming = pass.PreparedSceneAttachments;
+            if (!incoming.Ready)
+            {
+                continue;
+            }
+            if (!Device->PhysicalDeviceSupportDynamicRendering)
+            {
+                std::swap(pass.Framebuffer, pass.PreparedFramebuffer);
+            }
+            pass.FramebufferRenderPass = pass.PreparedSceneAttachment->GetHandle();
+            pass.FramebufferViewCount  = incoming.Count;
+            pass.FramebufferWidth      = incoming.Width;
+            pass.FramebufferHeight     = incoming.Height;
+            pass.FramebufferLayers     = incoming.Layers;
+            for (uint32_t index = 0; index < incoming.Count; ++index)
+            {
+                pass.FramebufferViews[index] = incoming.Views[index];
+            }
+            pass.SceneAttachmentsAdopted = true;
+        }
+        RenderWidth                = m_prepared_target_view.Width;
+        RenderHeight               = m_prepared_target_view.Height;
+        m_prepared_targets_adopted = true;
+        m_compile_valid            = false;
+        return true;
+    }
+
+    void RenderGraph::ReleasePreparedSceneTargets()
+    {
+        for (auto& target : m_prepared_targets)
+        {
+            if (target.Handle.Valid())
+            {
+                Device->DestroyTexture(target.Handle);
+            }
+            target = {};
+        }
+        m_prepared_target_view = {};
+        m_prepared_target_mask = m_prepared_target_cursor = m_prepared_target_count = 0;
+        m_prepared_targets_ready = m_prepared_targets_adopted = false;
+    }
+
+    RGScenePipelinePreparationState RenderGraph::PollSceneDescriptorPreparation(const Scenes::PreparedSceneFrame& frame, uint32_t max_frames, const SceneDescriptorEnvironment& environment)
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.DescriptorPreparation");
+        if (Device && Device->IsDeviceLost.load(std::memory_order_acquire))
+        {
+            m_scene_descriptor_state = RGScenePipelinePreparationState::Failed;
+            return m_scene_descriptor_state;
+        }
+        if (m_scene_descriptor_state == RGScenePipelinePreparationState::Failed || m_scene_descriptor_state == RGScenePipelinePreparationState::Ready)
+        {
+            return m_scene_descriptor_state;
+        }
+        if (m_scene_pipeline_state != RGScenePipelinePreparationState::Ready || !Device || !Device->SwapchainPtr || !Device->RRM)
+        {
+            return RGScenePipelinePreparationState::Failed;
+        }
+        m_scene_descriptor_state = RGScenePipelinePreparationState::Preparing;
+        const auto target_count  = m_prepared_target_count;
+        const auto targets       = PollSceneTargetPreparation(frame, max_frames);
+        if (targets == RGScenePipelinePreparationState::Failed)
+        {
+            m_scene_descriptor_state = targets;
+            return targets;
+        }
+        if (targets != RGScenePipelinePreparationState::Ready || m_prepared_target_count != target_count)
+        {
+            return m_scene_descriptor_state;
+        }
+        const auto attachment_cursor = m_prepared_attachment_cursor;
+        const auto attachments       = PollSceneAttachmentPreparation(max_frames, environment);
+        if (attachments == RGScenePipelinePreparationState::Failed)
+        {
+            m_scene_descriptor_state = attachments;
+            return attachments;
+        }
+        if (attachments != RGScenePipelinePreparationState::Ready || m_prepared_attachment_cursor != attachment_cursor)
+        {
+            return m_scene_descriptor_state;
+        }
+        const auto backend_cursor = m_prepared_backend_cursor;
+        const auto backends       = PollSceneBackendPreparation(max_frames);
+        if (backends == RGScenePipelinePreparationState::Failed)
+        {
+            m_scene_descriptor_state = backends;
+            return backends;
+        }
+        if (backends != RGScenePipelinePreparationState::Ready || m_prepared_backend_cursor != backend_cursor)
+        {
+            return m_scene_descriptor_state;
+        }
+        const auto frames = Device->SwapchainPtr->BufferredFrameCount;
+        if (!frames || frames > RenderPasses::PassDescriptorBank::MaxFrames || !frame.TransformBuffer || !frame.MaterialBuffer || !frame.DrawBuffer || frame.CullingInputBuffers.size() < frames || frame.CulledIndirectBuffers.size() < frames || (frame.View.Captured && !frame.CameraBuffer))
+        {
+            m_scene_descriptor_state = RGScenePipelinePreparationState::Failed;
+            return m_scene_descriptor_state;
+        }
+        auto*    resources = static_cast<RenderResourceManager*>(Device->RRM);
+        uint32_t prepared  = 0;
+        for (auto& pass : PersistentPasses)
+        {
+            if (pass.ScenePipelineProfile.Descriptors == RGSceneDescriptorProfile::None || (static_cast<uint8_t>(pass.ScenePipelineProfile.Usage) & static_cast<uint8_t>(m_scene_pipeline_usage)) == 0)
+            {
+                continue;
+            }
+            if (pass.ScenePipelineProfile.Descriptors == RGSceneDescriptorProfile::GridLabels && !environment.GridLabelsEnabled)
+            {
+                continue; // The retained initial layout contains no label draw.
+            }
+            while (pass.PreparedSceneDescriptorFrame < frames && prepared < max_frames)
+            {
+                ++prepared;
+                if (!pass.PreparedScenePipeline || pass.ScenePipelineState != Pipelines::PSOPreparationState::Ready)
+                {
+                    m_scene_descriptor_state = RGScenePipelinePreparationState::Failed;
+                    return m_scene_descriptor_state;
+                }
+                if (!pass.PreparedSceneDescriptors)
+                {
+                    Core::Memory::ArenaCheckpoint checkpoint(Device->Arena);
+                    auto*                         storage = Device->Arena->TryResize(nullptr, 0, sizeof(RenderPasses::PreparedDescriptorPass), alignof(RenderPasses::PreparedDescriptorPass));
+                    if (!storage)
+                    {
+                        m_scene_descriptor_state = RGScenePipelinePreparationState::Failed;
+                        return m_scene_descriptor_state;
+                    }
+                    auto* descriptors = new (storage) RenderPasses::PreparedDescriptorPass{};
+                    if (!descriptors->TryInitializeForPipeline(Device, pass.PreparedScenePipeline))
+                    {
+                        descriptors->~PreparedDescriptorPass();
+                        m_scene_descriptor_state = RGScenePipelinePreparationState::Failed;
+                        return m_scene_descriptor_state;
+                    }
+                    pass.PreparedSceneDescriptors = descriptors;
+                    checkpoint.Commit();
+                }
+                const auto index = pass.PreparedSceneDescriptorFrame;
+                auto*      bank  = pass.PreparedSceneDescriptors;
+                bank->BeginPreparedDescriptorPreparation(index);
+                bool valid = true;
+                for (const auto& binding : pass.PreparedScenePipeline->Shader->LayoutBindingSpecifications)
+                {
+                    const auto named = [&](cstring name) { return binding.Name && secure_strcmp(binding.Name, name) == 0; };
+                    if (binding.DescriptorTypeValue == Specifications::DescriptorType::STORAGE_BUFFER)
+                    {
+                        const Core::Memory::BufferView* buffer = nullptr;
+                        if (pass.ScenePipelineProfile.Descriptors == RGSceneDescriptorProfile::Culling)
+                        {
+                            if (named("CullingInputSB"))
+                            {
+                                buffer = &frame.CullingInputBuffers[index];
+                            }
+                            if (named("CulledIndirectSB"))
+                            {
+                                buffer = &frame.CulledIndirectBuffers[index];
+                            }
+                        }
+                        else if (pass.ScenePipelineProfile.Descriptors == RGSceneDescriptorProfile::SelectionOutline)
+                        {
+                            if (named("SelectionTokenStates") && index < environment.SelectionTokenBuffers.size())
+                            {
+                                buffer = &environment.SelectionTokenBuffers[index];
+                            }
+                        }
+                        else
+                        {
+                            if (named("VertexSB"))
+                            {
+                                buffer = resources->GetGlobalVertexBuffer();
+                            }
+                            if (named("IndexSB"))
+                            {
+                                buffer = resources->GetGlobalIndexBuffer();
+                            }
+                            if (named("TransformSB"))
+                            {
+                                buffer = frame.TransformBuffer;
+                            }
+                            if (named("DrawDataSB"))
+                            {
+                                buffer = frame.DrawBuffer;
+                            }
+                            if (named("MatSB"))
+                            {
+                                buffer = frame.MaterialBuffer;
+                            }
+                            if ((pass.ScenePipelineProfile.Descriptors == RGSceneDescriptorProfile::Transparent || pass.ScenePipelineProfile.Descriptors == RGSceneDescriptorProfile::Lighting) && named("LightSB"))
+                            {
+                                buffer = frame.LightBuffer;
+                            }
+                        }
+                        if (!buffer || !buffer->Handle || !buffer->Size || !(buffer->Usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) || binding.Count != 1)
+                        {
+                            valid = false;
+                            break;
+                        }
+                        bank->SetStorageBuffer(binding.Name, buffer);
+                    }
+                    else if (binding.DescriptorTypeValue == Specifications::DescriptorType::UNIFORM_BUFFER_DYNAMIC && named("UBCamera"))
+                    {
+                        bank->SetDynamicUniform(binding.Name, sizeof(UBOCameraLayout), frame.CameraBuffer);
+                    }
+                    else if (binding.DescriptorTypeValue == Specifications::DescriptorType::SAMPLED_IMAGE && named("TextureArray"))
+                    {
+                        bank->UseTextureArray(binding.Name);
+                    }
+                    else if (binding.DescriptorTypeValue == Specifications::DescriptorType::SAMPLER)
+                    {
+                        switch (ResolveSceneDescriptorSampler(pass.ScenePipelineProfile.Descriptors, binding.Name))
+                        {
+                            case SceneDescriptorSampler::Wrap:
+                                bank->SetSampler(binding.Name, Device->GlobalLinearWrapSamplerImageInfo);
+                                break;
+                            case SceneDescriptorSampler::Clamp:
+                                bank->SetSampler(binding.Name, Device->GlobalLinearClampToEdgeSamplerImageInfo);
+                                break;
+                            case SceneDescriptorSampler::SkyView:
+                                bank->SetSampler(binding.Name, Device->GlobalLinearWrapUClampToEdgeVSamplerImageInfo);
+                                break;
+                            case SceneDescriptorSampler::NearestClamp:
+                                bank->SetSampler(binding.Name, Device->GlobalNearestClampToEdgeSamplerImageInfo);
+                                break;
+                            case SceneDescriptorSampler::None:
+                                valid = false;
+                                break;
+                        }
+                    }
+                    else if (binding.DescriptorTypeValue == Specifications::DescriptorType::SAMPLED_IMAGE || binding.DescriptorTypeValue == Specifications::DescriptorType::STORAGE_IMAGE)
+                    {
+                        const auto  target = ResolveSceneDescriptorTarget(pass.ScenePipelineProfile.Descriptors, binding.Name, binding.DescriptorTypeValue, environment.UseCompositedSceneColor);
+                        const auto* source = target != SceneRenderTarget::Count ? GetPreparedSceneTarget(target) : (binding.DescriptorTypeValue == Specifications::DescriptorType::SAMPLED_IMAGE ? ResolveSceneDescriptorEnvironment(pass.ScenePipelineProfile.Descriptors, binding.Name, environment) : nullptr);
+                        if (!source || !*source || binding.Count != 1)
+                        {
+                            valid = false;
+                            break;
+                        }
+                        if (binding.DescriptorTypeValue == Specifications::DescriptorType::STORAGE_IMAGE)
+                        {
+                            bank->SetRetainedStorageImage(binding.Name, *source);
+                        }
+                        else
+                        {
+                            bank->SetRetainedTexture(binding.Name, *source, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                        }
+                    }
+                    else
+                    {
+                        valid = false; // Required schema changes need an explicit recipe.
+                        break;
+                    }
+                }
+                if (!valid || !bank->Verify())
+                {
+                    m_scene_descriptor_state = RGScenePipelinePreparationState::Failed;
+                    return m_scene_descriptor_state;
+                }
+                ++pass.PreparedSceneDescriptorFrame;
+            }
+            if (pass.PreparedSceneDescriptorFrame != frames)
+            {
+                return m_scene_descriptor_state;
+            }
+        }
+        m_scene_descriptor_state = RGScenePipelinePreparationState::Ready;
+        return m_scene_descriptor_state;
+    }
+
+    bool RenderGraph::ActivateSceneDescriptors()
+    {
+        if (Device && Device->IsDeviceLost.load(std::memory_order_acquire))
+        {
+            return false;
+        }
+        if (m_scene_descriptors_activated)
+        {
+            return true;
+        }
+        if (m_scene_descriptor_state == RGScenePipelinePreparationState::Idle)
+        {
+            return true; // Legacy/headless requests supplied no initial GPU frame.
+        }
+        if (m_scene_descriptor_state != RGScenePipelinePreparationState::Ready)
+        {
+            return false;
+        }
+        if (!m_prepared_backends_ready)
+        {
+            return false;
+        }
+        for (const auto& pass : PersistentPasses)
+        {
+            if ((static_cast<uint8_t>(pass.ScenePipelineProfile.Usage) & static_cast<uint8_t>(m_scene_pipeline_usage)) != 0 && (!pass.SceneBackendReady || !pass.PreparedSceneBackend || pass.PreparedSceneBackend == pass.Handle))
+            {
+                return false;
+            }
+        }
+        if (!AdoptPreparedSceneTargets())
+        {
+            return false;
+        }
+        for (auto& pass : PersistentPasses)
+        {
+            if (pass.SceneBackendReady)
+            {
+                std::swap(pass.Handle, pass.PreparedSceneBackend);
+            }
+        }
+        m_scene_descriptors_activated = true;
+        return true;
+    }
+
+    void RenderGraph::EndScenePipelinePreparation()
+    {
+        for (auto& pass : PersistentPasses)
+        {
+            // Unpublished framebuffers must retire before their image-view pins.
+            // After adoption the reusable spare contains only the old, already
+            // retired handle; the incoming framebuffer stays graph-owned.
+            if (pass.PreparedFramebuffer)
+            {
+                pass.PreparedFramebuffer->Dispose();
+            }
+            pass.PreparedSceneAttachments = {};
+            pass.SceneAttachmentsAdopted  = false;
+            pass.SceneBackendReady        = false;
+            if (pass.PreparedSceneBackend)
+            {
+                pass.PreparedSceneBackend->ReleaseDescriptorStorage();
+            }
+            if (auto* pipeline = GetBackendPipeline(pass.PreparedSceneBackend))
+            {
+                pipeline->ReleasePreparationGeneration();
+            }
+            if (auto* pipeline = GetBackendPipeline(pass.Handle))
+            {
+                pipeline->ReleasePreparationGeneration();
+            }
+            if (pass.PreparedScenePipeline)
+            {
+                pass.PreparedScenePipeline->ReleasePreparationGeneration();
+            }
+            if (pass.PreparedSceneDescriptors)
+            {
+                pass.PreparedSceneDescriptors->ReleaseDescriptorStorage();
+            }
+        }
+        ReleasePreparedSceneTargets();
+        m_prepared_attachment_cursor  = 0;
+        m_prepared_attachments_ready  = false;
+        m_prepared_use_composited     = false;
+        m_prepared_backend_cursor     = 0;
+        m_prepared_backends_ready     = false;
+        m_scene_pipeline_usage        = RGScenePipelineUsage::None;
+        m_scene_pipeline_state        = RGScenePipelinePreparationState::Idle;
+        m_scene_pipeline_cursor       = 0;
+        m_scene_descriptor_state      = RGScenePipelinePreparationState::Idle;
+        m_scene_descriptors_activated = false;
+    }
+
+    void RenderGraph::SetSceneTextureSources(std::span<const RenderResourceManager::TextureVersionPin> sources)
+    {
+        m_scene_texture_sources = sources;
+    }
+
+    void RenderGraph::ReleaseDescriptorStorageAfterReadersJoined()
+    {
+        m_scene_texture_sources = {};
+        for (auto& pass : PersistentPasses)
+        {
+            if (pass.PreparedSceneDescriptors)
+            {
+                pass.PreparedSceneDescriptors->ReleaseDescriptorStorage();
+            }
+            if (pass.PreparedSceneBackend)
+            {
+                pass.PreparedSceneBackend->ReleaseDescriptorStorage();
+            }
+            if (pass.Handle)
+            {
+                pass.Handle->ReleaseDescriptorStorage();
+            }
+        }
+        for (auto& pass : Passes)
+        {
+            // Persistent handles may appear in both lists. Release is
+            // idempotent; frame-only backend owners must also be drained.
+            if (pass.Handle)
+            {
+                pass.Handle->ReleaseDescriptorStorage();
+            }
+        }
     }
 
     Specifications::RenderPassSpecification RenderGraph::BuildRenderPassSpecification(const RGPass& pass) const
@@ -1558,6 +2661,7 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::Compile()
     {
+        m_compile_valid = false;
         if (!ValidateDeclarations())
         {
             m_compile_valid = false;
@@ -1583,14 +2687,19 @@ namespace ZEngine::Rendering::Renderers
             if (!pass.IsActive() || !pass.Callback)
                 continue;
 
+            bool pipeline_created = false;
             if (pass.RequiresRenderPass && !pass.Handle)
             {
+                if (m_scene_descriptors_activated && pass.Persistent && pass.Persistent->ScenePipelineProfile.Usage != RGScenePipelineUsage::None)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Required pass '{}' has no prepared backend", pass.Name ? pass.Name : "?")
+                    return;
+                }
                 auto pass_spec = BuildRenderPassSpecification(pass);
                 pass_spec.Type = pass.Callback->GetPipelineType();
                 if (pass_spec.Type == Specifications::RenderPassType::GRAPHIC)
                 {
-                    pass_spec.PipelineDescription = pass.Callback->BuildGraphicsPipelineDescription(Device->Arena);
-                    if (!pass_spec.PipelineDescription.ShaderSpecificationValue.Name)
+                    if (!pass.Callback->TryBuildGraphicsPipelineDescription(Device->Arena, &pass_spec.PipelineDescription) || !pass_spec.PipelineDescription.ShaderSpecificationValue.Name)
                     {
                         ZENGINE_CORE_ERROR("[RenderGraph] Graphics pass '{}' did not provide a shader", pass.Name ? pass.Name : "?")
                         m_compile_valid = false;
@@ -1616,14 +2725,93 @@ namespace ZEngine::Rendering::Renderers
                 }
 
                 pass.Handle = Device->CreateRenderPass(std::move(pass_spec));
+                if (!pass.Handle)
+                {
+                    return;
+                }
+                if (pass.Persistent)
+                {
+                    pass.Persistent->Handle = pass.Handle;
+                }
+                pipeline_created = true;
+            }
+
+            if (pass.Persistent && pass.Persistent->ScenePipelineProfile.Usage != RGScenePipelineUsage::None && pass.Handle && pass.Handle->Specification.Type == Specifications::RenderPassType::GRAPHIC)
+            {
+                auto* graphics = static_cast<RenderPasses::GraphicPass*>(pass.Handle);
+                if (!graphics->Attachment || !pass.Persistent->ScenePipelineProfile.Matches(graphics->Attachment->GetSpecification()))
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Pass '{}' differs from its required scene attachment profile", pass.Name ? pass.Name : "?")
+                    return;
+                }
+                if (m_scene_descriptors_activated && pass.Persistent->SceneBackendReady)
+                {
+                    const auto& profile     = pass.Persistent->ScenePipelineProfile;
+                    uint32_t    index       = 0;
+                    const auto  matches_use = [&](bool depth_read, Specifications::LoadOperation load) {
+                        if (index >= profile.AttachmentCount)
+                        {
+                            return false;
+                        }
+                        const auto& recipe = profile.AttachmentTargets[index++];
+                        return recipe.DepthRead == depth_read && recipe.Load == load;
+                    };
+                    bool valid = true;
+                    for (const auto& read : pass.Reads)
+                    {
+                        if (read.Access == RGAccess::DepthRead)
+                        {
+                            valid &= matches_use(true, Specifications::LoadOperation::LOAD);
+                        }
+                    }
+                    for (const auto& write : pass.Writes)
+                    {
+                        if (write.Access == RGAccess::ColorWrite || write.Access == RGAccess::ColorReadWrite || write.Access == RGAccess::DepthWrite)
+                        {
+                            valid &= matches_use(false, write.LoadOp);
+                        }
+                    }
+                    if (!valid || index != profile.AttachmentCount)
+                    {
+                        ZENGINE_CORE_ERROR("[RenderGraph] Pass '{}' differs from its prepared attachment operations", pass.Name ? pass.Name : "?")
+                        return;
+                    }
+                }
+            }
+
+            if (pipeline_created && (!pass.Persistent || pass.Persistent->ScenePipelineProfile.Usage == RGScenePipelineUsage::None))
+            {
                 pass.Handle->Bake();
             }
 
             // Pipeline hot-reload/replay can allocate from Device->Arena and
             // update descriptor sets. Resolve it before callbacks prepare this
             // frame's descriptors, then before any worker records the pass.
-            EnsurePassPipelineOnRenderThread(pass);
+            const auto pipeline_state = EnsurePassPipelineOnRenderThread(pass);
+            if (pipeline_state != Pipelines::PSOPreparationState::Ready)
+            {
+                if (pipeline_state != Pipelines::PSOPreparationState::Pending && pipeline_state != Pipelines::PSOPreparationState::Backpressure)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Pass '{}' has no usable current pipeline", pass.Name ? pass.Name : "?")
+                }
+                return;
+            }
 
+            if (pass.RequiresRenderPass && pass.Handle)
+            {
+                if (m_scene_descriptors_activated && pass.Persistent && pass.Persistent->ScenePipelineProfile.Descriptors != RGSceneDescriptorProfile::None && !pass.Persistent->SceneDescriptorsAdopted)
+                {
+                    auto* prepared = pass.Persistent->PreparedSceneDescriptors;
+                    if (!prepared || !static_cast<RenderPasses::DescriptorBoundPass*>(pass.Handle)->AdoptPreparedDescriptors(*prepared))
+                    {
+                        return;
+                    }
+                    pass.Persistent->SceneDescriptorsAdopted = true;
+                }
+                static_cast<RenderPasses::DescriptorBoundPass*>(pass.Handle)->BeginDescriptorPreparation();
+            }
+            RenderPasses::DescriptorBoundPass::TextureSourceScope texture_sources{pass.RequiresRenderPass ? static_cast<RenderPasses::DescriptorBoundPass*>(pass.Handle) : nullptr, m_scene_texture_sources};
+            RenderPasses::DescriptorBoundPass::CameraSourceScope  camera_source{pass.RequiresRenderPass ? static_cast<RenderPasses::DescriptorBoundPass*>(pass.Handle) : nullptr, SceneData ? SceneData->ActiveCameraBuffer : nullptr};
             SynchronizeCompiledPassResources(pass);
 
             pass.Callback->Prepare(Device, SceneData, ResourceInspector, pass.Handle);
@@ -1631,8 +2819,11 @@ namespace ZEngine::Rendering::Renderers
                 pass.Persistent->Handle = pass.Handle;
 
             BindDeclaredResources(pass);
-            if (IsGraphicPass(pass))
-                static_cast<RenderPasses::GraphicPass*>(pass.Handle)->Verify();
+            if (pass.RequiresRenderPass && (!pass.Handle || !pass.Handle->Verify()))
+            {
+                ZENGINE_CORE_ERROR("[RenderGraph] Pass '{}' has invalid required descriptor bindings", pass.Name ? pass.Name : "?")
+                return;
+            }
         }
 
         if (!ValidateCallbackContracts())
@@ -1641,7 +2832,10 @@ namespace ZEngine::Rendering::Renderers
             return;
         }
 
-        AllocateFramebuffers();
+        if (!AllocateFramebuffers())
+        {
+            return;
+        }
         BuildQueueSchedule();
         if (!PrepareReadbacks() || !PrepareQueryReadbacks())
         {
@@ -1653,8 +2847,12 @@ namespace ZEngine::Rendering::Renderers
 
     Hardwares::CommandBuffer* RenderGraph::Execute(Hardwares::CommandBufferPtr const cb)
     {
-        Register({.Scene = SceneData, .FrameIndex = static_cast<uint8_t>(Device->SwapchainPtr->CurrentFrame->Index), .RenderWidth = RenderWidth, .RenderHeight = RenderHeight});
-        Compile();
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.GraphExecute");
+        {
+            ZENGINE_PROFILE_SCOPE("SceneLoad.Render.GraphRegisterAndCompile");
+            Register({.Scene = SceneData, .FrameIndex = static_cast<uint8_t>(Device->SwapchainPtr->CurrentFrame->Index), .RenderWidth = RenderWidth, .RenderHeight = RenderHeight});
+            Compile();
+        }
 
 #ifndef NDEBUG
         {
@@ -1685,7 +2883,7 @@ namespace ZEngine::Rendering::Renderers
         if (!m_compile_valid)
         {
             CancelUnsubmittedReadbacks();
-            return cb;
+            return nullptr;
         }
 
         // Compile can create a pass whose bindless set has never received the
@@ -1824,10 +3022,14 @@ namespace ZEngine::Rendering::Renderers
                     task.Level      = &level;
                     task.Worker     = worker;
                     task.FrameIndex = frame_index;
-                    batch[worker]   = {&task, &RecordGraphSecondaryWorkerBatch};
+#if ZENGINE_PROFILING
+                    task.DispatchedAt = std::chrono::steady_clock::now();
+#endif
+                    batch[worker] = {&task, &RecordGraphSecondaryWorkerBatch};
                 }
                 {
                     ZENGINE_PROFILE_SCOPE("ThumbnailProfile.RenderRecordingWait");
+                    ZENGINE_PROFILE_SCOPE("SceneLoad.Render.GraphRecordingWait");
                     // Joins the batch before stack tasks or frame scratch retire.
                     // These mailboxes cannot contain imports, scans or disk I/O.
                     recording_workers->Record(batch, worker_count);
@@ -1986,21 +3188,8 @@ namespace ZEngine::Rendering::Renderers
                     if (image == VK_NULL_HANDLE)
                         continue;
 
-                    const uint32_t consumer_family     = Device->GetQueue(pass.Queue).FamilyIndex;
-                    const bool     transfers_ownership = plan.Ticket.ProducerQueueFamily != VK_QUEUE_FAMILY_IGNORED && plan.Ticket.ProducerQueueFamily != consumer_family;
-                    barriers.push({
-                        .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                        .srcStageMask        = VK_PIPELINE_STAGE_2_NONE,
-                        .srcAccessMask       = 0,
-                        .dstStageMask        = plan.DestinationState.Stage,
-                        .dstAccessMask       = plan.DestinationState.Access,
-                        .oldLayout           = plan.Ticket.PostReleaseLayout,
-                        .newLayout           = plan.Ticket.PostReleaseLayout,
-                        .srcQueueFamilyIndex = transfers_ownership ? plan.Ticket.ProducerQueueFamily : VK_QUEUE_FAMILY_IGNORED,
-                        .dstQueueFamilyIndex = transfers_ownership ? consumer_family : VK_QUEUE_FAMILY_IGNORED,
-                        .image               = image,
-                        .subresourceRange    = ToVkSubresourceRange(range),
-                    });
+                    const uint32_t consumer_family = Device->GetQueue(pass.Queue).FamilyIndex;
+                    barriers.push(BuildRGStreamingAcquireBarrier(plan.Ticket, plan.DestinationState, consumer_family, image, range));
                     plan.BarrierRecorded = true;
                     if (plan.ResourceIndex < Resources.size())
                         Resources[plan.ResourceIndex].RuntimeState = plan.DestinationState;
@@ -2365,7 +3554,11 @@ namespace ZEngine::Rendering::Renderers
                 ZENGINE_CORE_INFO("[VulkanSubmitTrace] graph submit begin batch={} queue={} signal_value={}", batch_index, QueueName(batch.Queue), signal_value)
             }
 #endif
-            if (!Device->QueueSubmit(target, timeline, signal_value, wait_infos.data(), static_cast<uint32_t>(wait_infos.size())))
+            const bool submitted = [&]() {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Render.GraphQueueSubmit");
+                return Device->QueueSubmit(target, timeline, signal_value, wait_infos.data(), static_cast<uint32_t>(wait_infos.size()));
+            }();
+            if (!submitted)
             {
                 graph_submission_failed = true;
                 break;
@@ -2379,6 +3572,10 @@ namespace ZEngine::Rendering::Renderers
 
             batch_timelines[batch_index]     = timeline;
             batch_signal_values[batch_index] = signal_value;
+            if (Device->RRM)
+            {
+                static_cast<RenderResourceManager*>(Device->RRM)->NotifyResourceSubmission(timeline_index, timeline, signal_value);
+            }
             if (batch.Queue == Rendering::QueueType::GRAPHIC_QUEUE)
             {
                 Device->SwapchainPtr->DirectGraphicsTimeline      = timeline;
@@ -2404,12 +3601,14 @@ namespace ZEngine::Rendering::Renderers
         return cb;
     }
 
-    void RenderGraph::Resize(uint32_t width, uint32_t height)
+    bool RenderGraph::Resize(uint32_t width, uint32_t height)
     {
         // A minimized or not-yet-laid-out viewport has no valid Vulkan extent.
         // Keep the previous render targets alive until it reports a real size.
         if (width == 0 || height == 0)
-            return;
+        {
+            return false;
+        }
 
         // Every physical render target and descriptor update below must outlive
         // every graph batch that used the old image. Graph batches may run on
@@ -2417,72 +3616,168 @@ namespace ZEngine::Rendering::Renderers
         // swapchain fence is insufficient. Resize is a deliberately slow path:
         // drain all device queues before replacing the backing images and views.
         if (width == RenderWidth && height == RenderHeight)
-            return;
+        {
+            return true;
+        }
         if (Device->IsDeviceLost.load(std::memory_order_acquire))
-            return;
+        {
+            return false;
+        }
         const VkResult idle_result = vkDeviceWaitIdle(Device->LogicalDevice);
         if (Device->CheckDeviceLost(idle_result, "RenderGraph resize"))
-            return;
+        {
+            return false;
+        }
         ZENGINE_VALIDATE_ASSERT(idle_result == VK_SUCCESS, "RenderGraph resize failed to wait for the Vulkan device")
 
-        RenderWidth                = width;
-        RenderHeight               = height;
+        struct ImageReplacement
+        {
+            Textures::TextureHandle Previous = {};
+            Textures::TextureHandle Next     = {};
+        };
+        constexpr uint32_t MaxImageReplacements               = 256;
+        ImageReplacement   replacements[MaxImageReplacements] = {};
+        uint32_t           replacement_count                  = 0;
+        auto               replacement_for                    = [&](Textures::TextureHandle previous) {
+            for (uint32_t index = 0; index < replacement_count; ++index)
+            {
+                if (replacements[index].Previous.Index == previous.Index && replacements[index].Previous.Generation == previous.Generation)
+                {
+                    return replacements[index].Next;
+                }
+            }
+            return previous;
+        };
+        auto rollback = [&] {
+            for (uint32_t index = replacement_count; index > 0; --index)
+            {
+                Device->DestroyTexture(replacements[index - 1].Next);
+            }
+        };
+        uint32_t required = 0;
+        for (const auto& slot : TransientPool.Slots)
+        {
+            if (!slot.Handle.Valid() || !slot.Spec.IsRenderTargetSized)
+            {
+                continue;
+            }
+            ++required;
+            for (const auto& alias : slot.Aliases)
+            {
+                required += alias.Handle.Index != slot.Handle.Index || alias.Handle.Generation != slot.Handle.Generation;
+            }
+        }
+        if (required > MaxImageReplacements)
+        {
+            ZENGINE_CORE_ERROR("[RenderGraph] Resize exceeds its bounded image-version capacity")
+            return false;
+        }
+        // Prepare all replacements without modifying the active graph. Existing
+        // banks can retain old views, and aliases retain their allocation even
+        // when the original backing image has already retired.
+        for (const auto& slot : TransientPool.Slots)
+        {
+            if (!slot.Handle.Valid() || !slot.Spec.IsRenderTargetSized)
+            {
+                continue;
+            }
+            auto spec       = slot.Spec;
+            spec.Width      = width;
+            spec.Height     = height;
+            const auto next = Device->TryCreateTexture(spec, "RenderGraph resized backing");
+            if (!next.Valid())
+            {
+                rollback();
+                return false;
+            }
+            replacements[replacement_count++] = {slot.Handle, next};
+            for (const auto& alias : slot.Aliases)
+            {
+                if (alias.Handle.Index == slot.Handle.Index && alias.Handle.Generation == slot.Handle.Generation)
+                {
+                    continue;
+                }
+                auto alias_spec       = alias.Spec;
+                alias_spec.Width      = width;
+                alias_spec.Height     = height;
+                const auto alias_next = Device->CreateAliasingTexture(alias_spec, next, alias.Name);
+                if (!alias_next.Valid())
+                {
+                    rollback();
+                    return false;
+                }
+                replacements[replacement_count++] = {alias.Handle, alias_next};
+            }
+        }
+
+        RenderWidth  = width;
+        RenderHeight = height;
 
         // Phase 1 — collect old framebuffer handles. Enqueue them before image
         // views so deferred destruction preserves Vulkan's framebuffer-before-view
         // lifetime order. No Vulkan handle is destroyed during Resize().
-        VkFramebuffer old_fbs[16]  = {};
-        uint32_t      old_fb_count = 0;
-
         for (auto& pass : PersistentPasses)
         {
             if (pass.Framebuffer && pass.Framebuffer->Handle)
             {
-                if (old_fb_count < 16)
-                    old_fbs[old_fb_count++] = pass.Framebuffer->Handle;
+                Hardwares::DeferredFreeEntry entry = {};
+                entry.Data.Vk                      = {pass.Framebuffer->Handle, Rendering::DeviceResourceType::FRAMEBUFFER, nullptr};
+                Device->DeferFree(entry);
                 pass.Framebuffer->Handle = VK_NULL_HANDLE;
             }
         }
 
-        for (uint32_t i = 0; i < old_fb_count; ++i)
-        {
-            Hardwares::DeferredFreeEntry e = {};
-            e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
-            e.Data.Vk                      = {reinterpret_cast<void*>(old_fbs[i]), Rendering::DeviceResourceType::FRAMEBUFFER, nullptr};
-            Device->DeferFree(e);
-        }
-
-        // Reconstruct only the images that follow this render view's extent.
+        // Replace only the images that follow this render view's extent.
         // Fixed-resolution resources — for example the sky-view and aerial LUTs —
         // keep their declared dimensions and must not be resized with the viewport.
         // Resize-compatible and fixed resources never alias one another, so a
-        // resizable slot can safely reconstruct all of its aliases at this extent.
+        // resizable slot can safely replace all of its aliases at this extent.
         for (auto& slot : TransientPool.Slots)
         {
             if (!slot.Handle.Valid() || !slot.Spec.IsRenderTargetSized)
                 continue;
-            slot.Spec.Width  = width;
-            slot.Spec.Height = height;
-            Device->ReconstructTexture(slot.Handle, slot.Spec);
+            slot.Spec.Width          = width;
+            slot.Spec.Height         = height;
+            const auto previous_root = slot.Handle;
+            slot.Handle              = replacement_for(previous_root);
             for (auto& alias : slot.Aliases)
             {
-                if (alias.Handle.Index == slot.Handle.Index && alias.Handle.Generation == slot.Handle.Generation)
-                    continue;
                 alias.Spec.Width  = width;
                 alias.Spec.Height = height;
-                Device->ReconstructAliasingTexture(alias.Handle, alias.Spec, slot.Handle);
+                alias.Handle      = replacement_for(alias.Handle);
             }
         }
 
+        for (auto& resource : Resources)
+        {
+            const auto next = replacement_for(resource.TextureHandle);
+            if (next.Index != resource.TextureHandle.Index || next.Generation != resource.TextureHandle.Generation)
+            {
+                resource.TextureHandle = next;
+                resource.Spec.Width    = width;
+                resource.Spec.Height   = height;
+                resource.InitialState  = {};
+                resource.CurrentState  = {};
+                resource.RuntimeState  = {};
+                resource.CompileSubresourceStates.clear();
+                resource.RuntimeSubresourceStates.clear();
+            }
+        }
+        for (uint32_t index = replacement_count; index > 0; --index)
+        {
+            Device->DestroyTexture(replacements[index - 1].Previous);
+        }
+
         // Phase 2 — rebuild framebuffers and re-bind descriptors with new ImageBuffers.
-        // All TextureHandles remain valid (in-place swap) so AllocateTransientResources
-        // is a no-op for existing resources; call it only for safety (skips valid handles).
+        // Handles now identify exact storage versions. Old descriptor banks and
+        // accepted submissions keep their own pins instead of observing mutation.
 
         if (const auto* idx = ResourceIndex.find(RendererResourceName::FrameColorRenderTargetName))
             Device->RequestDescriptorUpdate(Resources[*idx].TextureHandle);
 
-        // Dynamic-rendering attachment lists point at the reconstructed image
-        // views. Legacy attachment compatibility remains stable across resize.
+        // Both backends must resolve the new exact image versions. Legacy render
+        // pass compatibility is stable, but its clear-value lists are not handles
+        // to the retired images.
         for (auto& pass : Passes)
             SynchronizeCompiledPassResources(pass);
 
@@ -2490,10 +3785,45 @@ namespace ZEngine::Rendering::Renderers
 
         for (auto& pass : Passes)
             BindDeclaredResources(pass);
+        return true;
     }
 
     void RenderGraph::Dispose()
     {
+        EndScenePipelinePreparation();
+        ReleaseDescriptorStorageAfterReadersJoined();
+        for (auto& pass : PersistentPasses)
+        {
+            if (pass.Framebuffer)
+            {
+                pass.Framebuffer->Dispose();
+            }
+        }
+        for (auto& pass : Passes)
+        {
+            if (pass.Framebuffer)
+            {
+                pass.Framebuffer->Dispose();
+            }
+        }
+        for (auto& pass : PersistentPasses)
+        {
+            if (pass.PreparedSceneBackend && pass.PreparedSceneBackend != pass.Handle)
+            {
+                pass.PreparedSceneBackend->Dispose();
+            }
+            if (pass.Handle)
+            {
+                pass.Handle->Dispose();
+            }
+        }
+        for (auto& pass : Passes)
+        {
+            if (!pass.Persistent && pass.Handle)
+            {
+                pass.Handle->Dispose();
+            }
+        }
         constexpr uint32_t graphics_timeline_index = static_cast<uint32_t>(Rendering::QueueType::GRAPHIC_QUEUE);
         if (Device && Device->SwapchainPtr && Device->SwapchainPtr->DirectGraphicsTimeline == QueueTimelines[graphics_timeline_index])
         {
@@ -2509,6 +3839,10 @@ namespace ZEngine::Rendering::Renderers
         {
             if (QueueTimelines[i])
             {
+                if (Device->RRM)
+                {
+                    ZENGINE_VALIDATE_ASSERT(static_cast<RenderResourceManager*>(Device->RRM)->ForgetResourceTimeline(QueueTimelines[i]), "Cannot destroy a render-graph timeline with pending geometry consumers")
+                }
                 QueueTimelines[i]->~Semaphore();
                 QueueTimelines[i] = nullptr;
             }
@@ -2554,6 +3888,16 @@ namespace ZEngine::Rendering::Renderers
 
         for (auto& pass : PersistentPasses)
         {
+            if (pass.PreparedScenePipeline)
+            {
+                pass.PreparedScenePipeline->Dispose();
+                pass.PreparedScenePipeline = nullptr;
+            }
+            if (pass.PreparedSceneAttachment)
+            {
+                pass.PreparedSceneAttachment->Dispose();
+                pass.PreparedSceneAttachment = nullptr;
+            }
             if (pass.Callback)
                 pass.Callback->Deinitialize(Device);
         }
@@ -2901,7 +4245,7 @@ namespace ZEngine::Rendering::Renderers
 
     void RenderGraph::SynchronizeCompiledPassResources(RGPass& pass)
     {
-        if (!Device->PhysicalDeviceSupportDynamicRendering || !pass.Handle || pass.Handle->Specification.Type != Specifications::RenderPassType::GRAPHIC)
+        if (!pass.Handle || pass.Handle->Specification.Type != Specifications::RenderPassType::GRAPHIC)
             return;
 
         auto* graphic_pass  = static_cast<RenderPasses::GraphicPass*>(pass.Handle);
@@ -2909,9 +4253,10 @@ namespace ZEngine::Rendering::Renderers
         if (specification.SwapchainAsRenderTarget)
             return;
 
-        // Dynamic rendering reads this list at record time. Refresh it after the
-        // transient pool has rebound this frame's virtual resources; no Vulkan
-        // object or pipeline is rebuilt here.
+        // Dynamic rendering reads this list at record time; legacy rendering
+        // also uses it for attachment clear values and render-area dimensions.
+        // Refresh it after the transient pool has rebound this frame's virtual
+        // resources. No Vulkan object or pipeline is rebuilt here.
         specification.Inputs.clear();
         specification.ExternalOutputs.clear();
         specification.ExternalOutputLoadOps.clear();
@@ -2960,14 +4305,22 @@ namespace ZEngine::Rendering::Renderers
                 return;
 
             const RGResource& resource = Resources[use.Handle.Index];
-            if (resource.Kind != RGResourceKind::Texture || !resource.TextureHandle.Valid())
+            if ((resource.Kind != RGResourceKind::Texture && resource.Kind != RGResourceKind::Attachment) || !resource.TextureHandle.Valid())
                 return;
 
             auto* descriptor_pass = static_cast<RenderPasses::DescriptorBoundPass*>(pass.Handle);
             switch (use.Access)
             {
                 case RGAccess::ShaderRead:
-                    descriptor_pass->SetTexture(use.BindingKey, resource.TextureHandle);
+                    if (!resource.External && resource.Transient && Device->RRM)
+                    {
+                        auto pin = static_cast<RenderResourceManager*>(Device->RRM)->PinGraphTextureVersion(resource.TextureHandle);
+                        descriptor_pass->SetRetainedTexture(use.BindingKey, pin);
+                    }
+                    else
+                    {
+                        descriptor_pass->SetTexture(use.BindingKey, resource.TextureHandle);
+                    }
                     break;
                 case RGAccess::StorageWrite:
                 case RGAccess::ShaderReadWrite:
@@ -2975,7 +4328,15 @@ namespace ZEngine::Rendering::Renderers
                     RGSubresourceRange resolved_range = {};
                     if (!ResolveSubresourceRange(resource, use.Range, Device, &resolved_range))
                         return;
-                    descriptor_pass->SetStorageImage(use.BindingKey, resource.TextureHandle, ToVkSubresourceRange(resolved_range));
+                    if (!resource.External && resource.Transient && Device->RRM)
+                    {
+                        auto pin = static_cast<RenderResourceManager*>(Device->RRM)->PinGraphTextureVersion(resource.TextureHandle);
+                        descriptor_pass->SetRetainedStorageImage(use.BindingKey, pin, ToVkSubresourceRange(resolved_range));
+                    }
+                    else
+                    {
+                        descriptor_pass->SetStorageImage(use.BindingKey, resource.TextureHandle, ToVkSubresourceRange(resolved_range));
+                    }
                     break;
                 }
                 default:
@@ -3395,8 +4756,8 @@ namespace ZEngine::Rendering::Renderers
                     res.TextureHandle = Device->CreateTexture(res.Spec, res.Name);
                     if (res.TextureHandle.Valid())
                     {
-                        TransientPool.Register(res.TextureHandle, res.Spec, res.LastPassIndex);
-                        TransientPool.RegisterAlias(&TransientPool.Slots.back(), res.Name, res.TextureHandle, res.Spec, res.FirstPassIndex, res.LastPassIndex);
+                        auto* slot = TransientPool.Register(res.TextureHandle, res.Spec, res.LastPassIndex);
+                        TransientPool.RegisterAlias(slot, res.Name, res.TextureHandle, res.Spec, res.FirstPassIndex, res.LastPassIndex);
                     }
                 }
             }
@@ -3498,14 +4859,14 @@ namespace ZEngine::Rendering::Renderers
         for (auto& frame : TimestampFrames)
         {
             frame.RecordedTimings.init(Device->Arena, TimestampPassCapacity);
-            if (vkCreateQueryPool(Device->LogicalDevice, &create_info, nullptr, &frame.QueryPool) != VK_SUCCESS)
+            if (Device->PendingFree.CreateNative(Rendering::DeviceResourceType::QUERYPOOL, &frame.QueryPool, [&](VkQueryPool* out) { return vkCreateQueryPool(Device->LogicalDevice, &create_info, nullptr, out); }) != VK_SUCCESS)
             {
                 ZENGINE_CORE_WARN("[RenderGraph] Timestamp profiling is disabled because the query pool could not be created")
                 for (auto& created_frame : TimestampFrames)
                 {
                     if (created_frame.QueryPool != VK_NULL_HANDLE)
                     {
-                        vkDestroyQueryPool(Device->LogicalDevice, created_frame.QueryPool, nullptr);
+                        Device->PendingFree.DestroyNative(Rendering::DeviceResourceType::QUERYPOOL, created_frame.QueryPool, [&] { vkDestroyQueryPool(Device->LogicalDevice, created_frame.QueryPool, nullptr); });
                         created_frame.QueryPool = VK_NULL_HANDLE;
                     }
                 }
@@ -3578,17 +4939,32 @@ namespace ZEngine::Rendering::Renderers
             if (result == VK_SUCCESS)
             {
                 LatestPassTimings.clear();
-                const uint32_t timing_count = std::min(static_cast<uint32_t>(frame.RecordedTimings.size()), frame.QueryCount / 2);
+                const uint32_t timing_count    = std::min(static_cast<uint32_t>(frame.RecordedTimings.size()), frame.QueryCount / 2);
+                double         gpu_pass_sum_ms = 0.0;
+                double         gpu_pass_max_ms = 0.0;
+                bool           all_available   = timing_count != 0;
                 for (uint32_t timing_index = 0; timing_index < timing_count; ++timing_index)
                 {
-                    RGPassTiming timing         = frame.RecordedTimings[timing_index];
-                    timing.BeginTimestamp       = timestamps[timing_index * 2];
-                    timing.EndTimestamp         = timestamps[timing_index * 2 + 1];
-                    const uint32_t queue_index  = static_cast<uint32_t>(timing.Queue);
-                    const uint32_t valid_bits   = queue_index < QueueTimelineCount ? Device->QueueTimestampValidBits[queue_index] : 0;
-                    timing.DurationMilliseconds = RGTimestampDurationMilliseconds(timing.BeginTimestamp, timing.EndTimestamp, valid_bits, Device->PhysicalDeviceProperties.properties.limits.timestampPeriod);
-                    timing.Available            = valid_bits > 0;
+                    RGPassTiming timing          = frame.RecordedTimings[timing_index];
+                    timing.BeginTimestamp        = timestamps[timing_index * 2];
+                    timing.EndTimestamp          = timestamps[timing_index * 2 + 1];
+                    const uint32_t queue_index   = static_cast<uint32_t>(timing.Queue);
+                    const uint32_t valid_bits    = queue_index < QueueTimelineCount ? Device->QueueTimestampValidBits[queue_index] : 0;
+                    timing.DurationMilliseconds  = RGTimestampDurationMilliseconds(timing.BeginTimestamp, timing.EndTimestamp, valid_bits, Device->PhysicalDeviceProperties.properties.limits.timestampPeriod);
+                    timing.Available             = valid_bits > 0;
+                    all_available                = all_available && timing.Available;
+                    gpu_pass_sum_ms             += timing.DurationMilliseconds;
+                    gpu_pass_max_ms              = std::max(gpu_pass_max_ms, static_cast<double>(timing.DurationMilliseconds));
                     LatestPassTimings.push(timing);
+                }
+                if (all_available)
+                {
+                    // Results belong to the completed context, not the CPU
+                    // frame polling them. This sum includes all timed passes
+                    // (including candidate sky work), and may over-count
+                    // overlap on independent queues. It is not a present time.
+                    ZENGINE_PROFILE_VALUE("SceneLoad.Render.CompletedGpuPassSumMs", gpu_pass_sum_ms);
+                    ZENGINE_PROFILE_VALUE("SceneLoad.Render.CompletedGpuPassMaxMs", gpu_pass_max_ms);
                 }
             }
             else
@@ -4320,7 +5696,9 @@ namespace ZEngine::Rendering::Renderers
             {
                 pass.RequestedQueue = Rendering::QueueType::TRANSFER_QUEUE;
             }
-            if (pass.Handle)
+            // Pipeline kind does not select a queue when the callback supplies
+            // an explicit scheduling policy (e.g. timeline-owned sky baking).
+            if (pass.Handle && !pass.Callback)
             {
                 switch (pass.Handle->Specification.Type)
                 {
@@ -4566,7 +5944,7 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    void RenderGraph::AllocateFramebuffers()
+    bool RenderGraph::AllocateFramebuffers()
     {
         for (uint32_t i = 0; i < Passes.size(); ++i)
         {
@@ -4576,18 +5954,11 @@ namespace ZEngine::Rendering::Renderers
             if (pass.Handle->Specification.Type == Specifications::RenderPassType::COMPUTE)
                 continue;
             auto* gp = static_cast<RenderPasses::GraphicPass*>(pass.Handle);
-            if (Device->PhysicalDeviceSupportDynamicRendering)
-            {
-                gp->UpdateRenderTargets();
-                if (pass.Persistent)
-                    pass.Persistent->Framebuffer = pass.Framebuffer;
-                continue;
-            }
-
             // Swapchain framebuffers are owned by DeviceSwapchain, not the graph.
             if (pass.Handle->Specification.SwapchainAsRenderTarget)
                 continue;
 
+            const auto* prepared     = m_scene_descriptors_activated && pass.Persistent && pass.Persistent->SceneAttachmentsAdopted ? &pass.Persistent->PreparedSceneAttachments : nullptr;
             VkImageView view_buf[16] = {};
             uint32_t    view_count   = 0;
             uint32_t    w            = 0;
@@ -4603,7 +5974,7 @@ namespace ZEngine::Rendering::Renderers
                 uint32_t     view_width  = 0;
                 uint32_t     view_height = 0;
                 uint32_t     view_layers = 0;
-                if (!GetGraphAttachmentView(this, Resources[use.Handle.Index], use, &view, &format, &view_width, &view_height, &view_layers, &clear_value) || view == VK_NULL_HANDLE)
+                if (!GetGraphAttachmentView(this, Resources[use.Handle.Index], use, &view, &format, &view_width, &view_height, &view_layers, &clear_value, prepared == nullptr) || view == VK_NULL_HANDLE)
                     return false;
                 if (w != 0 && (w != view_width || h != view_height || layers != view_layers))
                     return false;
@@ -4640,7 +6011,21 @@ namespace ZEngine::Rendering::Renderers
             if (!valid_views || view_count == 0 || w == 0 || layers == 0)
             {
                 ZENGINE_CORE_ERROR("[RenderGraph] Framebuffer attachments for pass '{}' are missing or have incompatible extents", pass.Name ? pass.Name : "?")
-                continue;
+                return false;
+            }
+
+            if (prepared)
+            {
+                bool matches = prepared->Ready && prepared->Count == view_count && prepared->Width == w && prepared->Height == h && prepared->Layers == layers;
+                for (uint32_t index = 0; matches && index < view_count; ++index)
+                {
+                    matches = prepared->Views[index] == view_buf[index];
+                }
+                if (!matches)
+                {
+                    ZENGINE_CORE_ERROR("[RenderGraph] Pass '{}' did not consume its prepared attachment views", pass.Name ? pass.Name : "?")
+                    return false;
+                }
             }
 
             gp->RenderAreaWidth    = w;
@@ -4648,17 +6033,38 @@ namespace ZEngine::Rendering::Renderers
 
             auto* const attachment = gp->GetAttachment();
             if (!attachment)
+            {
+                return false;
+            }
+            if (Device->PhysicalDeviceSupportDynamicRendering)
+            {
+                gp->UpdateRenderTargets();
                 continue;
-            const VkRenderPass rp               = attachment->GetHandle();
+            }
+            const VkRenderPass rp                     = attachment->GetHandle();
 
-            bool               matches_existing = pass.Framebuffer && pass.Framebuffer->Handle && pass.FramebufferRenderPass == rp && pass.FramebufferViewCount == view_count && pass.FramebufferWidth == w && pass.FramebufferHeight == h && pass.FramebufferLayers == layers;
+            const auto*        prepared_attachment    = pass.Persistent ? pass.Persistent->PreparedSceneAttachment : nullptr;
+            const bool         compatible_render_pass = pass.FramebufferRenderPass == rp || (prepared_attachment && pass.FramebufferRenderPass == prepared_attachment->GetHandle() && prepared_attachment->IsRenderPassCompatibleWith(*attachment));
+            bool               matches_existing       = pass.Framebuffer && pass.Framebuffer->Handle && compatible_render_pass && pass.FramebufferViewCount == view_count && pass.FramebufferWidth == w && pass.FramebufferHeight == h && pass.FramebufferLayers == layers;
             for (uint32_t view_index = 0; matches_existing && view_index < view_count; ++view_index)
                 matches_existing = pass.FramebufferViews[view_index] == view_buf[view_index];
             if (matches_existing)
             {
+                // Cache the compatible consuming pass after the first proof;
+                // do not resolve device depth formats again on every frame.
+                pass.FramebufferRenderPass = rp;
                 if (pass.Persistent)
-                    pass.Persistent->Framebuffer = pass.Framebuffer;
+                {
+                    pass.Persistent->Framebuffer           = pass.Framebuffer;
+                    pass.Persistent->FramebufferRenderPass = rp;
+                }
                 continue;
+            }
+
+            if (prepared)
+            {
+                ZENGINE_CORE_ERROR("[RenderGraph] Pass '{}' cannot adopt its prepared framebuffer", pass.Name ? pass.Name : "?")
+                return false;
             }
 
             VkFramebuffer vk_fb = Device->CreateFramebuffer(Core::Containers::ArrayView<VkImageView>{view_buf, view_count}, rp, w, h, layers);
@@ -4666,7 +6072,7 @@ namespace ZEngine::Rendering::Renderers
             if (vk_fb == VK_NULL_HANDLE)
             {
                 ZENGINE_CORE_ERROR("[RenderGraph] AllocateFramebuffers: CreateFramebuffer returned null for pass '{}' (views={} rp={} w={} h={})", pass.Name ? pass.Name : "?", view_count, (void*) rp, w, h)
-                continue;
+                return false;
             }
 
             if (!pass.Framebuffer)
@@ -4693,6 +6099,7 @@ namespace ZEngine::Rendering::Renderers
                     pass.Persistent->FramebufferViews[view_index] = view_buf[view_index];
             }
         }
+        return true;
     }
 
     void RenderGraphResourceBuilder::Initialize(RenderGraph* graph)
@@ -4729,7 +6136,7 @@ namespace ZEngine::Rendering::Renderers
         create_info.queryCount            = storage->QueryCount;
         for (VkQueryPool& frame_pool : storage->FramePools)
         {
-            if (vkCreateQueryPool(graph->Device->LogicalDevice, &create_info, nullptr, &frame_pool) == VK_SUCCESS)
+            if (graph->Device->PendingFree.CreateNative(Rendering::DeviceResourceType::QUERYPOOL, &frame_pool, [&](VkQueryPool* out) { return vkCreateQueryPool(graph->Device->LogicalDevice, &create_info, nullptr, out); }) == VK_SUCCESS)
                 continue;
 
             ZENGINE_CORE_ERROR("[RenderGraph] Failed to create occlusion query pool '{}'", storage->Name ? storage->Name : "?")
@@ -4737,7 +6144,7 @@ namespace ZEngine::Rendering::Renderers
             {
                 if (created_pool != VK_NULL_HANDLE)
                 {
-                    vkDestroyQueryPool(graph->Device->LogicalDevice, created_pool, nullptr);
+                    graph->Device->PendingFree.DestroyNative(Rendering::DeviceResourceType::QUERYPOOL, created_pool, [&] { vkDestroyQueryPool(graph->Device->LogicalDevice, created_pool, nullptr); });
                     created_pool = VK_NULL_HANDLE;
                 }
             }

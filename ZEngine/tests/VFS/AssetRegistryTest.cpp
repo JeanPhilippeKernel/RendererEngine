@@ -2,6 +2,7 @@
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -65,6 +66,47 @@ TEST_F(AssetRegistryTest, UUIDLookupReturnsCorrectRecord)
     EXPECT_EQ(rec->UUID, uuid);
     EXPECT_EQ(rec->Type, Managers::AssetType::MESH);
     EXPECT_STREQ(rec->Path.CStr(), "/project/mesh.glb");
+}
+
+TEST_F(AssetRegistryTest, OneAssetTypeCanUseTheEntireDeclaredCapacityWithoutGrowingTheSharedArena)
+{
+    const auto cursor = m_manager.MainArena.m_current_offset;
+    for (uint32_t index = 1; index <= AssetIndex::MAX_ASSETS; ++index)
+    {
+        std::array<uint8_t, 16> bytes = {};
+        bytes[0]                      = uint8_t(index);
+        bytes[1]                      = uint8_t(index >> 8);
+        const uuids::uuid id(bytes.begin(), bytes.end());
+        ASSERT_TRUE(m_registry.Register(id, Managers::AssetType::MATERIAL, {}, {}).IsOk()) << index;
+    }
+    EXPECT_EQ(m_manager.MainArena.m_current_offset, cursor);
+    EXPECT_EQ(m_registry.Register(MakeUUID(), Managers::AssetType::MATERIAL, {}, {}).Error, RegisterError::SlotExhausted);
+    EXPECT_EQ(m_manager.MainArena.m_current_offset, cursor);
+}
+
+TEST_F(AssetRegistryTest, GenericLoadedBindingRejectsChangedIdentityAndTypeWithoutPublishingOrNotifying)
+{
+    const auto id = MakeUUID();
+    Reg(m_registry, id, Managers::AssetType::MATERIAL, "/material.zematerial");
+    AssetRecordSnapshot expected = {};
+    ASSERT_TRUE(m_registry.TryReadRecord(id, &expected));
+    const auto cursor = m_manager.MainArena.m_current_offset;
+    EXPECT_FALSE(m_registry.TryBindLoadedAsset(expected, 0x20000001u));
+    auto changed = expected;
+    ++changed.Handle.Generation;
+    EXPECT_FALSE(m_registry.TryBindLoadedAsset(changed, 0x10000001u));
+    changed = expected;
+    ++changed.Record.Meta.SourceHash;
+    EXPECT_FALSE(m_registry.TryBindLoadedAsset(changed, 0x10000001u));
+    AssetRecordSnapshot after = {};
+    ASSERT_TRUE(m_registry.TryReadRecord(id, &after));
+    EXPECT_FALSE(after.Record.HasLoadedSlot);
+    ASSERT_TRUE(m_registry.TryBindLoadedAsset(expected, 0x10000001u));
+    ASSERT_TRUE(m_registry.TryReadRecord(id, &after));
+    EXPECT_TRUE(after.Record.HasLoadedSlot);
+    EXPECT_EQ(after.Record.SlotHandle, 0x10000001u);
+    EXPECT_FALSE(m_registry.TryBindLoadedAsset(expected, 0x10000002u));
+    EXPECT_EQ(m_manager.MainArena.m_current_offset, cursor);
 }
 
 TEST_F(AssetRegistryTest, WorkerSnapshotIsOwnedAndRejectsRenamedOrRecycledMeshIdentity)

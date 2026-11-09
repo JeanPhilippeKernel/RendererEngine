@@ -35,30 +35,33 @@ namespace ZEngine::Rendering
     {
     public:
         /// @brief Pool usage (vtx or idx axis) above which the eviction sweep runs.
-        static constexpr float kEvictionThreshold   = 0.85f;
+        static constexpr float    kEvictionThreshold   = 0.85f;
         /// @brief Fragmentation ratio above which a compaction is requested.
-        static constexpr float kCompactionThreshold = 0.30f;
+        static constexpr float    kCompactionThreshold = 0.30f;
+        /// Includes stale requests: cancelled/replaced slots cannot bypass slicing.
+        static constexpr uint32_t LoadSliceOperations  = 16;
 
         /// @brief Bind the manager to a device and RRM. Must be called before Tick().
-        void                   Initialize(Hardwares::VulkanDevice* device, RenderResourceManager* rrm);
-        void                   Deinitialize();
+        void                      Initialize(Hardwares::VulkanDevice* device, RenderResourceManager* rrm);
+        void                      Deinitialize();
 
         /// @brief Per-frame driver — called from RenderResourceManager::BeginFrame.
         /// @details Checks pool fragmentation, runs the eviction sweep if pool is under
         ///          pressure, then clears all Referenced bits for the coming frame.
         /// @param frame_index Current swapchain frame index.
-        void                   Tick(uint32_t frame_index);
+        void                      Tick(uint32_t frame_index);
 
         /// @brief Enqueue a mesh load request. Single-producer (render thread), consumed by Tick().
-        /// @details Pushes onto m_load_queue (SPSC). Returns false and drops the request if
-        ///          the queue is full (kLoadQueueCapacity requests already pending).
-        bool                   RequestLoad(const StreamRequest& req);
+        /// @details Coalesces requests for an already pending/resident slot. Queue
+        ///          saturation leaves the unloaded slot retryable. Invalid or stale
+        ///          handles are refused without changing their replacement slot.
+        bool                      RequestLoad(const StreamRequest& req);
 
         /// @brief Mark a mesh slot for eviction. Render-thread only (future use).
-        void                   RequestEvict(BufferHandle handle);
+        void                      RequestEvict(BufferHandle handle);
 
         /// @brief True if a compaction pass has been requested and not yet serviced.
-        bool                   IsCompactionRequested() const
+        bool                      IsCompactionRequested() const
         {
             return m_compact_requested;
         }

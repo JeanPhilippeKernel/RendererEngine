@@ -1,6 +1,7 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Compute/FrustumCullingPass.h>
 #include <ZEngine/Rendering/Renderers/Compute/SkyAtmosphereViewPass.h>
@@ -115,9 +116,10 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::Initialize(Hardwares::VulkanDevicePtr device)
     {
-        Device          = device;
-        RenderGraph     = ZPushStructCtor<Renderers::RenderGraph>(Device->Arena);
-        RenderSceneData = ZPushStructCtor<Scenes::SceneData>(Device->Arena);
+        Device                       = device;
+        RenderGraph                  = ZPushStructCtor<Renderers::RenderGraph>(Device->Arena);
+        m_scene_pipeline_preparation = RenderGraph;
+        RenderSceneData              = ZPushStructCtor<Scenes::SceneData>(Device->Arena);
         ZENGINE_VALIDATE_ASSERT(Device->SwapchainPtr->BufferredFrameCount <= Scenes::SceneData::MAX_FRAMES_IN_FLIGHT, "SceneData buffers must cover every buffered frame")
         constexpr const char*  transform_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT]       = {"TransformStorageBuffer[0]", "TransformStorageBuffer[1]", "TransformStorageBuffer[2]"};
         constexpr const char*  render_data_names[Scenes::SceneData::MAX_FRAMES_IN_FLIGHT]     = {"RenderDataStorageBuffer[0]", "RenderDataStorageBuffer[1]", "RenderDataStorageBuffer[2]"};
@@ -218,29 +220,64 @@ namespace ZEngine::Rendering::Renderers
         RenderGraph->AddCallbackPass("Asset Preview", m_asset_preview_pass);
         RenderGraph->AddCallbackPass("Asset Preview Publish", &m_asset_preview_pass->Publish);
 
-        RenderGraph->AddCallbackPass("Frustum Culling Pass", frustum_culling_pass);
-        RenderGraph->AddCallbackPass("Sky Atmosphere Transmittance", m_sky_atmosphere_transmittance_pass);
-        RenderGraph->AddCallbackPass("Sky Atmosphere Multiscattering", m_sky_atmosphere_multiscattering_pass);
-        RenderGraph->AddCallbackPass("Sky Atmosphere Source Radiance", m_sky_atmosphere_source_radiance_pass);
-        RenderGraph->AddCallbackPass("Sky HDRI Source Mip Generation", m_sky_hdri_mip_generation_pass);
-        RenderGraph->AddCallbackPass("Sky Atmosphere Source Mip Generation", m_sky_atmosphere_mip_generation_pass);
-        RenderGraph->AddCallbackPass("Sky Diffuse Irradiance", m_sky_diffuse_irradiance_pass);
-        RenderGraph->AddCallbackPass("Sky Specular Prefilter", m_sky_specular_prefilter_pass);
-        RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass);
-        RenderGraph->AddCallbackPass("G-Buffer Pass", gbuffer_pass);
-        RenderGraph->AddCallbackPass("Object ID Pass", object_id_pass);
-        RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass);
-        RenderGraph->AddCallbackPass("Sky Sphere Pass", sky_sphere_pass);
-        RenderGraph->AddCallbackPass("Environment Background Pass", environment_background_pass);
-        RenderGraph->AddCallbackPass("Sky View LUT Pass", sky_view_lut_pass);
-        RenderGraph->AddCallbackPass("Aerial Perspective Pass", aerial_pass);
-        RenderGraph->AddCallbackPass("Sky Composite Pass", sky_composite_pass);
-        RenderGraph->AddCallbackPass("Transparent Pass", m_transparent_pass);
-        RenderGraph->AddCallbackPass("Tone Mapping Pass", tone_mapping_pass);
-        RenderGraph->AddCallbackPass("Grid Pass", grid_pass);
-        RenderGraph->AddCallbackPass("Grid Labels Pass", grid_label_pass);
-        RenderGraph->AddCallbackPass("Selection Outline Pass", selection_outline_pass);
-        RenderGraph->AddCallbackPass("Gizmo Pass", gizmo_pass);
+        RenderGraph->AddCallbackPass("Frustum Culling Pass", frustum_culling_pass, {.Usage = RGScenePipelineUsage::Core, .Descriptors = RGSceneDescriptorProfile::Culling});
+        RenderGraph->AddCallbackPass("Sky Atmosphere Transmittance", m_sky_atmosphere_transmittance_pass, {.Usage = RGScenePipelineUsage::Atmosphere});
+        RenderGraph->AddCallbackPass("Sky Atmosphere Multiscattering", m_sky_atmosphere_multiscattering_pass, {.Usage = RGScenePipelineUsage::Atmosphere});
+        RenderGraph->AddCallbackPass("Sky Atmosphere Source Radiance", m_sky_atmosphere_source_radiance_pass, {.Usage = RGScenePipelineUsage::Atmosphere});
+        RenderGraph->AddCallbackPass("Sky HDRI Source Mip Generation", m_sky_hdri_mip_generation_pass, {.Usage = RGScenePipelineUsage::HDRI});
+        RenderGraph->AddCallbackPass("Sky Atmosphere Source Mip Generation", m_sky_atmosphere_mip_generation_pass, {.Usage = RGScenePipelineUsage::Atmosphere});
+        RenderGraph->AddCallbackPass("Sky Diffuse Irradiance", m_sky_diffuse_irradiance_pass, {.Usage = RGScenePipelineUsage::EnvironmentLighting});
+        RenderGraph->AddCallbackPass("Sky Specular Prefilter", m_sky_specular_prefilter_pass, {.Usage = RGScenePipelineUsage::EnvironmentLighting});
+        RenderGraph->AddCallbackPass("Depth Pre-Pass", scene_depth_prepass, {.Usage = RGScenePipelineUsage::Core, .Formats = {ImageFormat::DEPTH_STENCIL_FROM_DEVICE}, .AttachmentCount = 1, .Descriptors = RGSceneDescriptorProfile::Geometry, .Targets = SceneTargetMask(SceneRenderTarget::Depth), .AttachmentTargets = {{SceneRenderTarget::Depth, LoadOperation::CLEAR}}});
+        RenderGraph->AddCallbackPass(
+            "G-Buffer Pass",
+            gbuffer_pass,
+            {
+            .Usage             = RGScenePipelineUsage::Core,
+            .Formats           = {               ImageFormat::DEPTH_STENCIL_FROM_DEVICE,                         ImageFormat::R8G8B8A8_UNORM,                           ImageFormat::R16G16B16A16_SFLOAT,                                 ImageFormat::R8G8B8A8_UNORM},
+            .AttachmentCount   = 4,
+            .Descriptors       = RGSceneDescriptorProfile::Geometry,
+            .Targets           = SceneTargetMask(SceneRenderTarget::AlbedoAO) | SceneTargetMask(SceneRenderTarget::NormalRoughness) | SceneTargetMask(SceneRenderTarget::MetallicEmissive),
+            .AttachmentTargets = {{SceneRenderTarget::Depth, LoadOperation::LOAD, true}, {SceneRenderTarget::AlbedoAO, LoadOperation::CLEAR}, {SceneRenderTarget::NormalRoughness, LoadOperation::CLEAR}, {SceneRenderTarget::MetallicEmissive, LoadOperation::CLEAR}}
+        });
+        RenderGraph->AddCallbackPass(
+            "Object ID Pass",
+            object_id_pass,
+            {
+            .Usage = RGScenePipelineUsage::Core, .Formats = {                ImageFormat::DEPTH_STENCIL_FROM_DEVICE,                               ImageFormat::R32_UINT},
+                 .AttachmentCount = 2, .Descriptors = RGSceneDescriptorProfile::Geometry, .Targets = SceneTargetMask(SceneRenderTarget::ObjectDepth) | SceneTargetMask(SceneRenderTarget::ObjectId), .AttachmentTargets = {{SceneRenderTarget::ObjectDepth, LoadOperation::CLEAR}, {SceneRenderTarget::ObjectId, LoadOperation::CLEAR}}
+        });
+        RenderGraph->AddCallbackPass("Lighting Pass", lighting_pass, {.Usage = RGScenePipelineUsage::Core, .Formats = {ImageFormat::R16G16B16A16_SFLOAT}, .AttachmentCount = 1, .Descriptors = RGSceneDescriptorProfile::Lighting, .Targets = SceneTargetMask(SceneRenderTarget::HdrColor), .AttachmentTargets = {{SceneRenderTarget::HdrColor, LoadOperation::CLEAR}}});
+        RenderGraph->AddCallbackPass(
+            "Sky Sphere Pass",
+            sky_sphere_pass,
+            {
+            .Usage = RGScenePipelineUsage::Sphere, .Formats = {               ImageFormat::DEPTH_STENCIL_FROM_DEVICE, ImageFormat::R16G16B16A16_SFLOAT},
+                 .AttachmentCount = 2, .Descriptors = RGSceneDescriptorProfile::Camera, .AttachmentTargets = {{SceneRenderTarget::Depth, LoadOperation::LOAD, true},      SceneRenderTarget::HdrColor}
+        });
+        RenderGraph->AddCallbackPass(
+            "Environment Background Pass",
+            environment_background_pass,
+            {
+            .Usage = RGScenePipelineUsage::Core, .Formats = {               ImageFormat::DEPTH_STENCIL_FROM_DEVICE, ImageFormat::R16G16B16A16_SFLOAT},
+                 .AttachmentCount = 2, .Descriptors = RGSceneDescriptorProfile::EnvironmentBackground, .AttachmentTargets = {{SceneRenderTarget::Depth, LoadOperation::LOAD, true},      SceneRenderTarget::HdrColor}
+        });
+        RenderGraph->AddCallbackPass("Sky View LUT Pass", sky_view_lut_pass, {.Usage = RGScenePipelineUsage::AtmosphereView, .Descriptors = RGSceneDescriptorProfile::SkyViewLut, .Targets = SceneTargetMask(SceneRenderTarget::SkyViewLut)});
+        RenderGraph->AddCallbackPass("Aerial Perspective Pass", aerial_pass, {.Usage = RGScenePipelineUsage::AtmosphereView, .Descriptors = RGSceneDescriptorProfile::AerialPerspective, .Targets = SceneTargetMask(SceneRenderTarget::AerialInscatter) | SceneTargetMask(SceneRenderTarget::AerialTransmittance)});
+        RenderGraph->AddCallbackPass("Sky Composite Pass", sky_composite_pass, {.Usage = RGScenePipelineUsage::AtmosphereView, .Formats = {ImageFormat::R16G16B16A16_SFLOAT}, .AttachmentCount = 1, .Descriptors = RGSceneDescriptorProfile::SkyComposite, .Targets = SceneTargetMask(SceneRenderTarget::HdrComposited), .AttachmentTargets = {{SceneRenderTarget::HdrComposited, LoadOperation::CLEAR}}});
+        RenderGraph->AddCallbackPass(
+            "Transparent Pass",
+            m_transparent_pass,
+            {
+            .Usage = RGScenePipelineUsage::Core, .Formats = {               ImageFormat::DEPTH_STENCIL_FROM_DEVICE, ImageFormat::R16G16B16A16_SFLOAT},
+                 .AttachmentCount = 2, .Descriptors = RGSceneDescriptorProfile::Transparent, .AttachmentTargets = {{SceneRenderTarget::Depth, LoadOperation::LOAD, true},      SceneRenderTarget::HdrColor},
+                 .CompositedHdrAttachment = true
+        });
+        RenderGraph->AddCallbackPass("Tone Mapping Pass", tone_mapping_pass, {.Usage = RGScenePipelineUsage::Core, .Formats = {ImageFormat::R8G8B8A8_UNORM}, .AttachmentCount = 1, .Descriptors = RGSceneDescriptorProfile::ToneMapping, .Targets = SceneTargetMask(SceneRenderTarget::Color), .AttachmentTargets = {{SceneRenderTarget::Color, LoadOperation::CLEAR}}});
+        RenderGraph->AddCallbackPass("Grid Pass", grid_pass, {.Usage = RGScenePipelineUsage::Core, .Formats = {ImageFormat::R8G8B8A8_UNORM}, .AttachmentCount = 1, .Descriptors = RGSceneDescriptorProfile::Grid, .AttachmentTargets = {SceneRenderTarget::Color}});
+        RenderGraph->AddCallbackPass("Grid Labels Pass", grid_label_pass, {.Usage = RGScenePipelineUsage::Core, .Formats = {ImageFormat::R8G8B8A8_UNORM}, .AttachmentCount = 1, .Descriptors = RGSceneDescriptorProfile::GridLabels, .AttachmentTargets = {SceneRenderTarget::Color}});
+        RenderGraph->AddCallbackPass("Selection Outline Pass", selection_outline_pass, {.Usage = RGScenePipelineUsage::Core, .Formats = {ImageFormat::R8G8B8A8_UNORM}, .AttachmentCount = 1, .Descriptors = RGSceneDescriptorProfile::SelectionOutline, .AttachmentTargets = {SceneRenderTarget::Color}});
+        RenderGraph->AddCallbackPass("Gizmo Pass", gizmo_pass, {.Usage = RGScenePipelineUsage::Core, .Formats = {ImageFormat::R8G8B8A8_UNORM}, .AttachmentCount = 1, .Descriptors = RGSceneDescriptorProfile::Camera, .AttachmentTargets = {SceneRenderTarget::Color}});
         RenderGraph->Setup();
         RenderGraph->Compile();
         PublishMemoryStatistics();
@@ -250,6 +287,19 @@ namespace ZEngine::Rendering::Renderers
         // publishes the first real allocation after an acquired frame compiles it.
     }
 
+    void GraphicRenderer::ReleaseSceneResourceBindingsAfterReadersJoined()
+    {
+        if (RenderSceneData)
+        {
+            RenderSceneData->ActiveCulledIndirectBuffer = nullptr;
+        }
+        ReleaseSceneEnvironmentPreparation();
+        if (RenderGraph)
+        {
+            RenderGraph->ReleaseDescriptorStorageAfterReadersJoined();
+        }
+    }
+
     void GraphicRenderer::Deinitialize()
     {
         m_frame_output_sequence.value.fetch_add(1, std::memory_order_acq_rel);
@@ -257,6 +307,10 @@ namespace ZEngine::Rendering::Renderers
         m_frame_output_generation.value.store(0, std::memory_order_relaxed);
         m_frame_output_sequence.value.fetch_add(1, std::memory_order_release);
         DiscardSkyResources(m_sky_environment.Shutdown());
+        EndScenePipelinePreparation();
+        m_sky_frame_acquired = false;
+        m_scene_sky_lease.Reset();
+        m_scene_sky_id                                        = {};
         Scenes::SkyEnvironmentResources retired_sky_resources = {};
         while (m_sky_environment.TakeRetiredSnapshot(UINT64_MAX, retired_sky_resources))
             DiscardSkyResources(retired_sky_resources);
@@ -284,6 +338,7 @@ namespace ZEngine::Rendering::Renderers
         m_atmosphere_view_resources_supported      = false;
 
         RenderGraph->Dispose();
+        m_scene_pipeline_preparation = nullptr;
         if (RenderSceneData)
         {
             for (uint32_t i = 0; i < Device->SwapchainPtr->BufferredFrameCount; ++i)
@@ -315,38 +370,57 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
-    Hardwares::CommandBuffer* GraphicRenderer::DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, const Cameras::CameraFrameData& camera)
+    Hardwares::CommandBuffer* GraphicRenderer::DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, const Cameras::CameraFrameData& camera, const Scenes::PreparedSceneFrame* initial_frame)
     {
         ZENGINE_VALIDATE_ASSERT(frame_index < Scenes::SceneData::MAX_FRAMES_IN_FLIGHT, "Invalid scene-buffer frame index")
-        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Transform, &RenderSceneData->TransformBuffers[frame_index]), "Transform buffer is not imported into the render graph")
-        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::RenderData, &RenderSceneData->RenderDataBuffers[frame_index]), "Render data buffer is not imported into the render graph")
-        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::SelectionTokenState, &RenderSceneData->SelectionTokenStateBuffers[frame_index]), "Selection token state buffer is not imported into the render graph")
-        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Material, &RenderSceneData->MaterialBuffers[frame_index]), "Material buffer is not imported into the render graph")
-        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Light, &RenderSceneData->LightBuffers[frame_index]), "Light buffer is not imported into the render graph")
-        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::CullingInput, &RenderSceneData->CullingInputBuffers[frame_index]), "Culling input buffer is not imported into the render graph")
-        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::CulledIndirect, &RenderSceneData->CulledIndirectBuffers[frame_index]), "Culled indirect buffer is not imported into the render graph")
+        if (initial_frame && initial_frame->View.Captured && !initial_frame->CameraBuffer)
+        {
+            return nullptr;
+        }
+        const auto* transforms                      = initial_frame && initial_frame->TransformBuffer ? initial_frame->TransformBuffer : &RenderSceneData->TransformBuffers[frame_index];
+        const auto* lights                          = initial_frame && initial_frame->LightBuffer ? initial_frame->LightBuffer : &RenderSceneData->LightBuffers[frame_index];
+        const auto* materials                       = initial_frame && initial_frame->MaterialBuffer ? initial_frame->MaterialBuffer : &RenderSceneData->MaterialBuffers[frame_index];
+        const auto* draws                           = initial_frame && initial_frame->DrawBuffer ? initial_frame->DrawBuffer : &RenderSceneData->RenderDataBuffers[frame_index];
+        const auto* culling                         = initial_frame && frame_index < initial_frame->CullingInputBuffers.size() ? &initial_frame->CullingInputBuffers[frame_index] : &RenderSceneData->CullingInputBuffers[frame_index];
+        const auto* indirect                        = initial_frame && frame_index < initial_frame->CulledIndirectBuffers.size() ? &initial_frame->CulledIndirectBuffers[frame_index] : &RenderSceneData->CulledIndirectBuffers[frame_index];
+        const auto* selection                       = initial_frame && frame_index < initial_frame->SelectionTokenBuffers.size() ? &initial_frame->SelectionTokenBuffers[frame_index] : &RenderSceneData->SelectionTokenStateBuffers[frame_index];
+        RenderSceneData->ActiveCulledIndirectBuffer = indirect;
+        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Transform, transforms), "Transform buffer is not imported into the render graph")
+        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::RenderData, draws), "Render data buffer is not imported into the render graph")
+        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::SelectionTokenState, selection), "Selection token state buffer is not imported into the render graph")
+        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Material, materials), "Material buffer is not imported into the render graph")
+        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::Light, lights), "Light buffer is not imported into the render graph")
+        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::CullingInput, culling), "Culling input buffer is not imported into the render graph")
+        ZENGINE_VALIDATE_ASSERT(RenderGraph->UpdateImportedBuffer(RendererBufferName::CulledIndirect, indirect), "Culled indirect buffer is not imported into the render graph")
 
-        auto asset_manager   = Managers::AssetManager::Instance();
-        auto view_proj       = camera.Projection * camera.View;
-        auto ubo_camera_data = UBOCameraLayout{.View = camera.View, .Projection = camera.Projection, .Position = Vec4f(camera.Position, 1.0f), .InvViewProj = view_proj.Inverse()};
-
-        if (Device->RRM && RenderSceneData->MaterialBuffers[frame_index].Handle)
+        if (Device->RRM && !(initial_frame && initial_frame->MaterialBuffer) && RenderSceneData->MaterialBuffers[frame_index].Handle)
         {
             auto* rrm = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
-            rrm->UpdateBuffer(RenderSceneData->MaterialBuffers[frame_index], asset_manager->GPUMeshMaterials.data(), asset_manager->GPUMeshMaterials.size() * sizeof(asset_manager->GPUMeshMaterials[0]));
+            rrm->UploadFrameMaterials(RenderSceneData->MaterialBuffers[frame_index]);
         }
 
         // Light buffer is uploaded by AppRenderPipeline::RenderScene from the retained frame snapshot.
 
-        // Push camera data into the per-frame heap; store offset for dynamic descriptor binding
-        auto& heap                        = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
-        auto  camera_alloc                = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
-        RenderSceneData->CameraHeapOffset = camera_alloc.Offset;
+        RenderSceneData->ActiveCameraBuffer = initial_frame ? initial_frame->CameraBuffer : nullptr;
+        RenderSceneData->CameraHeapOffset   = 0;
+        if (!RenderSceneData->ActiveCameraBuffer)
+        {
+            const auto view_proj              = camera.Projection * camera.View;
+            const auto ubo_camera_data        = UBOCameraLayout{.View = camera.View, .Projection = camera.Projection, .Position = Vec4f(camera.Position, 1.0f), .InvViewProj = view_proj.Inverse()};
+            auto&      heap                   = Device->FrameHeaps[Device->SwapchainPtr->CurrentFrame->Index];
+            const auto camera_alloc           = heap.Push(&ubo_camera_data, sizeof(UBOCameraLayout), Device->MinUniformBufferOffsetAlignment());
+            RenderSceneData->CameraHeapOffset = camera_alloc.Offset;
+        }
 
         m_asset_preview_pass->BeginFrame();
         Hardwares::CommandBuffer* const output = RenderGraph->Execute(cb);
+        RenderSceneData->ActiveCameraBuffer    = nullptr;
         m_asset_preview_pass->EndFrame();
-        PublishFrameOutput(RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName));
+        FinishSkyFrameRecording(output != nullptr);
+        if (output)
+        {
+            PublishFrameOutput(RenderGraph->ResourceInspector->GetRenderTarget(RendererResourceName::FrameColorRenderTargetName));
+        }
         PublishMemoryStatistics();
         return output;
     }
@@ -453,8 +527,9 @@ namespace ZEngine::Rendering::Renderers
         m_memory_statistics_sequence.value.fetch_add(1, std::memory_order_release);
     }
 
-    void GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision)
+    bool GraphicRenderer::SubmitSkySnapshot(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision, Scenes::SkyEnvironmentPublication publication)
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SkyRequest");
         const EnvironmentLightingBakeSettings bake_settings       = Device ? Device->EnvironmentLightingBakeSettings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
         uint64_t                              hdri_source_hash    = 0;
         bool                                  hdri_artifact_ready = !sky.IsHDRI();
@@ -462,6 +537,7 @@ namespace ZEngine::Rendering::Renderers
         {
             if (auto* const asset_manager = ZEngine::Managers::AssetManager::Instance(); asset_manager && asset_manager->Registry)
             {
+                std::lock_guard lock(asset_manager->IngestMutex);
                 if (const auto* const environment = asset_manager->Registry->FindByUUID(sky.EnvironmentMap))
                 {
                     hdri_source_hash    = environment->Meta.SourceHash;
@@ -470,9 +546,355 @@ namespace ZEngine::Rendering::Renderers
             }
         }
 
-        if (m_sky_environment.SubmitConfig(sky, revision, bake_settings, celestial_light, hdri_source_hash, hdri_artifact_ready))
-            StartPendingSkyBake();
+        return m_sky_environment.SubmitConfig(sky, revision, bake_settings, celestial_light, hdri_source_hash, hdri_artifact_ready, publication);
+    }
+
+    void GraphicRenderer::ReleaseSceneEnvironmentPreparation()
+    {
+        EndScenePipelinePreparation();
+        m_scene_sky_lease.Reset();
+        m_scene_sky_id                  = {};
+        m_scene_sky_revision            = 0;
+        m_scene_sky_cancelled           = false;
+        // The environment observed a newer candidate revision, even when the
+        // outgoing scene's authoring revision has not changed in the meantime.
+        m_presented_render_sky_revision = 0;
+    }
+
+    void GraphicRenderer::EndScenePipelinePreparation()
+    {
+        if (RenderGraph)
+        {
+            RenderGraph->SetSceneTextureSources({});
+        }
+        for (auto& source : m_scene_texture_sources)
+        {
+            source.Reset();
+        }
+        m_scene_texture_sources_ready = false;
+        m_scene_grid_font_source.Reset();
+        if (m_scene_pipeline_preparation && m_scene_pipeline_active)
+        {
+            m_scene_pipeline_preparation->EndScenePipelinePreparation();
+        }
+        m_scene_pipeline_state      = RGScenePipelinePreparationState::Idle;
+        m_scene_pipeline_generation = 0;
+        m_scene_pipeline_active     = false;
+    }
+
+    GraphicRenderer::SceneTextureSourceState GraphicRenderer::PrepareSceneGridLabelFont(const Scenes::PreparedSceneFrame& frame, bool* enabled)
+    {
+        *enabled                  = false;
+        auto grid                 = frame.Grid;
+        grid.Enabled              = grid.Enabled && frame.View.ShowGrid;
+        GridLabelFrameData labels = {};
+        if (!BuildGridLabelFrame(grid, frame.View.Camera, frame.View.GridLabelFont, frame.View.Width, frame.View.Height, labels))
+        {
+            return SceneTextureSourceState::Failed;
+        }
+        if (!labels.Count)
+        {
+            return SceneTextureSourceState::Ready;
+        }
+        auto*       resources = Device && Device->RRM ? static_cast<RenderResourceManager*>(Device->RRM) : nullptr;
+        const auto* texture   = resources ? resources->GetTexture(labels.Atlas) : nullptr;
+        const auto* image     = texture ? Device->ImageBufferManager.Access(texture->BufferHandle) : nullptr;
+        if (!image || !image->GetBuffer().OwnsAllocation || texture->Specification.IsAliasable || labels.Atlas.Index >= RenderResourceManager::TextureVersionCapacity || resources->GetTextureDecodeState(labels.Atlas) == RenderResourceManager::TextureDecodeState::Failed)
+        {
+            return SceneTextureSourceState::Failed;
+        }
+        if (!m_scene_grid_font_source)
+        {
+            m_scene_grid_font_source = resources->PinTextureVersion(labels.Atlas);
+            if (!m_scene_grid_font_source)
+            {
+                return SceneTextureSourceState::Pending;
+            }
+        }
+        const auto retained = m_scene_grid_font_source.Get()->Handle;
+        if (retained.Index != labels.Atlas.Index || retained.Generation != labels.Atlas.Generation)
+        {
+            return SceneTextureSourceState::Failed;
+        }
+        *enabled = true;
+        return SceneTextureSourceState::Ready;
+    }
+
+    GraphicRenderer::SceneTextureSourceState GraphicRenderer::PrepareSceneTextureSources(const Scenes::SkyEnvironmentSnapshot& snapshot, const Scenes::SkyConfig& config)
+    {
+        if (m_scene_texture_sources_ready)
+        {
+            return SceneTextureSourceState::Ready;
+        }
+        auto* resources = Device && Device->RRM ? static_cast<RenderResourceManager*>(Device->RRM) : nullptr;
+        if (!resources)
+        {
+            return SceneTextureSourceState::Failed;
+        }
+        // SkySphere intentionally borrows the permanent fallback snapshot; its
+        // snapshot config is not the candidate's presentation/bake contract.
+        const auto& lighting = config.IsSkySphere() ? m_sky_environment.GetFallbackLighting() : snapshot.Lighting;
+        if (!snapshot.SourceRadiance.Valid() || !lighting.Valid() || (config.IsAtmosphere() && !snapshot.Atmosphere.Valid()))
+        {
+            return SceneTextureSourceState::Failed;
+        }
+        const Textures::TextureHandle                           handles[] = {snapshot.SourceRadiance, snapshot.Atmosphere.Transmittance, snapshot.Atmosphere.Multiscattering, lighting.DiffuseIrradiance, lighting.SpecularEnvironment, lighting.BrdfIntegrationLut};
+        std::array<RenderResourceManager::TextureVersionPin, 6> sources   = {};
+        for (const auto handle : handles)
+        {
+            if (!handle.Valid())
+            {
+                continue;
+            }
+            const auto* texture = resources->GetTexture(handle);
+            const auto* image   = texture ? Device->ImageBufferManager.Access(texture->BufferHandle) : nullptr;
+            if (!image || handle.Index >= RenderResourceManager::TextureVersionCapacity || !image->GetBuffer().OwnsAllocation || texture->Specification.IsAliasable || resources->GetTextureDecodeState(handle) == RenderResourceManager::TextureDecodeState::Failed)
+            {
+                return SceneTextureSourceState::Failed;
+            }
+        }
+        for (uint32_t index = 0; index < sources.size(); ++index)
+        {
+            if (!handles[index].Valid())
+            {
+                continue;
+            }
+            sources[index] = resources->PinTextureVersion(handles[index]);
+            if (!sources[index])
+            {
+                // A temporary upload/admission gate preserves the outgoing
+                // scene. Never publish a partially retained candidate bank.
+                return SceneTextureSourceState::Pending;
+            }
+        }
+        m_scene_texture_sources       = std::move(sources);
+        m_scene_texture_sources_ready = true;
+        return SceneTextureSourceState::Ready;
+    }
+
+    void GraphicRenderer::PollSceneEnvironmentPreparations()
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.EnvironmentPreparation");
+        if (!Device || !Device->RRM)
+        {
+            return;
+        }
+        auto* const rrm = static_cast<RenderResourceManager*>(Device->RRM);
         PollSkyBake();
+        CollectRetiredSkySnapshots();
+        StartPendingSkyBake();
+        if (!m_scene_sky_lease)
+        {
+            // Activation is not recording. Keep the shader transaction pinned
+            // through failed/minimized frames before admitting another candidate.
+            if (m_scene_pipeline_generation != 0)
+            {
+                return;
+            }
+            RenderResourceManager::SceneEnvironmentPreparation preparation = {};
+            m_scene_sky_lease                                              = rrm->ClaimSceneEnvironmentPreparation(&preparation);
+            if (!m_scene_sky_lease)
+            {
+                return;
+            }
+            m_scene_sky_id = preparation.Id;
+            if (m_sky_revision_sequence == UINT64_MAX)
+            {
+                rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, false);
+                ReleaseSceneEnvironmentPreparation();
+                return;
+            }
+            m_scene_sky_revision = ++m_sky_revision_sequence;
+            auto usage           = RGScenePipelineUsage::Core;
+            if (preparation.Input.Sky.IsSkySphere())
+            {
+                usage = usage | RGScenePipelineUsage::Sphere;
+            }
+            else if (preparation.Input.Sky.IsHDRI())
+            {
+                usage = usage | RGScenePipelineUsage::HDRI | RGScenePipelineUsage::EnvironmentLighting;
+            }
+            else if (preparation.Input.Sky.IsAtmosphere())
+            {
+                usage = usage | RGScenePipelineUsage::Atmosphere | RGScenePipelineUsage::EnvironmentLighting;
+                if (m_atmosphere_view_resources_supported)
+                {
+                    usage = usage | RGScenePipelineUsage::AtmosphereView;
+                }
+            }
+            if (!m_scene_pipeline_preparation || !m_scene_pipeline_preparation->BeginScenePipelinePreparation(usage))
+            {
+                rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, false, RenderResourceManager::SceneResourcePreparationError::RequiredPipeline);
+                ReleaseSceneEnvironmentPreparation();
+                return;
+            }
+            m_scene_pipeline_state  = RGScenePipelinePreparationState::Preparing;
+            m_scene_pipeline_active = true;
+            if (!SubmitSkySnapshot(preparation.Input.Sky, preparation.Input.CelestialLight, m_scene_sky_revision, Scenes::SkyEnvironmentPublication::Explicit))
+            {
+                rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, false);
+                ReleaseSceneEnvironmentPreparation();
+                return;
+            }
+            StartPendingSkyBake();
+        }
+        RenderResourceManager::SceneEnvironmentPreparation preparation = {};
+        if (!rrm->GetSceneEnvironmentPreparation(m_scene_sky_id, &preparation) || preparation.Cancelled)
+        {
+            if (!m_scene_sky_cancelled)
+            {
+                m_sky_environment.CancelPrepared(m_scene_sky_revision);
+                m_scene_sky_cancelled = true;
+            }
+            PollSkyBake();
+            if (!m_sky_environment.GetActiveBake())
+            {
+                ReleaseSceneEnvironmentPreparation();
+            }
+            return;
+        }
+        if (preparation.State == RenderResourceManager::SceneEnvironmentPreparationState::Preparing)
+        {
+            m_scene_pipeline_state = m_scene_pipeline_preparation->PollScenePipelinePreparation();
+            if (m_scene_pipeline_state == RGScenePipelinePreparationState::Failed || m_scene_pipeline_state == RGScenePipelinePreparationState::Idle)
+            {
+                rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, false, RenderResourceManager::SceneResourcePreparationError::RequiredPipeline);
+                m_sky_environment.CancelPrepared(m_scene_sky_revision);
+                ReleaseSceneEnvironmentPreparation();
+                return;
+            }
+            StartPendingSkyBake();
+            const auto* prepared_snapshot = m_sky_environment.GetPreparedSnapshot(m_scene_sky_revision);
+            const auto  texture_state     = m_scene_pipeline_state == RGScenePipelinePreparationState::Ready && prepared_snapshot ? PrepareSceneTextureSources(*prepared_snapshot, preparation.Input.Sky) : SceneTextureSourceState::Pending;
+            if (texture_state == SceneTextureSourceState::Failed)
+            {
+                rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, false, RenderResourceManager::SceneResourcePreparationError::RequiredDescriptor);
+                m_sky_environment.CancelPrepared(m_scene_sky_revision);
+                ReleaseSceneEnvironmentPreparation();
+                return;
+            }
+            if (texture_state == SceneTextureSourceState::Ready)
+            {
+                Scenes::PreparedSceneFrame frame = {};
+                if (rrm->GetPreparedSceneFrame(m_scene_sky_id, &frame))
+                {
+                    bool       grid_labels_enabled = false;
+                    const auto font_state          = PrepareSceneGridLabelFont(frame, &grid_labels_enabled);
+                    if (font_state == SceneTextureSourceState::Pending)
+                    {
+                        return;
+                    }
+                    if (font_state == SceneTextureSourceState::Failed)
+                    {
+                        rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, false, RenderResourceManager::SceneResourcePreparationError::RequiredDescriptor);
+                        m_sky_environment.CancelPrepared(m_scene_sky_revision);
+                        ReleaseSceneEnvironmentPreparation();
+                        return;
+                    }
+                    const auto                       atmosphere     = Scenes::MakeAtmosphereViewSettings(prepared_snapshot->Config.Atmosphere, preparation.Input.Sky.Atmosphere);
+                    const auto                       view_class     = Scenes::ClassifyAtmosphereView(atmosphere, frame.View.Camera.Position);
+                    const bool                       use_composited = m_atmosphere_view_resources_supported && prepared_snapshot->Config.IsAtmosphere() && prepared_snapshot->Atmosphere.Valid() && prepared_snapshot->CelestialLight.IsAvailable && prepared_snapshot->CelestialLight.IsValid() && (view_class == Scenes::AtmosphereViewClass::InsideAtmosphere || view_class == Scenes::AtmosphereViewClass::OutsideAtmosphere);
+                    const SceneDescriptorEnvironment environment    = {.SourceRadiance = &m_scene_texture_sources[0], .DiffuseIrradiance = &m_scene_texture_sources[3], .SpecularEnvironment = &m_scene_texture_sources[4], .BrdfIntegrationLut = &m_scene_texture_sources[5], .AtmosphereTransmittance = &m_scene_texture_sources[1], .AtmosphereMultiscattering = &m_scene_texture_sources[2], .UseCompositedSceneColor = use_composited, .GridLabelFont = &m_scene_grid_font_source, .SelectionTokenBuffers = frame.SelectionTokenBuffers, .GridLabelsEnabled = grid_labels_enabled};
+                    const auto                       descriptors    = m_scene_pipeline_preparation->PollSceneDescriptorPreparation(frame, 1, environment);
+                    if (descriptors == RGScenePipelinePreparationState::Preparing)
+                    {
+                        return;
+                    }
+                    if (descriptors != RGScenePipelinePreparationState::Ready)
+                    {
+                        rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, false, RenderResourceManager::SceneResourcePreparationError::RequiredDescriptor);
+                        m_sky_environment.CancelPrepared(m_scene_sky_revision);
+                        ReleaseSceneEnvironmentPreparation();
+                        return;
+                    }
+                }
+                rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, true);
+            }
+            else if (!m_sky_environment.GetActiveBake() && m_sky_environment.GetState() == Scenes::SkyEnvironmentState::Failed)
+            {
+                rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, false);
+                m_sky_environment.CancelPrepared(m_scene_sky_revision);
+                ReleaseSceneEnvironmentPreparation();
+            }
+        }
+    }
+
+    bool GraphicRenderer::HasPreparedSceneTargets(RenderResourceManager::SceneResourcePreparationId resources, uint32_t width, uint32_t height) const
+    {
+        return resources && resources == m_scene_sky_id && m_scene_pipeline_active && RenderGraph && RenderGraph->HasPreparedSceneTargets(width, height);
+    }
+
+    bool GraphicRenderer::ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision, uint64_t scene_generation, RenderResourceManager::SceneResourcePreparationId resources)
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.EnvironmentActivation");
+        PollSceneEnvironmentPreparations();
+        if (resources)
+        {
+            RenderResourceManager::SceneEnvironmentPreparation preparation = {};
+            auto* const                                        rrm         = Device && Device->RRM ? static_cast<RenderResourceManager*>(Device->RRM) : nullptr;
+            if (!rrm || !rrm->GetSceneEnvironmentPreparation(resources, &preparation) || preparation.ExpectedGeneration + 1 != scene_generation)
+            {
+                return false;
+            }
+            if (preparation.State == RenderResourceManager::SceneEnvironmentPreparationState::Ready)
+            {
+                if (preparation.Cancelled || resources != m_scene_sky_id || !m_scene_texture_sources_ready || !m_sky_environment.GetPreparedSnapshot(m_scene_sky_revision) || !m_scene_pipeline_preparation->ActivateSceneDescriptors() || !rrm->ActivateSceneEnvironmentPreparation(resources))
+                {
+                    return false;
+                }
+                const bool activated = m_sky_environment.ActivatePrepared(m_scene_sky_revision);
+                ZENGINE_VALIDATE_ASSERT(activated, "Ready scene environment lost its render-owned snapshot")
+                m_presented_scene_generation    = scene_generation;
+                m_presented_sky_revision        = preparation.Input.SkyRevision;
+                m_presented_render_sky_revision = m_scene_sky_revision;
+                m_scene_pipeline_generation     = scene_generation;
+                if (RenderGraph)
+                {
+                    RenderGraph->SetSceneTextureSources(m_scene_texture_sources);
+                }
+                m_scene_sky_lease.Reset();
+                m_scene_sky_id        = {};
+                m_scene_sky_revision  = 0;
+                m_scene_sky_cancelled = false;
+                return true;
+            }
+            if (preparation.State != RenderResourceManager::SceneEnvironmentPreparationState::NotRequested && preparation.State != RenderResourceManager::SceneEnvironmentPreparationState::Activated)
+            {
+                return false;
+            }
+        }
+        // Coalesced authoring edits cannot replace the prepared input before
+        // its first successful recording, including retries after graph rejection.
+        if (m_scene_pipeline_generation != 0)
+        {
+            return scene_generation == m_scene_pipeline_generation;
+        }
+        // Outgoing frames continue selecting their retained environment while
+        // the candidate owns the scheduler. Do not supersede it with old inputs.
+        if (m_scene_sky_lease)
+        {
+            return scene_generation == m_presented_scene_generation;
+        }
+        if (revision == 0)
+        {
+            return true;
+        }
+        if (m_presented_render_sky_revision == 0 || m_presented_scene_generation != scene_generation || m_presented_sky_revision != revision)
+        {
+            if (m_sky_revision_sequence == UINT64_MAX)
+            {
+                return false;
+            }
+            m_presented_render_sky_revision = ++m_sky_revision_sequence;
+            m_presented_scene_generation    = scene_generation;
+            m_presented_sky_revision        = revision;
+        }
+        if (SubmitSkySnapshot(sky, celestial_light, m_presented_render_sky_revision, Scenes::SkyEnvironmentPublication::Immediate))
+        {
+            StartPendingSkyBake();
+        }
+        PollSkyBake();
+        return true;
     }
 
     void GraphicRenderer::BeginSkyFrame(const Cameras::CameraFrameData& camera)
@@ -535,13 +957,39 @@ namespace ZEngine::Rendering::Renderers
         m_sky_composite_pass->SetEnvironment(use_atmosphere_view ? snapshot : nullptr, presentation);
         m_tone_mapping_pass->SetUseCompositedSceneColor(use_atmosphere_view);
         m_transparent_pass->SetUseCompositedSceneColor(use_atmosphere_view);
+        m_sky_frame_acquired = true;
+    }
+
+    void GraphicRenderer::FinishSkyFrameRecording(bool recorded)
+    {
+        if (recorded && m_scene_pipeline_generation != 0 && m_scene_pipeline_generation == m_presented_scene_generation)
+        {
+            EndScenePipelinePreparation();
+        }
+        if (!m_sky_frame_acquired)
+        {
+            return;
+        }
+        m_sky_frame_acquired = false;
+        if (!recorded)
+        {
+            m_sky_environment.ReleaseCancelledFrame();
+            return;
+        }
         Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyFrameSubmitted, this, &GraphicRenderer::OnSkyFrameCancelled);
         if (m_sky_environment.CanRecordGpuBakeStage())
+        {
             Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&GraphicRenderer::OnSkyBakeStageSubmitted, this);
+        }
     }
 
     void GraphicRenderer::StartPendingSkyBake()
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SkyBakeAdmission");
+        if (m_scene_sky_lease && m_scene_pipeline_state != RGScenePipelinePreparationState::Ready)
+        {
+            return;
+        }
         Scenes::SkyEnvironmentBakeRequest request = {};
         if (!m_sky_environment.TakeBakeRequest(request))
             return;
@@ -621,31 +1069,34 @@ namespace ZEngine::Rendering::Renderers
             return;
         }
 
-        const auto* const environment = asset_manager->Registry->FindByUUID(request.Config.EnvironmentMap);
-        if (!environment)
-        {
-            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI asset is not registered", request.Revision)
-            m_sky_environment.CompleteBake(request.Revision, {}, false);
-            return;
-        }
-
-        if (environment->Meta.ArtifactPath[0] == '\0')
-        {
-            ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} is using the fallback: HDRI has no completed cooked artifact", request.Revision)
-            m_sky_environment.CompleteBake(request.Revision, {}, false);
-            return;
-        }
-
-        const auto artifact_path = Core::VFS::VFSPath::Parse(environment->Meta.ArtifactPath);
-        if (artifact_path.Failed())
-        {
-            ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI cooked-artifact path is invalid", request.Revision)
-            m_sky_environment.CompleteBake(request.Revision, {}, false);
-            return;
-        }
-
         char native_path[MAX_FILE_PATH_COUNT] = {};
-        artifact_path.Value().ResolveNative(asset_manager->CurrentWorkingSpacePath, native_path, sizeof(native_path));
+        {
+            // Registry pointers are borrowed only under the ingest lock. Copy
+            // the resolved artifact identity/path before any file I/O or upload.
+            std::lock_guard   lock(asset_manager->IngestMutex);
+            const auto* const environment = asset_manager->Registry->FindByUUID(request.Config.EnvironmentMap);
+            if (!environment)
+            {
+                ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI asset is not registered", request.Revision)
+                m_sky_environment.CompleteBake(request.Revision, {}, false);
+                return;
+            }
+            if (environment->State != Core::VFS::AssetState::Loaded || environment->Meta.SourceHash != request.HDRISourceHash || environment->Meta.ArtifactPath[0] == '\0')
+            {
+                ZENGINE_CORE_WARN("[SkyEnvironment] Revision {} cannot use a missing or superseded HDRI artifact", request.Revision)
+                m_sky_environment.CompleteBake(request.Revision, {}, false);
+                return;
+            }
+
+            const auto artifact_path = Core::VFS::VFSPath::Parse(environment->Meta.ArtifactPath);
+            if (artifact_path.Failed())
+            {
+                ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI cooked-artifact path is invalid", request.Revision)
+                m_sky_environment.CompleteBake(request.Revision, {}, false);
+                return;
+            }
+            artifact_path.Value().ResolveNative(asset_manager->CurrentWorkingSpacePath, native_path, sizeof(native_path));
+        }
         if (native_path[0] == '\0')
         {
             ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: HDRI cooked-artifact path cannot be resolved", request.Revision)
@@ -690,6 +1141,7 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::PollSkyBake()
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SkyCompletionPoll");
         const Scenes::SkyEnvironmentBakeRequest* const bake            = m_sky_environment.GetActiveBake();
         const Textures::TextureHandle                  source_radiance = m_sky_environment.GetActiveBakeSource();
         if (!bake || !source_radiance.Valid() || !Device || !Device->RRM)
@@ -787,6 +1239,10 @@ namespace ZEngine::Rendering::Renderers
         {
             ZENGINE_CORE_INFO("[SkyEnvironment] Published sky revision {}", revision)
         }
+        else if (result == Scenes::SkyEnvironmentBakeResult::Prepared)
+        {
+            ZENGINE_CORE_INFO("[SkyEnvironment] Prepared sky revision {} for explicit activation", revision)
+        }
         else
         {
             DiscardSkyResources({.Atmosphere = owns_atmosphere ? atmosphere : Scenes::AtmosphereStaticResources{}, .SourceRadiance = source_radiance, .Lighting = lighting});
@@ -800,15 +1256,22 @@ namespace ZEngine::Rendering::Renderers
 
     void GraphicRenderer::CollectRetiredSkySnapshots()
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SkyRetirement");
         if (!Device || !Device->SwapchainPtr || !Device->SwapchainPtr->RenderTimeline)
             return;
 
         uint64_t completed_timeline_value = 0;
-        vkGetSemaphoreCounterValue(Device->LogicalDevice, Device->SwapchainPtr->RenderTimeline->GetHandle(), &completed_timeline_value);
+        {
+            ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SkyRetirementTimelinePoll");
+            vkGetSemaphoreCounterValue(Device->LogicalDevice, Device->SwapchainPtr->RenderTimeline->GetHandle(), &completed_timeline_value);
+        }
 
         Scenes::SkyEnvironmentResources retired_resources = {};
         while (m_sky_environment.TakeRetiredSnapshot(completed_timeline_value, retired_resources))
+        {
+            ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SkyRetirementDiscard");
             DiscardSkyResources(retired_resources);
+        }
     }
 
     void GraphicRenderer::DiscardSkyTexture(Textures::TextureHandle texture)
@@ -941,6 +1404,7 @@ namespace ZEngine::Rendering::Renderers
 
     Scenes::AtmosphereStaticResources GraphicRenderer::CreateAtmosphereStaticResources()
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.AtmosphereAllocation");
         if (!Device)
             return {};
 
@@ -958,8 +1422,8 @@ namespace ZEngine::Rendering::Renderers
         multiscattering_spec.Height                 = 32;
 
         Scenes::AtmosphereStaticResources resources = {};
-        resources.Transmittance                     = Device->CreateTexture(transmittance_spec, "SkyAtmosphereTransmittance");
-        resources.Multiscattering                   = Device->CreateTexture(multiscattering_spec, "SkyAtmosphereMultiscattering");
+        resources.Transmittance                     = Device->TryCreateTexture(transmittance_spec, "SkyAtmosphereTransmittance");
+        resources.Multiscattering                   = Device->TryCreateTexture(multiscattering_spec, "SkyAtmosphereMultiscattering");
         if (!resources.Valid())
         {
             DiscardSkyResources({.Atmosphere = resources});
@@ -970,6 +1434,7 @@ namespace ZEngine::Rendering::Renderers
 
     Textures::TextureHandle GraphicRenderer::CreateAtmosphereSourceRadiance(const EnvironmentLightingBakeSettings& bake_settings)
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SkySourceAllocation");
         if (!Device || !bake_settings.IsValid())
             return {};
 
@@ -984,11 +1449,12 @@ namespace ZEngine::Rendering::Renderers
         source_spec.MipLevelCount        = GetFullMipCount(bake_settings.SourceRadianceResolution);
         source_spec.BytePerPixel         = sizeof(uint16_t) * 4;
         source_spec.Format               = ImageFormat::R16G16B16A16_SFLOAT;
-        return Device->CreateTexture(source_spec, "SkyAtmosphereSourceRadiance");
+        return Device->TryCreateTexture(source_spec, "SkyAtmosphereSourceRadiance");
     }
 
     EnvironmentLightingResources GraphicRenderer::CreateSkyLightingResources(const EnvironmentLightingBakeSettings& bake_settings)
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SkyLightingAllocation");
         if (!Device || !Device->RRM || !bake_settings.IsValid())
             return {};
 
@@ -1015,8 +1481,8 @@ namespace ZEngine::Rendering::Renderers
         specular_spec.MipLevelCount            = GetFullMipCount(bake_settings.SpecularResolution);
 
         EnvironmentLightingResources resources = {};
-        resources.DiffuseIrradiance            = Device->CreateTexture(diffuse_spec, "SkyDiffuseIrradiance");
-        resources.SpecularEnvironment          = Device->CreateTexture(specular_spec, "SkySpecularEnvironment");
+        resources.DiffuseIrradiance            = Device->TryCreateTexture(diffuse_spec, "SkyDiffuseIrradiance");
+        resources.SpecularEnvironment          = Device->TryCreateTexture(specular_spec, "SkySpecularEnvironment");
         resources.BrdfIntegrationLut           = fallback.BrdfIntegrationLut;
         resources.BrdfIntegrationKey           = fallback.BrdfIntegrationKey;
         resources.BakeSettings                 = bake_settings;

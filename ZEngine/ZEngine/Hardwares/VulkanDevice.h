@@ -34,6 +34,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 #include <ZEngine/Rendering/Specifications/ShaderSpecification.h>
 #include <ZEngine/Rendering/Specifications/RenderPassSpecification.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
+#include <ZEngine/Rendering/SceneTextureDescriptorPreparation.h>
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/HashSet.h>
 #include <ZEngine/Core/Containers/UnorderedHashMap.h>
@@ -49,6 +50,11 @@ namespace ZEngine::Windows
     class CoreWindow;
 }
 
+namespace ZEngine::Rendering
+{
+    class RenderResourceManager;
+}
+
 namespace ZEngine::Rendering::Renderers::RenderPasses
 {
     struct RenderPass;
@@ -58,7 +64,8 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
 namespace ZEngine::Rendering::Shaders
 {
     struct Shader;
-}
+    struct ShaderInitializationServices;
+} // namespace ZEngine::Rendering::Shaders
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
@@ -114,6 +121,9 @@ namespace ZEngine::Hardwares
         VulkanDevice*                                       Device        = nullptr;
 
         void                                                Construct(VulkanDevice* device);
+        /// Unpublished image allocation. Refusal leaves no image/allocation and
+        /// reports the exact Vulkan status; existing storage is never overwritten.
+        bool                                                TryConstruct(VulkanDevice* device, VkResult* status = nullptr);
         /// @brief Constructs a distinct VkImage backed by `backing`'s VMA allocation.
         void                                                ConstructAliasing(VulkanDevice* device, const BufferImage& backing);
 
@@ -123,14 +133,17 @@ namespace ZEngine::Hardwares
         /// @brief Returns a lazily-created view for one exact image subresource range.
         /// @details The returned handle remains valid until this ImageBuffer is reconstructed or disposed.
         VkImageView                                         GetImageViewHandle(VkImageViewType view_type, const VkImageSubresourceRange& range);
+        static constexpr uint32_t                           MaxCachedImageViews = 64;
+        /// Checked, render-owner-only cache admission. Failure preserves existing views.
+        VkImageView                                         TryGetImageViewHandle(VkImageViewType view_type, const VkImageSubresourceRange& range, VkResult* status = nullptr, PFN_vkCreateImageView dispatch = vkCreateImageView);
         VkImage                                             GetHandle() const;
         VkSampler                                           GetSampler() const;
         void                                                Dispose();
         VkDescriptorImageInfo&                              GetDescriptorImageInfo();
 
     private:
-        BufferImage                              m_buffer_image;
-        VkDescriptorImageInfo                    m_image_info;
+        BufferImage                              m_buffer_image = {};
+        VkDescriptorImageInfo                    m_image_info   = {};
         Core::Containers::Array<CachedImageView> m_cached_image_views;
     };
 
@@ -305,7 +318,7 @@ namespace ZEngine::Hardwares
     /*
      *  Device definition
      */
-    struct VulkanDevice
+    struct VulkanDevice : Rendering::ISceneTextureDescriptorPreparation
     {
         bool                                                                                                                         HasSeperateTransfertQueueFamily                                             = false;
         /// @brief True when transfer work has a distinct VkQueue handle.
@@ -368,42 +381,41 @@ namespace ZEngine::Hardwares
         VkDescriptorSetLayout                                                                                                        EmptyDescriptorSetLayout                                                    = VK_NULL_HANDLE;
         VkDescriptorPool                                                                                                             EmptyDescriptorPoolHandle                                                   = VK_NULL_HANDLE;
         VkDescriptorSet                                                                                                              EmptyDescriptorSet                                                          = VK_NULL_HANDLE;
-        Core::Memory::GpuAllocator                                                                                                   GpuMem                                                                      = {};
-        DeferredFreeQueue                                                                                                            PendingFree                                                                 = {};
-        PerFrameUploadHeap                                                                                                           FrameHeaps[3]                                                               = {};
-        VkDescriptorImageInfo                                                                                                        GlobalLinearWrapSamplerImageInfo                                            = {};
-        VkDescriptorImageInfo                                                                                                        GlobalLinearClampToEdgeSamplerImageInfo                                     = {};
-        VkDescriptorImageInfo                                                                                                        GlobalLinearWrapUClampToEdgeVSamplerImageInfo                               = {};
-        VkDescriptorImageInfo                                                                                                        GlobalNearestClampToEdgeSamplerImageInfo                                    = {};
-        CommandBufferManagerPtr                                                                                                      CommandBufferMgr                                                            = {};
-        DeviceSwapchainPtr                                                                                                           SwapchainPtr                                                                = {};
-        Core::Containers::Array<VkFormat>                                                                                            DefaultDepthFormats                                                         = {};
+        Core::Memory::GpuAllocator                                                                                                   GpuMem{&PendingFree};
+        DeferredFreeQueue                                                                                                            PendingFree                                   = {};
+        PerFrameUploadHeap                                                                                                           FrameHeaps[3]                                 = {};
+        VkDescriptorImageInfo                                                                                                        GlobalLinearWrapSamplerImageInfo              = {};
+        VkDescriptorImageInfo                                                                                                        GlobalLinearClampToEdgeSamplerImageInfo       = {};
+        VkDescriptorImageInfo                                                                                                        GlobalLinearWrapUClampToEdgeVSamplerImageInfo = {};
+        VkDescriptorImageInfo                                                                                                        GlobalNearestClampToEdgeSamplerImageInfo      = {};
+        CommandBufferManagerPtr                                                                                                      CommandBufferMgr                              = {};
+        DeviceSwapchainPtr                                                                                                           SwapchainPtr                                  = {};
+        Core::Containers::Array<VkFormat>                                                                                            DefaultDepthFormats                           = {};
 
-        Core::Containers::UnorderedHashMap<const char*, Helpers::Handle<Rendering::Shaders::Shader>>                                 ShaderCaches                                                                = {};
-        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                                       ShaderReservedDescriptorSetMap                                              = {}; //<set, vec<descriptorSet>>
-        Core::Containers::UnorderedHashMap<uint32_t, VkDescriptorSetLayout>                                                          ShaderReservedDescriptorSetLayoutMap                                        = {}; // <set, layout>
-        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<Rendering::Specifications::LayoutBindingSpecification>> ShaderReservedLayoutBindingSpecificationMap                                 = {};
-        Core::Containers::Array<WriteDescriptorSetRequestKey>                                                                        BindlessTextureSlotRequests                                                 = {};
-        Core::Containers::HashSet<uint32_t>                                                                                          ShaderReservedBindingSets                                                   = {};
-        Rendering::Textures::TextureHandleManager                                                                                    GlobalTextures                                                              = {};
-        Helpers::HandleManager<ImageBuffer>                                                                                          ImageBufferManager                                                          = {};
+        Core::Containers::UnorderedHashMap<const char*, Helpers::Handle<Rendering::Shaders::Shader>>                                 ShaderCaches                                  = {};
+        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<VkDescriptorSet>>                                       ShaderReservedDescriptorSetMap                = {}; //<set, vec<descriptorSet>>
+        Core::Containers::UnorderedHashMap<uint32_t, VkDescriptorSetLayout>                                                          ShaderReservedDescriptorSetLayoutMap          = {}; // <set, layout>
+        Core::Containers::UnorderedHashMap<uint32_t, Core::Containers::Array<Rendering::Specifications::LayoutBindingSpecification>> ShaderReservedLayoutBindingSpecificationMap   = {};
+        Core::Containers::HashSet<uint32_t>                                                                                          ShaderReservedBindingSets                     = {};
+        Rendering::Textures::TextureHandleManager                                                                                    GlobalTextures                                = {};
+        Helpers::HandleManager<ImageBuffer>                                                                                          ImageBufferManager                            = {};
         // Image creation can originate on the UI thread. Its persistent view
         // metadata must never allocate from the render thread's scratch arena.
-        Core::Memory::TLSFSlab                                                                                                       ImageViewCacheSlab                                                          = {};
-        Core::Containers::MPSCQueue<Rendering::Textures::TextureHandle, 8192>                                                        TextureHandleToUpdates                                                      = {};
-        Core::Containers::SPSCQueue<Rendering::Textures::TextureHandle, 128>                                                         DeferredTextureDescriptorUpdates                                            = {};
-        TextureDisposeQueue                                                                                                          TextureHandleToDispose                                                      = {};
-        Core::Containers::MPSCQueue<AsyncGPUOperationHandle, 256>                                                                    AsyncGPUOperations                                                          = {};
-        Core::Containers::SPSCQueue<AsyncGPUOperationHandle, 128>                                                                    DeferredAsyncGPUOperations                                                  = {};
-        Core::Containers::MPSCQueue<ShaderReloadRequest, 64>                                                                         ShaderReloadRequests                                                        = {};
-        VkDescriptorImageInfo                                                                                                        FallbackDescriptorImageInfo                                                 = {};
-        Helpers::HandleManager<Rendering::Shaders::Shader>                                                                           ShaderManager                                                               = {};
+        Core::Memory::TLSFSlab                                                                                                       ImageViewCacheSlab                            = {};
+        Core::Containers::MPSCQueue<Rendering::Textures::TextureHandle, 8192>                                                        TextureHandleToUpdates                        = {};
+        Core::Containers::MPSCQueue<Rendering::Textures::TextureHandle, 128>                                                         DeferredTextureDescriptorUpdates              = {};
+        TextureDisposeQueue                                                                                                          TextureHandleToDispose                        = {};
+        Core::Containers::MPSCQueue<AsyncGPUOperationHandle, 256>                                                                    AsyncGPUOperations                            = {};
+        Core::Containers::SPSCQueue<AsyncGPUOperationHandle, 128>                                                                    DeferredAsyncGPUOperations                    = {};
+        Core::Containers::MPSCQueue<ShaderReloadRequest, 64>                                                                         ShaderReloadRequests                          = {};
+        VkDescriptorImageInfo                                                                                                        FallbackDescriptorImageInfo                   = {};
+        Helpers::HandleManager<Rendering::Shaders::Shader>                                                                           ShaderManager                                 = {};
         /// @brief Device-owned cache for descriptor layouts, pipeline layouts, and driver pipeline data.
-        Rendering::Renderers::Pipelines::PSOCache*                                                                                   PipelineStateCache                                                          = nullptr;
-        std::mutex                                                                                                                   Mutex                                                                       = {};
-        Windows::CoreWindow*                                                                                                         CurrentWindow                                                               = nullptr;
-        ZEngine::Core::Memory::ArenaAllocator*                                                                                       Arena                                                                       = nullptr;
-        void*                                                                                                                        RRM                                                                         = nullptr;
+        Rendering::Renderers::Pipelines::PSOCache*                                                                                   PipelineStateCache                            = nullptr;
+        std::mutex                                                                                                                   Mutex                                         = {};
+        Windows::CoreWindow*                                                                                                         CurrentWindow                                 = nullptr;
+        ZEngine::Core::Memory::ArenaAllocator*                                                                                       Arena                                         = nullptr;
+        void*                                                                                                                        RRM                                           = nullptr;
 
         void                                                                                                                         Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, Windows::CoreWindow* const window, uint32_t worker_thread_count);
         void                                                                                                                         Deinitialize();
@@ -419,7 +431,14 @@ namespace ZEngine::Hardwares
         void                                                                                                                         EnqueueAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
         void                                                                                                                         EnqueueDeferredAsyncGPUOperation(const AsyncGPUOperationHandle& handle);
         /// @brief Registers a bindless descriptor target once for subsequent texture updates.
-        void                                                                                                                         AddBindlessTextureSlotRequest(const WriteDescriptorSetRequestKey& request);
+        bool                                                                                                                         AddBindlessTextureSlotRequest(const WriteDescriptorSetRequestKey& request);
+        /// Freeze the shared target ABI before any candidate can retain its contents.
+        bool                                                                                                                         SealBindlessTextureTargets();
+        /// Device-owned sampler ABI. Layouts bake these handles as immutable;
+        /// pass preparation validates them without rewriting shared sets.
+        const VkSampler*                                                                                                             ResolveReservedImmutableSampler(uint32_t set, uint32_t binding) const;
+        Rendering::SceneTextureDescriptorState                                                                                       PrepareSceneTextureDescriptor(Rendering::Textures::TextureHandle texture, Helpers::Handle<ImageBuffer> image, uint64_t* publication) override;
+        bool                                                                                                                         IsSceneTextureDescriptorCurrent(Rendering::Textures::TextureHandle texture, Helpers::Handle<ImageBuffer> image, uint64_t publication) override;
         QueueView                                                                                                                    GetQueue(Rendering::QueueType type);
         void                                                                                                                         QueueWait(Rendering::QueueType type);
         void                                                                                                                         QueueWaitAll();
@@ -446,9 +465,15 @@ namespace ZEngine::Hardwares
         VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, VkImageAspectFlagBits image_aspect_flag, uint32_t layer_count = 1U);
         /// @brief Creates an image view covering the supplied exact subresource range.
         VkImageView   CreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, const VkImageSubresourceRange& range);
+        VkImageView   TryCreateImageView(VkImage image, VkFormat image_format, VkImageViewType image_view_type, const VkImageSubresourceRange& range, VkResult* status = nullptr, PFN_vkCreateImageView dispatch = vkCreateImageView);
         VkFramebuffer CreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1);
+        /// @brief Recoverable framebuffer admission for unpublished resources. On
+        /// failure returns null, reports the exact result, and records device loss.
+        /// Attachment ownership/format compatibility remains the caller's contract.
+        VkFramebuffer TryCreateFramebuffer(Core::Containers::ArrayView<VkImageView> attachments, const VkRenderPass& render_pass, uint32_t width, uint32_t height, uint32_t layer_number = 1, VkResult* status = nullptr, PFN_vkCreateFramebuffer dispatch = vkCreateFramebuffer);
 
         Helpers::Handle<Rendering::Shaders::Shader>     CompileShader(Rendering::Specifications::ShaderSpecification& spec);
+        Helpers::Handle<Rendering::Shaders::Shader>     CompileShader(Rendering::Specifications::ShaderSpecification& spec, const Rendering::Shaders::ShaderInitializationServices& services);
 
         /// @brief Queues a shader-file reload request from any producer thread.
         void                                            RequestShaderReload(cstring shader_path);
@@ -462,6 +487,9 @@ namespace ZEngine::Hardwares
         /// @brief Creates a texture and assigns the optional allocator debug name.
         /// Optional work may reserve bindless slots for scene/graph allocations.
         Rendering::Textures::TextureHandle              CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name = nullptr, uint32_t reserved_slots = 0);
+        /// Recoverable candidate/resize allocation; rolls back both handle tables
+        /// and VMA storage on refusal, without publishing a descriptor update.
+        Rendering::Textures::TextureHandle              TryCreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name = nullptr, uint32_t reserved_slots = 0, VkResult* status = nullptr);
         /// @brief Creates a texture object aliased to the backing allocation of `source`.
         Rendering::Textures::TextureHandle              CreateAliasingTexture(const Rendering::Specifications::TextureSpecification& spec, const Rendering::Textures::TextureHandle& source, cstring debug_name = nullptr);
 
@@ -473,9 +501,14 @@ namespace ZEngine::Hardwares
 
         /// @brief Dirty this handle's bindless descriptor for the next graph frame to refresh.
         void                                            RequestDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
-        void                                            RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
-        /// @brief Applies queued bindless descriptor writes before render-graph recording.
-        /// @details Render-thread only. DeviceSwapchain::Present never writes descriptors.
+        /// @brief Worker-safe deferred publication admission. False means bounded
+        /// capacity was exhausted; required texture loads must report failure.
+        bool                                            RequestDeferredDescriptorUpdate(const Rendering::Textures::TextureHandle& handle);
+        static constexpr uint32_t                       BindlessTextureUpdateSlice = 64;
+        /// @brief Applies a bounded slice of bindless writes before graph recording.
+        /// @details Render-thread only. Real writes drain before deferred fallback
+        /// writes are admitted; remaining queue entries keep resource readiness pending.
+        /// DeviceSwapchain::Present never writes descriptors.
         void                                            FlushBindlessTextureUpdates();
 
         /// @brief Timeline-gated disposal. Render-thread only.
@@ -498,6 +531,27 @@ namespace ZEngine::Hardwares
     private:
         friend struct CommandBuffer;
         friend struct ::RRMUploadBatchTestHelper;
+        friend class Rendering::RenderResourceManager;
+
+        // Only the upload owner may bypass the public write admission after
+        // establishing its exclusive, submission-scoped texture hold.
+        BufferView                                            WriteTextureDataAfterAdmission(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset, bool use_staging_ring, VkDeviceSize data_size);
+
+        static constexpr uint32_t                             MaxSceneDescriptorTextures  = 8192;
+        static constexpr uint32_t                             MaxSceneDescriptorTargets   = 8;
+        Core::Containers::Array<WriteDescriptorSetRequestKey> BindlessTextureSlotRequests = {};
+        struct SceneTextureDescriptorPublication
+        {
+            Rendering::Textures::TextureHandle Texture = {};
+            Helpers::Handle<ImageBuffer>       Image   = {};
+            VkDescriptorImageInfo              Info    = {};
+            uint64_t                           Version = 0;
+            bool                               Queued  = false;
+        };
+        SceneTextureDescriptorPublication                                 m_scene_texture_descriptors[MaxSceneDescriptorTextures] = {};
+        uint64_t                                                          m_scene_descriptor_sequence                             = 0;
+        bool                                                              m_bindless_targets_sealed                               = false;
+        void                                                              RecordSceneTextureDescriptorPublication(Rendering::Textures::TextureHandle texture, const VkDescriptorImageInfo& info);
 
         VulkanLayer                                                       m_layer     = {};
         Core::Containers::UnorderedHashMap<Rendering::QueueType, VkQueue> m_queue_map = {};

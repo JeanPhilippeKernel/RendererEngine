@@ -1,5 +1,6 @@
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Buffers/Framebuffer.h>
+#include <new>
 
 using namespace ZEngine::Helpers;
 using namespace ZEngine::Rendering::Specifications;
@@ -16,6 +17,55 @@ namespace ZEngine::Rendering::Buffers
     FramebufferVNext::~FramebufferVNext()
     {
         Dispose();
+    }
+
+    bool FramebufferVNext::TryPrepare(Hardwares::VulkanDevice* device, Core::Containers::ArrayView<VkImageView> views, VkRenderPass render_pass, uint32_t width, uint32_t height, uint32_t layers, FramebufferVNext** out, VkResult* status, PFN_vkCreateFramebuffer dispatch)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (!device || !device->Arena || !out || (*out && ((*out)->m_device != device || (*out)->Handle)))
+        {
+            return false;
+        }
+        if (device->IsDeviceLost.load(std::memory_order_acquire))
+        {
+            if (status)
+            {
+                *status = VK_ERROR_DEVICE_LOST;
+            }
+            return false;
+        }
+        Core::Memory::ArenaCheckpoint checkpoint(device->Arena);
+        auto*                         wrapper = *out;
+        if (!wrapper)
+        {
+            auto* storage = device->Arena->TryResize(nullptr, 0, sizeof(FramebufferVNext), alignof(FramebufferVNext));
+            if (!storage)
+            {
+                if (status)
+                {
+                    *status = VK_ERROR_OUT_OF_HOST_MEMORY;
+                }
+                return false;
+            }
+            wrapper = new (storage) FramebufferVNext(device);
+        }
+        const auto handle = device->TryCreateFramebuffer(views, render_pass, width, height, layers, status, dispatch);
+        if (!handle)
+        {
+            if (!*out)
+            {
+                wrapper->~FramebufferVNext();
+            }
+            return false;
+        }
+        wrapper->Reset(handle, width, height);
+        wrapper->m_specification.Layers = layers;
+        *out                            = wrapper;
+        checkpoint.Commit();
+        return true;
     }
 
     uint32_t FramebufferVNext::GetWidth() const

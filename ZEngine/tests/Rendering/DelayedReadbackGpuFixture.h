@@ -105,7 +105,7 @@ namespace
             EXPECT_EQ(Vulkan.ValidationErrors.load(), 0u);
         }
 
-        void SubmitBlockedCopy(uint32_t index)
+        void SubmitBlockedCopy(uint32_t index, VkPipelineLayout layout = VK_NULL_HANDLE, VkDescriptorSet descriptors = VK_NULL_HANDLE)
         {
             const auto* buffer = Ring.GetBuffer(index);
             ASSERT_NE(buffer, nullptr);
@@ -114,6 +114,10 @@ namespace
             ASSERT_EQ(vkAllocateCommandBuffers(Vulkan.Device, &allocate, &command), VK_SUCCESS);
             const VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
             ASSERT_EQ(vkBeginCommandBuffer(command, &begin), VK_SUCCESS);
+            if (layout && descriptors)
+            {
+                vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, 1, &descriptors, 0, nullptr);
+            }
             vkCmdFillBuffer(command, buffer->Handle, 0, sizeof(Pixel), ExpectedPixel);
             const VkBufferMemoryBarrier2 barrier    = {.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2, .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT, .dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT, .dstAccessMask = VK_ACCESS_2_HOST_READ_BIT, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .buffer = buffer->Handle, .offset = 0, .size = sizeof(Pixel)};
             const VkDependencyInfo       dependency = {.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .bufferMemoryBarrierCount = 1, .pBufferMemoryBarriers = &barrier};

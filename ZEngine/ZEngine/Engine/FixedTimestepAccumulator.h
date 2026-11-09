@@ -73,11 +73,21 @@ namespace ZEngine::Timing
             m_accumulator = 0.f;
         }
 
+        void BindSceneGeneration(uint64_t generation) noexcept
+        {
+            if (m_scene_generation != generation)
+            {
+                Reset();
+                m_scene_generation = generation;
+            }
+        }
+
     private:
         FixedTimestepAccumulatorConfig        m_config = {};
         float                                 m_accumulator{0.f};
         uint64_t                              m_step_count{0};
-        std::chrono::steady_clock::time_point m_last_warn  = {};
-        bool                                  m_has_warned = false;
+        std::chrono::steady_clock::time_point m_last_warn        = {};
+        bool                                  m_has_warned       = false;
+        uint64_t                              m_scene_generation = 0;
     };
 } // namespace ZEngine::Timing

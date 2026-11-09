@@ -5,10 +5,113 @@
 #include <ZEngine/Rendering/Renderers/Graphics/AssetPreviewPass.h>
 #include <ZEngine/Rendering/Shaders/Shader.h>
 #include <gtest/gtest.h>
+#include <array>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <thread>
 #include "AssetPreviewPassTestAccess.h"
+
+using ZEngine::Rendering::Renderers::RenderPasses::DescriptorPreparation;
+using ZEngine::Rendering::Specifications::DescriptorType;
+using ZEngine::Rendering::Specifications::LayoutBindingSpecification;
+
+TEST(DescriptorPreparationTest, PriorPreparationAndOtherFramesCannotSatisfyCurrentWrites)
+{
+    DescriptorPreparation            proof   = {};
+    const LayoutBindingSpecification binding = {.Set = 0, .Binding = 2, .Count = 1, .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER};
+    const std::array                 reflection{binding};
+    proof.Begin(0, 3);
+    proof.Record(binding, 0, 0, false);
+    EXPECT_TRUE(proof.Verify(reflection, 0, 3));
+    EXPECT_FALSE(proof.Verify(reflection, 1, 3));
+    EXPECT_FALSE(proof.Verify(reflection, 0, 4));
+    proof.Begin(1, 3);
+    EXPECT_FALSE(proof.Verify(reflection, 1, 3));
+    proof.Record(binding, 0, 0, false);
+    EXPECT_FALSE(proof.Verify(reflection, 1, 3));
+    proof.Record(binding, 1, 0, false);
+    EXPECT_TRUE(proof.Verify(reflection, 1, 3));
+}
+
+TEST(DescriptorPreparationTest, ArrayCoverageRequiresEveryElementAndHandlesThe64ElementBoundary)
+{
+    DescriptorPreparation            proof   = {};
+    const LayoutBindingSpecification binding = {.Set = 0, .Binding = 2, .Count = 64, .DescriptorTypeValue = DescriptorType::STORAGE_IMAGE};
+    const std::array                 reflection{binding};
+    proof.Begin(0, 3);
+    for (uint32_t element = 0; element < 63; ++element)
+    {
+        proof.Record(binding, 0, element, false);
+    }
+    proof.Record(binding, 0, 0, false); // A duplicate cannot fill the last hole.
+    EXPECT_FALSE(proof.Verify(reflection, 0, 3));
+    proof.Record(binding, 0, 63, false);
+    EXPECT_TRUE(proof.Verify(reflection, 0, 3));
+    proof.Record(binding, 0, 64, false);
+    EXPECT_FALSE(proof.Verify(reflection, 0, 3));
+}
+
+TEST(DescriptorPreparationTest, SharedSampledArraysAreExplicitAndCannotCoverStorageArrays)
+{
+    DescriptorPreparation      proof   = {};
+    LayoutBindingSpecification binding = {.Set = 1, .Binding = 0, .Count = 8192, .DescriptorTypeValue = DescriptorType::SAMPLED_IMAGE};
+    proof.Begin(0, 3);
+    proof.Record(binding, 0, 0, true);
+    EXPECT_TRUE(proof.Verify(std::array{binding}, 0, 3));
+    binding.DescriptorTypeValue = DescriptorType::STORAGE_IMAGE;
+    EXPECT_FALSE(proof.Verify(std::array{binding}, 0, 3));
+    proof.Begin(0, 3);
+    proof.Record(binding, 0, 0, true);
+    EXPECT_FALSE(proof.Verify(std::array{binding}, 0, 3));
+}
+
+TEST(DescriptorPreparationTest, RejectionIsStickyUntilANewPreparation)
+{
+    DescriptorPreparation            proof   = {};
+    const LayoutBindingSpecification binding = {.Set = 0, .Binding = 0, .DescriptorTypeValue = DescriptorType::SAMPLER};
+    proof.Begin(0, 3);
+    proof.Reject();
+    proof.Record(binding, 0, 0, false);
+    EXPECT_FALSE(proof.Verify(std::array{binding}, 0, 3));
+    proof.Begin(0, 3);
+    proof.Record(binding, 0, 0, false);
+    EXPECT_TRUE(proof.Verify(std::array{binding}, 0, 3));
+    proof.Reset();
+    EXPECT_FALSE(proof.Active());
+    EXPECT_FALSE(proof.Verify(std::array{binding}, 0, 3));
+}
+
+TEST(DescriptorPreparationTest, CapacityRefusalCannotReportAPartiallyTrackedPreparationAsComplete)
+{
+    DescriptorPreparation                                                   proof    = {};
+    std::array<LayoutBindingSpecification, DescriptorPreparation::Capacity> bindings = {};
+    proof.Begin(0, 3);
+    for (uint32_t index = 0; index < bindings.size(); ++index)
+    {
+        bindings[index] = {.Set = 0, .Binding = index, .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER};
+        proof.Record(bindings[index], 0, 0, false);
+    }
+    EXPECT_TRUE(proof.Verify(bindings, 0, 3));
+    auto overflow    = bindings[0];
+    overflow.Binding = DescriptorPreparation::Capacity;
+    proof.Record(overflow, 0, 0, false);
+    EXPECT_FALSE(proof.Verify(bindings, 0, 3));
+}
+
+TEST(DescriptorPreparationTest, ReflectionMustMatchCountAndTypeButMayRepeatStageBindings)
+{
+    DescriptorPreparation      proof   = {};
+    LayoutBindingSpecification binding = {.Set = 0, .Binding = 0, .Count = 1, .DescriptorTypeValue = DescriptorType::STORAGE_BUFFER};
+    proof.Begin(0, 3);
+    proof.Record(binding, 0, 0, false);
+    EXPECT_TRUE(proof.Verify(std::array{binding, binding}, 0, 3));
+    binding.Count = 2;
+    EXPECT_FALSE(proof.Verify(std::array{binding}, 0, 3));
+    binding.Count               = 1;
+    binding.DescriptorTypeValue = DescriptorType::SAMPLER;
+    EXPECT_FALSE(proof.Verify(std::array{binding}, 0, 3));
+}
 
 namespace
 {
@@ -24,8 +127,61 @@ namespace
             BoundBindings.init(arena, 4);
             BoundBindings.insert("UBPreview");
         }
+        bool VerifyNames()
+        {
+            return VerifyDescriptorBindings();
+        }
+        bool Replay()
+        {
+            return DescriptorBoundPass::ReplayDescriptorBindings(static_cast<DescriptorBoundPass*>(this));
+        }
     };
 } // namespace
+
+TEST(AssetPreviewPassTest, FreshDescriptorReplayDefersToInitialBindingButDoesNotBypassVerification)
+{
+    ZEngine::Core::Memory::MemoryManager memory = {};
+    memory.Initialize(ZMega(1), {});
+    auto device                                = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    device->Arena                              = &memory.MainArena;
+    ZEngine::Rendering::Shaders::Shader shader = {};
+    shader.LayoutBindingSpecifications.init(device->Arena, 1);
+    shader.LayoutBindingSpecifications.push({.Set = 0, .Binding = 0, .Name = "UBPreview"});
+    ZEngine::Rendering::Renderers::Pipelines::GraphicPipeline pipeline = {};
+    pipeline.Shader                                                    = &shader;
+    PreviewBindingTestPass pass                                        = {};
+    pass.InitializeNames(device.get());
+    pass.Pipeline = &pipeline;
+    EXPECT_TRUE(pass.Replay());
+    EXPECT_FALSE(pass.VerifyNames());
+    pass.BindNames(device->Arena);
+    EXPECT_TRUE(pass.VerifyNames());
+    shader.LayoutBindingSpecifications[0].Name = "NewRequiredBinding";
+    EXPECT_FALSE(pass.Replay());
+    EXPECT_FALSE(pass.VerifyNames());
+    pass.Pipeline = nullptr;
+}
+
+TEST(AssetPreviewPassTest, PreviouslyVerifiedEmptyInterfaceCannotSkipIncompatibleReloadReplay)
+{
+    ZEngine::Core::Memory::MemoryManager memory = {};
+    memory.Initialize(ZMega(1), {});
+    auto device                                                        = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    device->Arena                                                      = &memory.MainArena;
+    ZEngine::Rendering::Shaders::Shader                       shader   = {};
+    ZEngine::Rendering::Renderers::Pipelines::GraphicPipeline pipeline = {};
+    pipeline.Shader                                                    = &shader;
+    PreviewBindingTestPass pass                                        = {};
+    pass.InitializeNames(device.get());
+    pass.Pipeline = &pipeline;
+    EXPECT_TRUE(pass.Replay());
+    EXPECT_TRUE(pass.VerifyNames());
+    shader.LayoutBindingSpecifications.init(device->Arena, 1);
+    shader.LayoutBindingSpecifications.push({.Set = 0, .Binding = 0, .Name = "NewRequiredBinding"});
+    EXPECT_FALSE(pass.Replay());
+    EXPECT_FALSE(pass.VerifyNames());
+    pass.Pipeline = nullptr;
+}
 
 TEST(AssetPreviewPassTest, ForwardBindingTrackingSupportsTheDescriptorReplayBudget)
 {
@@ -64,6 +220,119 @@ TEST(AssetPreviewPassTest, RetiredThumbnailDescriptorUpdatesAreDroppedRatherThan
     device->FlushBindlessTextureUpdates();
     EXPECT_TRUE(device->TextureHandleToUpdates.empty());
     memory.Shutdown();
+}
+
+TEST(AssetPreviewPassTest, DescriptorBacklogDrainsInBoundedSlicesBeforeDeferredWork)
+{
+    auto               device = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    constexpr uint32_t slice  = ZEngine::Hardwares::VulkanDevice::BindlessTextureUpdateSlice;
+    for (uint32_t index = 0; index < slice + 1; ++index)
+    {
+        // Stale handles still consume the slice's operation budget.
+        device->RequestDescriptorUpdate({.Index = index, .Generation = 1});
+    }
+    device->RequestDeferredDescriptorUpdate({.Index = 0, .Generation = 1});
+    device->FlushBindlessTextureUpdates();
+    EXPECT_FALSE(device->TextureHandleToUpdates.empty());
+    EXPECT_FALSE(device->DeferredTextureDescriptorUpdates.empty());
+    device->FlushBindlessTextureUpdates();
+    EXPECT_TRUE(device->TextureHandleToUpdates.empty());
+    EXPECT_TRUE(device->DeferredTextureDescriptorUpdates.empty());
+}
+
+TEST(AssetPreviewPassTest, DeferredDescriptorBacklogAlsoHasABoundedSlice)
+{
+    auto               device = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    constexpr uint32_t slice  = ZEngine::Hardwares::VulkanDevice::BindlessTextureUpdateSlice;
+    for (uint32_t index = 0; index < slice + 1; ++index)
+    {
+        device->RequestDeferredDescriptorUpdate({.Index = index, .Generation = 1});
+    }
+    device->FlushBindlessTextureUpdates();
+    EXPECT_FALSE(device->DeferredTextureDescriptorUpdates.empty());
+    EXPECT_TRUE(device->TextureHandleToUpdates.empty());
+    device->FlushBindlessTextureUpdates();
+    EXPECT_TRUE(device->DeferredTextureDescriptorUpdates.empty());
+    EXPECT_TRUE(device->TextureHandleToUpdates.empty());
+}
+
+TEST(AssetPreviewPassTest, DeferredDescriptorForRetiredGenerationCannotTargetReusedSlot)
+{
+    ZEngine::Core::Memory::MemoryManager memory = {};
+    memory.Initialize(ZMega(8), {});
+    auto device              = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    device->MaxGlobalTexture = 8;
+    device->GlobalTextures.Initialize(&memory.MainArena, 8);
+    const auto retired = device->GlobalTextures.Create();
+    ASSERT_TRUE(retired.Valid());
+    auto removed = retired;
+    device->GlobalTextures.Remove(removed);
+    const auto replacement = device->GlobalTextures.Create();
+    ASSERT_EQ(replacement.Index, retired.Index);
+    ASSERT_NE(replacement.Generation, retired.Generation);
+    device->RequestDeferredDescriptorUpdate(retired);
+    device->FlushBindlessTextureUpdates();
+    EXPECT_TRUE(device->DeferredTextureDescriptorUpdates.empty());
+    EXPECT_TRUE(device->TextureHandleToUpdates.empty());
+    EXPECT_TRUE(device->GlobalTextures.IsLive(replacement));
+}
+
+TEST(AssetPreviewPassTest, DeferredDescriptorAdmissionReportsCapacityAndPreservesAcceptedRequests)
+{
+    auto               device   = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    constexpr uint32_t capacity = decltype(device->DeferredTextureDescriptorUpdates)::CAPACITY;
+    for (uint32_t index = 0; index < capacity; ++index)
+    {
+        ASSERT_TRUE(device->RequestDeferredDescriptorUpdate({.Index = index, .Generation = 2}));
+    }
+    EXPECT_FALSE(device->RequestDeferredDescriptorUpdate({.Index = capacity, .Generation = 2}));
+    ZEngine::Rendering::Textures::TextureHandle handle = {};
+    for (uint32_t index = 0; index < capacity; ++index)
+    {
+        ASSERT_TRUE(device->DeferredTextureDescriptorUpdates.pop(handle));
+        EXPECT_EQ(handle.Index, index);
+        EXPECT_EQ(handle.Generation, 2u);
+    }
+    EXPECT_TRUE(device->DeferredTextureDescriptorUpdates.empty());
+    EXPECT_TRUE(device->RequestDeferredDescriptorUpdate({.Index = capacity, .Generation = 2}));
+}
+
+TEST(AssetPreviewPassTest, ConcurrentDecodeWorkersDoNotLoseDeferredDescriptorRequests)
+{
+    auto                  device             = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    constexpr uint32_t    workers            = 8;
+    constexpr uint32_t    per_worker         = 8;
+    std::atomic<uint32_t> admitted           = 0;
+    std::thread           producers[workers] = {};
+    for (uint32_t worker = 0; worker < workers; ++worker)
+    {
+        producers[worker] = std::thread([&, worker] {
+            for (uint32_t index = 0; index < per_worker; ++index)
+            {
+                if (device->RequestDeferredDescriptorUpdate({.Index = worker * per_worker + index, .Generation = 2}))
+                {
+                    admitted.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        });
+    }
+    for (auto& producer : producers)
+    {
+        producer.join();
+    }
+    EXPECT_EQ(admitted.load(std::memory_order_relaxed), workers * per_worker);
+    bool                                        seen[workers * per_worker] = {};
+    ZEngine::Rendering::Textures::TextureHandle handle                     = {};
+    uint32_t                                    received                   = 0;
+    while (device->DeferredTextureDescriptorUpdates.pop(handle))
+    {
+        ASSERT_LT(handle.Index, workers * per_worker);
+        EXPECT_FALSE(seen[handle.Index]);
+        seen[handle.Index] = true;
+        EXPECT_EQ(handle.Generation, 2u);
+        ++received;
+    }
+    EXPECT_EQ(received, workers * per_worker);
 }
 
 TEST(AssetPreviewPassTest, BindlessCapacityLeavesRoomForTheForwardMaterialEnvironment)
@@ -109,7 +378,9 @@ TEST(AssetPreviewPassTest, SharedUniformCountsOnceAcrossShaderStages)
     PreviewBindingTestPass pass                                        = {};
     pass.Pipeline                                                      = &pipeline;
     pass.BindNames(&memory.MainArena);
-    EXPECT_TRUE(pass.Verify());
+    EXPECT_TRUE(pass.VerifyNames());
+    // Complete pass readiness also requires a usable PSO, not only matching names.
+    EXPECT_FALSE(pass.Verify());
     // This CPU-only pass does not own a Vulkan pipeline.
     pass.Pipeline   = nullptr;
     pipeline.Shader = nullptr;

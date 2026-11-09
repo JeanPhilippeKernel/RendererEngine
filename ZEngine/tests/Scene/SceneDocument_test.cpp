@@ -3,6 +3,7 @@
 #include <ZEngine/Core/Serialization/YAMLAllocation.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
+#include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/ECS/BinarySceneCodec.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
@@ -1644,6 +1645,89 @@ TEST_F(SceneDocumentTest, AtomicVFSSaveReadAndFailedReplacementPreservePreviousF
     ASSERT_TRUE(SceneDocument::Read(vfs, path, Schemas, &loaded, &Diagnostics));
     ASSERT_TRUE(loaded.Emit(&output, &Diagnostics));
     EXPECT_EQ(output, Emit());
+    vfs.Shutdown();
+}
+
+TEST_F(SceneDocumentTest, ArenaBackedSourceReadRewindsOnSuccessAndFailureWithoutBorrowedDocumentViews)
+{
+    VFSMemoryBackend backend = {};
+    backend.Initialize(&Memory.MainArena);
+    VFSContext vfs = {};
+    vfs.Initialize(&Memory.MainArena);
+    ASSERT_TRUE(vfs.Mount(&backend, VFSPath::Root(), 0).Succeeded());
+    const auto path = VFSPath::Parse("/bounded.zescene").Value();
+    Add(FirstUUID, "Retained after input rewind");
+    ASSERT_TRUE(Capture());
+    const auto canonical = Emit();
+    ASSERT_TRUE(Document.Save(vfs, path, &Diagnostics).Succeeded());
+    ZEngine::Core::Memory::ArenaAllocator scratch = {};
+    Memory.MainArena.CreateSubArena(ZMega(1), &scratch, "SceneDocumentTest/Source");
+    ASSERT_NE(scratch.Allocate(33), nullptr);
+    const auto    offset   = scratch.m_current_offset;
+    const auto    previous = scratch.m_previous_offset;
+    SceneDocument loaded   = {};
+    ASSERT_TRUE(SceneDocument::Read(vfs, path, Schemas, &loaded, &Diagnostics, {}, nullptr, {.SourceArena = &scratch}));
+    EXPECT_EQ(scratch.m_current_offset, offset);
+    EXPECT_EQ(scratch.m_previous_offset, previous);
+    // Overwrite the released input, proving retained strings/tree do not borrow it.
+    ASSERT_NE(scratch.Allocate(canonical.size()), nullptr);
+    std::string emitted = {};
+    ASSERT_TRUE(loaded.Emit(&emitted, &Diagnostics));
+    EXPECT_EQ(emitted, canonical);
+    const auto*                           settings   = loaded.Settings();
+
+    alignas(std::max_align_t) uint8_t     tiny[32]   = {};
+    ZEngine::Core::Memory::ArenaAllocator undersized = {};
+    ASSERT_TRUE(undersized.InitializeBorrowed(tiny, sizeof(tiny)));
+    EXPECT_FALSE(SceneDocument::Read(vfs, path, Schemas, &loaded, &Diagnostics, {}, nullptr, {.SourceArena = &undersized}));
+    EXPECT_EQ(undersized.m_current_offset, 0u);
+    EXPECT_EQ(loaded.Settings(), settings);
+    EXPECT_TRUE(Diagnostics.HasError(SceneDiagnosticCode::AllocationFailed));
+
+    const uint8_t invalid[] = {'[', '!'};
+    ASSERT_TRUE(ZEngine::Core::VFS::WriteFileAtomically(vfs, path, {invalid, sizeof(invalid)}).Succeeded());
+    const auto failure_offset = scratch.m_current_offset;
+    EXPECT_FALSE(SceneDocument::Read(vfs, path, Schemas, &loaded, &Diagnostics, {}, nullptr, {.SourceArena = &scratch}));
+    EXPECT_EQ(scratch.m_current_offset, failure_offset);
+    EXPECT_EQ(loaded.Settings(), settings);
+    vfs.Shutdown();
+}
+
+TEST_F(SceneDocumentTest, RoutedReadIncludesInputAndRetainedParserStorageAndPreservesOutputOnRefusal)
+{
+    VFSMemoryBackend backend = {};
+    backend.Initialize(&Memory.MainArena);
+    VFSContext vfs = {};
+    vfs.Initialize(&Memory.MainArena);
+    ASSERT_TRUE(vfs.Mount(&backend, VFSPath::Root(), 0).Succeeded());
+    const auto path = VFSPath::Parse("/routed.zescene").Value();
+    Add(FirstUUID, "Routed");
+    ASSERT_TRUE(Capture());
+    ASSERT_TRUE(Document.Save(vfs, path, &Diagnostics).Succeeded());
+    const auto* original = Document.Settings();
+    for (const size_t attempt : {size_t(1), size_t(2), size_t(3)})
+    {
+        ZEngine::Tests::SceneTestAllocationRoute route = {};
+        route.Limit                                    = ZMega(16);
+        route.RefuseAllocationAttempt                  = attempt;
+        EXPECT_FALSE(SceneDocument::Read(vfs, path, Schemas, &Document, &Diagnostics, {}, nullptr, {.AllocationRoute = &route}));
+        EXPECT_EQ(Document.Settings(), original);
+        EXPECT_EQ(route.Blocks, 0u);
+        EXPECT_EQ(route.Live, 0u);
+    }
+    ZEngine::Tests::SceneTestAllocationRoute route = {};
+    route.Limit                                    = ZMega(16);
+    {
+        SceneDocument loaded = {};
+        ASSERT_TRUE(SceneDocument::Read(vfs, path, Schemas, &loaded, &Diagnostics, {}, nullptr, {.AllocationRoute = &route}));
+        EXPECT_GT(route.Blocks, 0u);
+        EXPECT_GT(route.Attempts, 3u);
+        EXPECT_EQ(loaded.EntityCount(), 1u);
+        SceneDocument moved = std::move(loaded);
+        EXPECT_EQ(moved.EntityCount(), 1u);
+    }
+    EXPECT_EQ(route.Blocks, 0u);
+    EXPECT_EQ(route.Live, 0u);
     vfs.Shutdown();
 }
 

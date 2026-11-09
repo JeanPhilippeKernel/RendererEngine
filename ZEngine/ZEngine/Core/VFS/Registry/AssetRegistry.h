@@ -33,6 +33,9 @@ namespace ZEngine::Core::VFS
         /// No callbacks are fired until the cache owner has published complete CPU data
         /// and calls SetState(Loaded). Failure changes neither record.
         [[nodiscard]] bool TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot, const AssetRecordSnapshot* retained_hierarchy = nullptr);
+        // Snapshot-guarded, allocation/callback-free binding. Caller commits CPU
+        // data before announcing readiness through SetState.
+        [[nodiscard]] bool TryBindLoadedAsset(const AssetRecordSnapshot& expected, Managers::AssetHandle slot);
 
         bool               Remove(const uuids::uuid& uuid);
         bool               Remove(Helpers::Handle<AssetRecord> handle);

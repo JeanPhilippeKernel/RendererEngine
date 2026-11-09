@@ -14,21 +14,28 @@ namespace ZEngine::Rendering::Renderers
         builder->ReadBuffer(RendererBufferName::Material, "MatSB");
         builder->ReadIndirectBuffer(RendererBufferName::CulledIndirect);
         builder->ReadBindless();
-        builder->WriteDepthAttachment("ObjectIdDepth", {.IsRenderTargetSized = true, .Width = width, .Height = height, .Format = Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
-        const auto ids = builder->WriteColorAttachment(RendererResourceName::GBufferObjectIdName, {.IsRenderTargetSized = true, .Width = width, .Height = height, .Format = Specifications::ImageFormat::R32_UINT});
+        const auto depth = DescribeSceneTarget(SceneRenderTarget::ObjectDepth, width, height);
+        const auto color = DescribeSceneTarget(SceneRenderTarget::ObjectId, width, height);
+        builder->WriteDepthAttachment(depth.Name, depth.Spec);
+        const auto ids = builder->WriteColorAttachment(color.Name, color.Spec);
         RegisterObjectIdReadbacks(builder, ids, width, height);
         return true;
     }
 
-    Specifications::GraphicsPipelineDesc ObjectIdPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator*) const
+    bool ObjectIdPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         Specifications::GraphicsPipelineDesc desc = {};
         desc.DebugName                            = "Object-ID-Pipeline";
         desc.EnableDepthTest                      = true;
         desc.EnableDepthWrite                     = true;
         desc.EnableBlending                       = false;
         desc.ShaderSpecificationValue.Name        = "object_id";
-        return desc;
+        *out                                      = std::move(desc);
+        return true;
     }
 
     bool ObjectIdPass::RecordDraw(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext*, Hardwares::CommandBufferPtr commands)
@@ -40,7 +47,7 @@ namespace ZEngine::Rendering::Renderers
         commands->SetScissor(gp->GetRenderAreaWidth(), gp->GetRenderAreaHeight());
         commands->BindPipeline(gp->Pipeline);
         commands->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
-        commands->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->IndirectCommandCount);
+        commands->DrawIndirect(scene->GetCulledIndirectBuffer(device->SwapchainPtr->CurrentFrame->Index).Handle, 0, scene->IndirectCommandCount);
         return true;
     }
 } // namespace ZEngine::Rendering::Renderers

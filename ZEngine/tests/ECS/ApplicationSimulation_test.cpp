@@ -6,12 +6,12 @@
 #include <limits>
 #include <memory>
 
+using namespace ZEngine;
+using namespace ZEngine::ECS;
+using namespace ZEngine::ECS::Components;
+
 namespace
 {
-    using namespace ZEngine;
-    using namespace ZEngine::ECS;
-    using namespace ZEngine::ECS::Components;
-
     struct SimulationApplication : Applications::GameApplication
     {
         bool Enabled = true;
@@ -142,6 +142,39 @@ TEST_F(ApplicationSimulationTest, RuntimeApplicationsSimulateByDefault)
     EXPECT_EQ(World.GetComponent<SimulationMarker>(Entity)->Steps, 2u);
     EXPECT_FLOAT_EQ(World.GetComponent<SimulationMarker>(Entity)->LastDt, dt);
     EXPECT_FLOAT_EQ(World.GetComponent<TransformComponent>(Entity)->Position.x, 6.f);
+}
+
+TEST_F(ApplicationSimulationTest, PublicationAndRetirementCannotRunSimulation)
+{
+    RegisterSystem();
+    Commands.DestroyEntity(Entity);
+    {
+        ScenePublication::Transition transition = {};
+        ASSERT_TRUE(Context->ScenePublication.TryBegin(Context->ScenePublication.Generation(), &transition));
+        EXPECT_FLOAT_EQ(Advance(1.f), 1.f);
+        EXPECT_TRUE(World.IsAlive(Entity));
+        EXPECT_EQ(Accumulator.StepCount(), 0u);
+        transition.Publish();
+        EXPECT_FLOAT_EQ(Advance(1.f), 1.f);
+        EXPECT_TRUE(World.IsAlive(Entity));
+        EXPECT_EQ(Accumulator.StepCount(), 0u);
+    }
+    EXPECT_FALSE(Commands.IsEmpty());
+}
+
+TEST_F(ApplicationSimulationTest, NewActivationDiscardsThePreviousWorldFractionalTime)
+{
+    RegisterSystem();
+    const auto dt = Accumulator.FixedDt();
+    EXPECT_NEAR(Advance(.75f * dt), .75f, 1.e-5f);
+    {
+        ScenePublication::Transition transition = {};
+        ASSERT_TRUE(Context->ScenePublication.TryBegin(Context->ScenePublication.Generation(), &transition));
+        transition.Publish();
+    }
+    EXPECT_NEAR(Advance(.5f * dt), .5f, 1.e-5f);
+    EXPECT_EQ(Accumulator.StepCount(), 0u);
+    EXPECT_EQ(World.GetComponent<SimulationMarker>(Entity)->Steps, 0u);
 }
 
 TEST_F(ApplicationSimulationTest, SuspendedFramesCannotRunSystemsActorsCommandsOrTransformSnapshots)

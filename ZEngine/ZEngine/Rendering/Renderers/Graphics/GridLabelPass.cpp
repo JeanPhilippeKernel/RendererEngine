@@ -9,8 +9,12 @@ namespace ZEngine::Rendering::Renderers
         m_depth = {};
     }
 
-    Specifications::GraphicsPipelineDesc GridLabelPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator*) const
+    bool GridLabelPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         Specifications::GraphicsPipelineDesc desc = {};
         desc.DebugName                            = "Grid-Labels-Pipeline";
         desc.EnableDepthTest                      = false;
@@ -18,7 +22,8 @@ namespace ZEngine::Rendering::Renderers
         desc.EnableBlending                       = true;
         desc.CullMode                             = VK_CULL_MODE_NONE;
         desc.ShaderSpecificationValue.Name        = "grid_labels";
-        return desc;
+        *out                                      = std::move(desc);
+        return true;
     }
 
     bool GridLabelPass::Register(Hardwares::VulkanDevicePtr device, cstring, const RenderGraphFrameContext& context, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr)

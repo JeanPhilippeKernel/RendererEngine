@@ -1,10 +1,84 @@
 #include <ZEngine/Applications/AppRenderPipeline.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
+#include <ZEngine/Rendering/Scenes/PreparedSceneFrame.h>
 #include <gtest/gtest.h>
 #include <atomic>
 #include <thread>
 
 using namespace ZEngine::Applications;
+
+TEST(PreparedSceneBoundsTest, PreservesCenterAndOrthogonalScaleIncludingReflection)
+{
+    auto transform    = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+    transform(0, 0)   = -2.f;
+    transform(1, 1)   = 3.f;
+    transform(2, 2)   = .5f;
+    transform(0, 3)   = 7.f;
+    transform(1, 3)   = -4.f;
+    const auto bounds = ZEngine::Rendering::Scenes::MakeDrawWorldBounds(transform, {1.f, 2.f, 4.f}, 2.f);
+    EXPECT_FLOAT_EQ(bounds.x, 5.f);
+    EXPECT_FLOAT_EQ(bounds.y, 2.f);
+    EXPECT_FLOAT_EQ(bounds.z, 2.f);
+    EXPECT_GE(bounds.w, 6.f);
+    EXPECT_FLOAT_EQ(bounds.w, 6.f);
+    EXPECT_EQ(ZEngine::Rendering::Scenes::MakeDrawWorldBounds(transform, {}, 0.f).w, -1.f);
+    EXPECT_EQ(ZEngine::Rendering::Scenes::MakeDrawWorldBounds(transform, {}, -1.f).w, -1.f);
+}
+
+TEST(PreparedSceneBoundsTest, ShearedHierarchySphereEnclosesEverySampledSurfacePoint)
+{
+    auto transform                           = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+    transform(0, 1)                          = 1.f;
+    // A column-length bound would give sqrt(2), smaller than the actual maximum
+    // stretch (~1.618). This also exercises nonzero centers and translations.
+    transform(0, 3)                          = 4.f;
+    transform(1, 3)                          = -7.f;
+    const ZEngine::Core::Maths::Vec3f center = {2.f, -1.f, .5f};
+    const auto                        bounds = ZEngine::Rendering::Scenes::MakeDrawWorldBounds(transform, center, 3.f);
+    EXPECT_GT(bounds.w, 3.f * std::sqrt(2.f));
+    for (uint32_t latitude = 0; latitude <= 32; ++latitude)
+    {
+        const double elevation = 3.141592653589793 * latitude / 32.0;
+        for (uint32_t longitude = 0; longitude < 64; ++longitude)
+        {
+            const double                      angle = 6.283185307179586 * longitude / 64.0;
+            const ZEngine::Core::Maths::Vec4f point = {center.x + 3.f * float(std::sin(elevation) * std::cos(angle)), center.y + 3.f * float(std::sin(elevation) * std::sin(angle)), center.z + 3.f * float(std::cos(elevation)), 1.f};
+            const auto                        world = transform * point;
+            const auto                        dx    = double(world.x) - bounds.x;
+            const auto                        dy    = double(world.y) - bounds.y;
+            const auto                        dz    = double(world.z) - bounds.z;
+            EXPECT_LE(dx * dx + dy * dy + dz * dz, double(bounds.w) * bounds.w);
+        }
+    }
+}
+
+TEST(PreparedSceneBoundsTest, LargeFiniteScaleDoesNotOverflowIntermediateSquares)
+{
+    auto transform    = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+    transform(0, 0)   = 1.e20f;
+    const auto bounds = ZEngine::Rendering::Scenes::MakeDrawWorldBounds(transform, {}, 1.f);
+    EXPECT_TRUE(std::isfinite(bounds.w));
+    EXPECT_GE(bounds.w, 1.e20f);
+    EXPECT_FLOAT_EQ(bounds.w, 1.e20f);
+}
+
+TEST(PreparedSceneBoundsTest, TinyPositiveRadiusRoundsOutwardAndInvalidRadiusStaysInvalid)
+{
+    auto transform = ZEngine::Core::Maths::Identity<ZEngine::Core::Maths::Mat4f>();
+    for (uint32_t axis = 0; axis < 3; ++axis)
+    {
+        transform(axis, axis) = 1.e-20f;
+    }
+    const auto tiny = ZEngine::Rendering::Scenes::MakeDrawWorldBounds(transform, {}, 1.e-30f);
+    EXPECT_GT(tiny.w, 0.f);
+    const auto invalid = ZEngine::Rendering::Scenes::MakeDrawWorldBounds(transform, {}, std::numeric_limits<float>::quiet_NaN());
+    EXPECT_FALSE(std::isfinite(invalid.w));
+    for (uint32_t axis = 0; axis < 3; ++axis)
+    {
+        transform(axis, axis) = 0.f;
+    }
+    EXPECT_EQ(ZEngine::Rendering::Scenes::MakeDrawWorldBounds(transform, {}, 1.f).w, 0.f);
+}
 
 TEST(AppRenderPipelineMailboxTest, RenderStateProvidesLatestCoherentCameraSnapshot)
 {
@@ -272,6 +346,138 @@ TEST_F(AppRenderSnapshotTest, OverCapacityNeverPublishesAPartialSceneOrChangesRe
     ASSERT_TRUE(pipeline.TryReadFrameState(next));
     EXPECT_TRUE(next.Scene.HasScene);
     EXPECT_EQ(next.Scene.InstanceCount, 0u);
+    pipeline.ReleaseFrameState();
+}
+
+TEST_F(AppRenderSnapshotTest, PreparedFrameIsInvisibleAndCapturesTheCandidateBeforePublication)
+{
+    Stamp(1.f);
+    ASSERT_TRUE(pipeline.PublishFrameState({}, &source));
+    RenderFrameState retained = {};
+    ASSERT_TRUE(pipeline.TryReadFrameState(retained));
+    Stamp(7.f);
+    RenderFrameState frame                         = {};
+    frame.SceneGeneration                          = 42;
+    frame.Camera.Position.x                        = 7.f;
+    AppRenderPipeline::PreparedFrameState prepared = {};
+    ASSERT_TRUE(pipeline.PrepareFrameState(frame, &source, &prepared));
+    Stamp(9.f);
+    source.Instances.clear();
+    RenderFrameState next = {};
+    EXPECT_FALSE(pipeline.TryReadFrameState(next));
+    EXPECT_FLOAT_EQ(retained.Scene.Instances[0].Transform(0, 3), 1.f);
+    prepared.Publish();
+    EXPECT_FALSE(prepared);
+    ASSERT_TRUE(pipeline.TryReadFrameState(next));
+    EXPECT_EQ(next.SceneGeneration, 42u);
+    EXPECT_FLOAT_EQ(next.Camera.Position.x, 7.f);
+    ASSERT_EQ(next.Scene.InstanceCount, 1u);
+    EXPECT_FLOAT_EQ(next.Scene.Instances[0].Transform(0, 3), 7.f);
+    EXPECT_FLOAT_EQ(next.Scene.Lights.PointLights[0].Intensity, 7.f);
+    EXPECT_FLOAT_EQ(next.Sky.EnvironmentIntensity, 7.f);
+    pipeline.ReleaseFrameState();
+}
+
+TEST_F(AppRenderSnapshotTest, CancellingPreparedFrameNeverPublishesItAndReleasesCapacity)
+{
+    {
+        AppRenderPipeline::PreparedFrameState prepared = {};
+        ASSERT_TRUE(pipeline.PrepareFrameState({}, &source, &prepared));
+    }
+    RenderFrameState next = {};
+    EXPECT_FALSE(pipeline.TryReadFrameState(next));
+    for (const auto& slot : pipeline.FrameStateSlots)
+    {
+        EXPECT_EQ(slot.value.load(), static_cast<uint32_t>(PayloadSlotState::Free));
+    }
+    ASSERT_TRUE(pipeline.PublishFrameState({}, &source));
+    ASSERT_TRUE(pipeline.TryReadFrameState(next));
+    pipeline.ReleaseFrameState();
+}
+
+TEST_F(AppRenderSnapshotTest, ReservedFrameSurvivesRegularPublicationAndReadCoalescing)
+{
+    Stamp(7.f);
+    AppRenderPipeline::PreparedFrameState prepared = {};
+    ASSERT_TRUE(pipeline.PrepareFrameState({}, &source, &prepared));
+    for (uint32_t i = 0; i < 100; ++i)
+    {
+        Stamp(9.f);
+        ASSERT_TRUE(pipeline.PublishFrameState({}, &source));
+        RenderFrameState read = {};
+        ASSERT_TRUE(pipeline.TryReadFrameState(read));
+        EXPECT_FLOAT_EQ(read.Scene.Instances[0].Transform(0, 3), 9.f);
+    }
+    // Sequence is assigned at commit, not reservation. Later ordinary frames
+    // cannot make this newly committed frame look stale to the consumer.
+    prepared.Publish();
+    RenderFrameState next = {};
+    ASSERT_TRUE(pipeline.TryReadFrameState(next));
+    EXPECT_FLOAT_EQ(next.Scene.Instances[0].Transform(0, 3), 7.f);
+    pipeline.ReleaseFrameState();
+}
+
+TEST_F(AppRenderSnapshotTest, PreparedFrameTokensMoveWithoutDoubleRelease)
+{
+    AppRenderPipeline::PreparedFrameState first = {}, second = {};
+    Stamp(1.f);
+    ASSERT_TRUE(pipeline.PrepareFrameState({}, &source, &first));
+    Stamp(2.f);
+    ASSERT_TRUE(pipeline.PrepareFrameState({}, &source, &second));
+    AppRenderPipeline::PreparedFrameState moved(std::move(first));
+    EXPECT_FALSE(first);
+    second = std::move(moved); // releases second's old reservation
+    EXPECT_FALSE(moved);
+    EXPECT_TRUE(second);
+    auto* self = &second;
+    second     = std::move(*self);
+    second.Publish();
+    RenderFrameState read = {};
+    ASSERT_TRUE(pipeline.TryReadFrameState(read));
+    EXPECT_FLOAT_EQ(read.Scene.Instances[0].Transform(0, 3), 1.f);
+    pipeline.ReleaseFrameState();
+    for (const auto& slot : pipeline.FrameStateSlots)
+    {
+        EXPECT_EQ(slot.value.load(), static_cast<uint32_t>(PayloadSlotState::Free));
+    }
+}
+
+TEST_F(AppRenderSnapshotTest, ReservationSaturationFailsWithoutOverwritingExistingTokens)
+{
+    AppRenderPipeline::PreparedFrameState reservations[AppRenderPipeline::MaxFrameStateBufferCount] = {};
+    for (auto& reservation : reservations)
+    {
+        ASSERT_TRUE(pipeline.PrepareFrameState({}, &source, &reservation));
+    }
+    AppRenderPipeline::PreparedFrameState rejected = {};
+    EXPECT_FALSE(pipeline.PrepareFrameState({}, &source, &rejected));
+    EXPECT_FALSE(rejected);
+    EXPECT_FALSE(pipeline.PrepareFrameState({}, &source, &reservations[0]));
+    EXPECT_TRUE(reservations[0]);
+    EXPECT_FALSE(pipeline.PrepareFrameState({}, &source, nullptr));
+    EXPECT_FALSE(pipeline.PublishFrameState({}, &source));
+    reservations[0].Reset();
+    ASSERT_TRUE(pipeline.PrepareFrameState({}, &source, &rejected));
+    rejected.Publish();
+    RenderFrameState read = {};
+    ASSERT_TRUE(pipeline.TryReadFrameState(read));
+    pipeline.ReleaseFrameState();
+}
+
+TEST_F(AppRenderSnapshotTest, InvalidPreparationPreservesUnreadFrameAndEmptyToken)
+{
+    Stamp(1.f);
+    ASSERT_TRUE(pipeline.PublishFrameState({}, &source));
+    for (uint32_t i = 0; i < 4; ++i)
+    {
+        source.Instances.push({});
+    }
+    AppRenderPipeline::PreparedFrameState rejected = {};
+    EXPECT_FALSE(pipeline.PrepareFrameState({}, &source, &rejected));
+    EXPECT_FALSE(rejected);
+    RenderFrameState read = {};
+    ASSERT_TRUE(pipeline.TryReadFrameState(read));
+    EXPECT_EQ(read.Scene.InstanceCount, 1u);
     pipeline.ReleaseFrameState();
 }
 

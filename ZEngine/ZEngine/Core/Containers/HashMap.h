@@ -107,6 +107,36 @@ namespace ZEngine::Core::Containers
             m_tail = size_type(-1);
         }
 
+        /// Checked initialization for value-like records. Failure preserves
+        /// the old table and the arena's allocation cursor.
+        [[nodiscard]] bool try_init(Memory::ArenaAllocator* allocator, size_type slot_capacity = 16)
+        {
+            static_assert(std::is_trivially_copyable_v<Entry>);
+            if (!allocator || slot_capacity > (size_type(1) << (sizeof(size_type) * 8 - 1)))
+            {
+                return false;
+            }
+            const auto   cap     = next_pow2(slot_capacity < 16 ? 16 : slot_capacity);
+            Array<Entry> entries = {};
+            entries.m_allocator  = allocator;
+            if (!entries.try_reserve(cap))
+            {
+                return false;
+            }
+            for (size_type index = 0; index < cap; ++index)
+            {
+                new (&entries.m_data[index]) Entry{};
+            }
+            entries.m_size  = cap;
+            m_entries       = std::move(entries);
+            m_allocator     = allocator;
+            m_capacity_mask = cap - 1;
+            m_size          = 0;
+            m_head          = size_type(-1);
+            m_tail          = size_type(-1);
+            return true;
+        }
+
         void insert(const K& key, const V& value)
             requires std::is_copy_assignable_v<V>
         {

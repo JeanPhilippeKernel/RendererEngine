@@ -1,7 +1,7 @@
 # Scene Serialization — Authoring Source and Cooked Runtime
 
 **Priority:** P1 — foundation for persistent editor authoring
-**Status:** In progress; source documents, binary codec, and source compatibility framework implemented; cook/package and standalone runtime integration remain
+**Status:** In progress; source documents, binary codec, source compatibility framework, and cooker/package generation implemented; standalone runtime and Play integration remain
 **Owner:** jnyfah
 **Tracked by:** [#714](https://github.com/JeanPhilippeKernel/RendererEngine/issues/714)–[#719](https://github.com/JeanPhilippeKernel/RendererEngine/issues/719), [#829](https://github.com/JeanPhilippeKernel/RendererEngine/issues/829), and [#830](https://github.com/JeanPhilippeKernel/RendererEngine/issues/830). Their issue descriptions are subordinate to this current schema and source-backed lifecycle contract.
 **Depends on:** actor-ecs-architecture.md, VFS stable UUID/asset registry,
@@ -219,10 +219,13 @@ or pointer-sized memory dumps.
 
 ## 9. Binary cook path
 
-The next orchestration milestone is the
-[scene cooker review proposal](scene-cooker.md) (#718). It specifies imported
-asset closure, incremental keys, and immutable-object/manifest publication;
-this section alone is not a cooker implementation contract.
+The scene cooker (#718) implements imported asset closure, incremental keys,
+and immutable-object/manifest publication. See the
+[cooker design](scene-cooker.md) and [cooker contracts](scene-cooker-contracts.md).
+The approved [scene runtime reconstruction contract](scene-runtime-reconstruction.md)
+(#829) separates engine-owned publication (M1), cooked asset readiness (M2), and
+isolated Play (M3). M1 implementation is present and acceptance qualification is
+in progress; M2 and M3 remain outstanding.
 
 Cook consumes validated YAML source and produces a runtime artifact:
 
@@ -246,10 +249,15 @@ Entity/subtree/component codecs are reused by delete, duplicate, clipboard,
 undo/redo, and Play snapshots. Editor history is session-local and may carry
 UUID targets, but it is not persisted in a scene document.
 
-When load, reload, or a same-world Play restoration creates a new scene instance,
+When load or reload creates a new authoring scene instance,
 EditorSession increments the epoch, clears runtime target caches, and invalidates
-commands that cannot safely resolve to that instance. A successful save advances
-the history dirty checkpoint; selection and editor preferences do not affect it.
+commands that cannot safely resolve to that instance. The approved
+[isolated Play strategy](editor-play-mode.md) instead retains the authoring
+instance and its history, suspends authored mutation, and runs a separate runtime
+world. Enter and Stop advance active-world generation and invalidate runtime
+targets without reconstructing the retained authoring world. A successful save
+advances the history dirty checkpoint; selection and editor preferences do not
+affect it.
 
 ## 11. Required validation
 
@@ -263,7 +271,8 @@ the history dirty checkpoint; selection and editor preferences do not affect it.
 - Interrupted write leaves the old source intact; deterministic save produces a
   stable diff.
 - Missing assets show placeholders in editor and fail the cook gate.
-- Load/reload/Play Stop rebuild render and derived state before editor exposure.
+- Load/reload rebuild render and derived state before editor exposure; isolated
+  Play Stop reactivates the retained authoring world with valid frame/bindings.
 - Built-in callback registration is tested during engine initialization.
 
 ## 12. Delivery checklist
@@ -277,6 +286,6 @@ the history dirty checkpoint; selection and editor preferences do not affect it.
 - [x] Read-only unknown-data policy and bounded source migration framework
 - [x] Stable-schema binary artifact encode/decode
 - [x] Source/binary cross-process, malformed-input, migration, and editor lifecycle tests
-- [ ] Scene cook asset validation, incremental fingerprints, and package manifests
+- [x] Scene cook asset validation, incremental fingerprints, and package manifests
 - [ ] Standalone runtime publication and Play restoration integration
 - [ ] Confirm macOS, Windows, and Linux CI before merge

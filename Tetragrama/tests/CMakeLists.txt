@@ -11,6 +11,13 @@ target_sources(TetragramaTests PRIVATE GizmoGrid_test.cpp)
 target_sources(TetragramaTests PRIVATE ThumbnailService_test.cpp)
 target_sources(TetragramaTests PRIVATE DirectoryListing_test.cpp)
 target_link_libraries(TetragramaTests PRIVATE Tetragrama GTest::gtest_main)
+
+# Explicit real-editor smoke/soak runner. Not a CTest fixture: it requires a
+# desktop Vulkan session, packaged engine assets and a caller-owned project.
+add_executable(SceneLifecycleProcess EXCLUDE_FROM_ALL SceneLifecycleProcess.cpp)
+target_link_libraries(SceneLifecycleProcess PRIVATE Tetragrama)
+add_executable(SceneLifetimeFixtureProcess EXCLUDE_FROM_ALL SceneLifetimeFixtureProcess.cpp)
+target_link_libraries(SceneLifetimeFixtureProcess PRIVATE zEngineLib)
 if(APPLE)
     set_target_properties(TetragramaTests PROPERTIES INSTALL_RPATH "@loader_path/../lib")
 else()
@@ -25,4 +32,11 @@ endif()
 if(BUILD_TESTING)
     include(GoogleTest)
     gtest_discover_tests(TetragramaTests)
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME SceneLifecycleEvidenceTests
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/Scripts/tests/test_scene_lifecycle.py")
+        add_test(NAME SceneCaptureComparisonTests
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/Scripts/tests/test_scene_capture.py")
+    endif()
 endif()

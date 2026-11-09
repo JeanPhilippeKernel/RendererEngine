@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
+#include <ZEngine/Managers/AssetCacheLease.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
 #include <mutex>
@@ -22,27 +23,27 @@ namespace ZEngine::Rendering::Renderers
             Failed
         };
 
-        void                                 Initialize(Hardwares::VulkanDevice* device);
-        Textures::TextureHandle              Request(const Core::VFS::AssetRecordSnapshot& record, uint64_t dependency_hash, const char* cache_path = nullptr, const RenderResourceManager::ThumbnailCacheIdentity* identity = nullptr);
-        Result                               Observe(Textures::TextureHandle texture);
-        void                                 Forget(Textures::TextureHandle texture);
+        void                      Initialize(Hardwares::VulkanDevice* device);
+        Textures::TextureHandle   Request(const Core::VFS::AssetRecordSnapshot& record, uint64_t dependency_hash, const char* cache_path = nullptr, const RenderResourceManager::ThumbnailCacheIdentity* identity = nullptr);
+        Result                    Observe(Textures::TextureHandle texture);
+        void                      Forget(Textures::TextureHandle texture);
         /// Cancels ownership without freeing a recorded/submitted target early.
-        bool                                 Discard(Textures::TextureHandle texture);
-        void                                 BeginFrame();
-        void                                 EndFrame();
-        [[nodiscard]] static bool            DependencyFingerprint(const Core::VFS::AssetRecordSnapshot& record, uint64_t* hash, uint64_t* persistent_hash = nullptr, bool* fully_transparent = nullptr, Materials::AlphaInfo* alpha_info = nullptr);
+        bool                      Discard(Textures::TextureHandle texture);
+        void                      BeginFrame();
+        void                      EndFrame();
+        [[nodiscard]] static bool DependencyFingerprint(const Core::VFS::AssetRecordSnapshot& record, uint64_t* hash, uint64_t* persistent_hash = nullptr, bool* fully_transparent = nullptr, Materials::AlphaInfo* alpha_info = nullptr);
         /// Proves that the preview's alpha test rejects the whole constant surface.
         /// Textured coverage is deliberately unknown; Legacy replaces the factor,
         /// while explicit modes multiply it by sampled base-color alpha.
-        [[nodiscard]] static bool            IsFullyTransparent(const Meshes::MeshMaterial& material);
-        [[nodiscard]] static bool            FrameBounds(const Core::Maths::Vec3f& center, float radius, Core::Maths::Mat4f* view_projection);
+        [[nodiscard]] static bool IsFullyTransparent(const Meshes::MeshMaterial& material);
+        [[nodiscard]] static bool FrameBounds(const Core::Maths::Vec3f& center, float radius, Core::Maths::Mat4f* view_projection);
 
-        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator*) const override;
-        bool                                 Register(Hardwares::VulkanDevicePtr, cstring, const RenderGraphFrameContext&, RenderGraphResourceBuilderPtr, RenderGraphResourceInspectorPtr) override;
-        void                                 Prepare(Hardwares::VulkanDevicePtr, Scenes::SceneDataPtr, RenderGraphResourceInspectorPtr, RenderPasses::RenderPass*) override;
-        void                                 Execute(Hardwares::VulkanDevicePtr, RenderGraphResourceInspectorPtr, Scenes::SceneDataPtr, RenderPasses::RenderPass*, Buffers::FramebufferVNext*, Hardwares::CommandBufferPtr) override;
-        bool                                 RecordDraw(Hardwares::VulkanDevicePtr, RenderGraphResourceInspectorPtr, Scenes::SceneDataPtr, RenderPasses::RenderPass*, Buffers::FramebufferVNext*, Hardwares::CommandBufferPtr) override;
-        bool                                 SupportsSecondaryRecording() const override
+        bool                      TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const override;
+        bool                      Register(Hardwares::VulkanDevicePtr, cstring, const RenderGraphFrameContext&, RenderGraphResourceBuilderPtr, RenderGraphResourceInspectorPtr) override;
+        void                      Prepare(Hardwares::VulkanDevicePtr, Scenes::SceneDataPtr, RenderGraphResourceInspectorPtr, RenderPasses::RenderPass*) override;
+        void                      Execute(Hardwares::VulkanDevicePtr, RenderGraphResourceInspectorPtr, Scenes::SceneDataPtr, RenderPasses::RenderPass*, Buffers::FramebufferVNext*, Hardwares::CommandBufferPtr) override;
+        bool                      RecordDraw(Hardwares::VulkanDevicePtr, RenderGraphResourceInspectorPtr, Scenes::SceneDataPtr, RenderPasses::RenderPass*, Buffers::FramebufferVNext*, Hardwares::CommandBufferPtr) override;
+        bool                      SupportsSecondaryRecording() const override
         {
             return true;
         }
@@ -80,6 +81,7 @@ namespace ZEngine::Rendering::Renderers
             AssetPreviewPass*                             Owner                          = nullptr;
             Core::VFS::AssetRecordSnapshot                Record                         = {};
             Textures::TextureHandle                       Texture                        = {};
+            Managers::AssetPayloadPin                     SourcePin                      = {};
             Primitives::Semaphore*                        Timeline                       = nullptr;
             uint64_t                                      TimelineValue                  = 0;
             uint64_t                                      DependencyHash                 = 0;

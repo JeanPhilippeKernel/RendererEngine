@@ -32,8 +32,9 @@ namespace ZEngine::Profiling
         // Drops the sample silently if the buffer is full (rare in practice).
         static void               Record(const char* name, uint64_t duration_ns);
 
-        // Write a float value plot. Thread-safe.
-        static void               RecordValue(const char* name, float value);
+        // Capture preserves double precision (e.g. exact byte counts through
+        // 2^53). The per-frame display remains a float plot. Thread-safe.
+        static void               RecordValue(const char* name, double value);
 
         // Advance the frame counter. Call once per frame from the main thread
         // before any profiling work for the new frame.

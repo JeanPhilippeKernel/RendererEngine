@@ -33,6 +33,52 @@ TEST_F(OrderedHashMapTest, InitialState)
     EXPECT_GE(map.capacity(), 16u);
 }
 
+TEST_F(OrderedHashMapTest, CheckedInitializationPreservesExistingEntriesAndArenaOnRefusal)
+{
+    HashMap<int, int> map = {};
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 17));
+    map[4]               = 40;
+    map[2]               = 20;
+    const auto  position = manager.MainArena.m_current_offset;
+    const auto* entry    = map.find(4);
+    EXPECT_FALSE(map.try_init(nullptr));
+    EXPECT_FALSE(map.try_init(&manager.MainArena, SIZE_MAX));
+    alignas(std::max_align_t) std::byte storage[1] = {};
+    ArenaAllocator                      tiny       = {};
+    ASSERT_TRUE(tiny.InitializeBorrowed(storage, sizeof(storage)));
+    EXPECT_FALSE(map.try_init(&tiny, 128));
+    EXPECT_EQ(tiny.m_current_offset, 0u);
+    EXPECT_EQ(manager.MainArena.m_current_offset, position);
+    EXPECT_EQ(map.find(4), entry);
+    EXPECT_EQ(map.at(2), 20);
+    std::vector<int> keys = {};
+    for (const auto& pair : map)
+    {
+        keys.push_back(pair.first);
+    }
+    EXPECT_EQ(keys, (std::vector<int>{4, 2}));
+}
+
+TEST_F(OrderedHashMapTest, CheckedReplacementReinitializesOrderedLinks)
+{
+    HashMap<int, int> map = {};
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 1));
+    map[8] = 80;
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 17));
+    EXPECT_TRUE(map.empty());
+    EXPECT_EQ(map.capacity(), 32u);
+    map[5] = 50;
+    map[3] = 30;
+    map.remove(5);
+    map[7]                = 70;
+    std::vector<int> keys = {};
+    for (const auto& pair : map)
+    {
+        keys.push_back(pair.first);
+    }
+    EXPECT_EQ(keys, (std::vector<int>{3, 7}));
+}
+
 TEST_F(OrderedHashMapTest, CapacityAlwaysPowerOfTwo)
 {
     for (int req : {1, 2, 3, 5, 7, 10, 17, 100, 906})

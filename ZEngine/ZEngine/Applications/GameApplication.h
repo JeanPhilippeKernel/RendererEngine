@@ -53,6 +53,9 @@ namespace ZEngine::Applications
         virtual void                      ProcessEvent(Core::CoreEvent&);
         void                              Run();
         virtual void                      PrepareScene(RenderFrameState&);
+        /// Capture only the editor/runtime view. Does not drain resize requests,
+        /// traverse the active scene, or prepare outgoing selection/pick callbacks.
+        [[nodiscard]] bool                CaptureRenderView(RenderFrameState&) const;
         void                              Shutdown();
 
         virtual void                      OverrideWindowConfiguration() = 0;

@@ -12,10 +12,10 @@ namespace ZEngine::Rendering::Renderers
         {
             m_use_composited = value;
         }
-        bool                                 Register(Hardwares::VulkanDevicePtr, cstring, const RenderGraphFrameContext&, RenderGraphResourceBuilderPtr, RenderGraphResourceInspectorPtr) override;
-        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator*) const override;
-        void                                 Prepare(Hardwares::VulkanDevicePtr, Scenes::SceneDataPtr, RenderGraphResourceInspectorPtr, RenderPasses::RenderPass*) override;
-        bool                                 RecordDraw(Hardwares::VulkanDevicePtr, RenderGraphResourceInspectorPtr, Scenes::SceneDataPtr, RenderPasses::RenderPass*, Buffers::FramebufferVNext*, Hardwares::CommandBufferPtr) override;
+        bool Register(Hardwares::VulkanDevicePtr, cstring, const RenderGraphFrameContext&, RenderGraphResourceBuilderPtr, RenderGraphResourceInspectorPtr) override;
+        bool TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const override;
+        void Prepare(Hardwares::VulkanDevicePtr, Scenes::SceneDataPtr, RenderGraphResourceInspectorPtr, RenderPasses::RenderPass*) override;
+        bool RecordDraw(Hardwares::VulkanDevicePtr, RenderGraphResourceInspectorPtr, Scenes::SceneDataPtr, RenderPasses::RenderPass*, Buffers::FramebufferVNext*, Hardwares::CommandBufferPtr) override;
 
     private:
         bool m_use_composited = false;

@@ -19,11 +19,13 @@ namespace ZEngine::Core::VFS
     {
         m_arena = arena;
         m_handles.Initialize(arena, MAX_ASSETS);
-        m_by_uuid.init(arena, MAX_ASSETS);
-        m_by_path.init(arena, MAX_ASSETS);
+        // Every admitted record may belong to the same type. Reserve the full
+        // profile, with hash load-factor headroom, before workers can register.
+        m_by_uuid.init(arena, MAX_ASSETS * 2);
+        m_by_path.init(arena, MAX_ASSETS * 2);
         for (uint8_t i = 0; i < ASSET_TYPE_COUNT; ++i)
         {
-            m_by_type[i].init(arena, MAX_ASSETS / ASSET_TYPE_COUNT);
+            m_by_type[i].init(arena, MAX_ASSETS);
         }
     }
 
@@ -42,6 +44,11 @@ namespace ZEngine::Core::VFS
             return {.Error = RegisterError::DuplicatePath};
         }
 
+        const auto type_index = uint8_t(type);
+        if (uuid.is_nil() || type_index >= ASSET_TYPE_COUNT || (m_by_uuid.size() + 1) * 4 > m_by_uuid.capacity() * 3 || (path.IsValid() && (m_by_path.size() + 1) * 4 > m_by_path.capacity() * 3) || m_by_type[type_index].size() == m_by_type[type_index].capacity())
+        {
+            return {.Error = RegisterError::SlotExhausted};
+        }
         Helpers::Handle<AssetRecord> handle = m_handles.Create();
         if (!handle.Valid())
         {
@@ -160,6 +167,21 @@ namespace ZEngine::Core::VFS
             return false;
         }
         *out = record->SlotHandle;
+        return true;
+    }
+
+    bool AssetIndex::TryBindLoadedAsset(const AssetRecordSnapshot& expected, Managers::AssetHandle slot)
+    {
+        std::unique_lock lock(m_mutex);
+        const auto*      handle = m_by_uuid.find(expected.Record.UUID);
+        auto*            record = handle ? m_handles.Access(*handle) : nullptr;
+        if (!MatchesSnapshot(handle, record, expected) || (slot >> 28) != uint32_t(record->Type) || (record->HasLoadedSlot && record->SlotHandle != slot))
+        {
+            return false;
+        }
+        record->SlotHandle    = slot;
+        record->HasLoadedSlot = true;
+        record->State         = AssetState::Loaded;
         return true;
     }
 

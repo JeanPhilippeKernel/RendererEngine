@@ -21,28 +21,24 @@ namespace ZEngine::Rendering::Renderers
             return false;
 
         res_builder->ReadTexture(m_use_composited_scene_color ? RendererResourceName::FrameHdrCompositedRenderTargetName : RendererResourceName::FrameHdrColorRenderTargetName, "SceneColor");
-        res_builder->WriteColorAttachment(
-            RendererResourceName::FrameColorRenderTargetName,
-            {
-            .IsUsageSampled      = true,
-            .IsRenderTargetSized = true,
-            .Width               = width,
-            .Height              = height,
-            .Format              = ImageFormat::R8G8B8A8_UNORM,
-            .LoadOp              = LoadOperation::CLEAR,
-            .ClearColor          = {0.0f, 0.0f, 0.0f, 1.0f},
-        });
+        const auto target = DescribeSceneTarget(SceneRenderTarget::Color, width, height);
+        res_builder->WriteColorAttachment(target.Name, target.Spec);
         return true;
     }
 
-    GraphicsPipelineDesc ToneMappingPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
+    bool ToneMappingPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         GraphicsPipelineDesc description          = {};
         description.DebugName                     = "Tone-Mapping-Pipeline";
         description.EnableDepthTest               = false;
         description.EnableBlending                = false;
         description.ShaderSpecificationValue.Name = "tone_mapping";
-        return description;
+        *out                                      = std::move(description);
+        return true;
     }
 
     void ToneMappingPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass)

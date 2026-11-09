@@ -23,6 +23,17 @@ namespace ZEngine::ECS
         size_t   MaxDecodedBytes        = ZMega(128);
     };
 
+    struct SceneDocumentReadMemory
+    {
+        // Exclusive temporary input storage. Read rewinds only its own allocation
+        // after parsing, including on failure. Never retains source-buffer views.
+        Core::Memory::ArenaAllocator*   SourceArena     = nullptr;
+        // Optional document/parser route with the same lifetime rules as Parse.
+        // It must not allocate from SourceArena: retained document blocks must
+        // survive the input rewind. Without SourceArena, this also owns the input.
+        Core::Memory::IAllocationRoute* AllocationRoute = nullptr;
+    };
+
     /// Call-borrowed input, or a view into an immutable SceneDocument. Document
     /// names are NUL-terminated tree-owned text, never a second heap string.
     struct SceneDocumentSettingsView
@@ -73,7 +84,7 @@ namespace ZEngine::ECS
         /// outlive the returned document (including moves). No fallback heap/OS
         /// allocation is used by this path; callback-owned resources are caller policy.
         [[nodiscard]] static bool                      Parse(cstring source, size_t size, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {}, const SceneMigrationRegistry* migrations = nullptr, Core::Memory::IAllocationRoute* allocation_route = nullptr);
-        [[nodiscard]] static bool                      Read(Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {}, const SceneMigrationRegistry* migrations = nullptr);
+        [[nodiscard]] static bool                      Read(Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {}, const SceneMigrationRegistry* migrations = nullptr, const SceneDocumentReadMemory& memory = {});
 
         /// All views, including Name, expire when the document is destroyed or replaced.
         [[nodiscard]] const SceneDocumentSettingsView* Settings() const;
@@ -93,6 +104,8 @@ namespace ZEngine::ECS
 
         /// Only accepts an empty, initialized, unpublished candidate. The scene owner must discard
         /// it on failure and rebuild render/actor bindings before publishing it to any consumer.
+        /// Entity resolver IDs are included in the candidate arena budget and retained
+        /// until that arena is reset; reconstruction creates no separate scratch arena.
         [[nodiscard]] bool                             PopulateCandidate(Scene& candidate, const SceneComponentSchemaRegistry& schemas, SceneDiagnostics* diagnostics) const;
 
     private:

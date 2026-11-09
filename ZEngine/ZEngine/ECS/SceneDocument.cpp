@@ -824,9 +824,9 @@ namespace ZEngine::ECS
         }
     }
 
-    bool SceneDocument::Read(Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits, const SceneMigrationRegistry* migrations)
+    bool SceneDocument::Read(Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, const SceneComponentSchemaRegistry& schemas, SceneDocument* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits, const SceneMigrationRegistry* migrations, const SceneDocumentReadMemory& memory)
     {
-        if (!out || !LimitsValid(limits))
+        if (!out || !schemas.IsInitialized() || !LimitsValid(limits) || (memory.SourceArena && (!memory.SourceArena->m_memory || memory.SourceArena->m_current_offset > memory.SourceArena->m_total_size)))
         {
             return SceneDocumentDetail::Reject(diagnostics, "Invalid scene read destination or limits.");
         }
@@ -853,13 +853,52 @@ namespace ZEngine::ECS
             {
                 return SceneDocumentDetail::Reject(diagnostics, "Cannot read an empty, oversized or inaccessible scene source.");
             }
-            std::string source(static_cast<size_t>(size.Value()), '\0');
-            const auto  read = lease.File->ReadAll({reinterpret_cast<uint8_t*>(source.data()), source.size()});
-            if (read.Failed() || read.Value() != source.size())
+            const size_t source_bytes = static_cast<size_t>(size.Value());
+            struct InputStorage
+            {
+                Core::Memory::ArenaTemp         Mark       = {};
+                Core::Memory::IAllocationRoute* Route      = nullptr;
+                void*                           Allocation = nullptr;
+                ~InputStorage()
+                {
+                    if (Route)
+                    {
+                        Route->Free(Allocation);
+                    }
+                    if (Mark.Arena)
+                    {
+                        Core::Memory::EndTempArena(Mark);
+                    }
+                }
+            } storage            = {};
+            std::string fallback = {};
+            char*       source   = nullptr;
+            if (memory.SourceArena)
+            {
+                storage.Mark = Core::Memory::BeginTempArena(memory.SourceArena);
+                source       = static_cast<char*>(memory.SourceArena->AllocateNoZero(source_bytes));
+            }
+            else if (memory.AllocationRoute)
+            {
+                storage.Route      = memory.AllocationRoute;
+                storage.Allocation = storage.Route->Allocate(source_bytes);
+                source             = static_cast<char*>(storage.Allocation);
+            }
+            else
+            {
+                fallback.resize(source_bytes);
+                source = fallback.data();
+            }
+            if (!source)
+            {
+                return SceneDocumentDetail::Reject(diagnostics, "Scene input exceeds its admitted source storage.", SceneDiagnosticCode::AllocationFailed);
+            }
+            const auto read = lease.File->ReadAll({reinterpret_cast<uint8_t*>(source), source_bytes});
+            if (read.Failed() || read.Value() != source_bytes)
             {
                 return SceneDocumentDetail::Reject(diagnostics, "Scene source read was incomplete.");
             }
-            return Parse(source.data(), source.size(), schemas, out, diagnostics, limits, migrations);
+            return Parse(source, source_bytes, schemas, out, diagnostics, limits, migrations, memory.AllocationRoute);
         }
     }
 
@@ -962,6 +1001,12 @@ namespace ZEngine::ECS
         {
             return SceneDocumentDetail::Reject(diagnostics, "Scene load needs an empty, initialized, unpublished candidate.");
         }
+        Core::Memory::WorkingMemoryCharge fixed       = {};
+        constexpr size_t                  fixed_bytes = SceneDocumentDetail::SceneFieldScratchWorkingBytes() + sizeof(FixedArray<uint32_t, ARCHETYPE_MASK_CAPACITY>) + sizeof(SceneEntityResolver) + sizeof(Array<EntityID>) + sizeof(ArrayView<const EntityRecord>);
+        if (!fixed.TryAcquire(m_impl->Tree.WorkingMemoryBudget(), fixed_bytes))
+        {
+            return SceneDocumentDetail::Reject(diagnostics, "Candidate reconstruction exceeds its fixed codec working-memory budget.", SceneDiagnosticCode::LimitExceeded);
+        }
         // Legacy component stores assume their arena growth succeeds. Reject an undersized
         // candidate before creating anything; use codec-provided conservative allocation bounds.
         const auto* arena = candidate.GetArena();
@@ -974,7 +1019,10 @@ namespace ZEngine::ECS
         size_t       required  = ComponentStorage<Components::UUIDComponent>::AllocationUpperBound(count, EntityRegistry::MAX_ENTITIES);
         if (count)
         {
-            size_t capacity = 256;
+            // Resolver IDs are charged to the candidate lifetime, not a hidden
+            // OS arena. They cannot be rewound across component allocations.
+            required        += size_t(count) * sizeof(EntityID) + alignof(EntityID) - 1;
+            size_t capacity  = 256;
             while (capacity < count)
             {
                 capacity *= 2;
@@ -1020,12 +1068,9 @@ namespace ZEngine::ECS
                 ArrayView<const EntityRecord> Records = {};
                 Array<EntityID>               IDs     = {};
             };
-            // Separate scratch: component creation must never be rewound with resolver memory.
-            Core::Memory::ArenaAllocator scratch;
-            scratch.Initialize(std::max<size_t>(4096, count * sizeof(EntityID)), 0, "SceneDocument/CandidateResolver");
             ResolverContext context = {.Records = m_impl->Entities};
-            context.IDs.m_allocator = &scratch;
-            if (!scratch.m_memory || !context.IDs.try_reserve(count))
+            context.IDs.m_allocator = candidate.GetArena();
+            if (!context.IDs.try_reserve(count))
             {
                 return SceneDocumentDetail::Reject(diagnostics, "Cannot allocate candidate entity resolution scratch.");
             }

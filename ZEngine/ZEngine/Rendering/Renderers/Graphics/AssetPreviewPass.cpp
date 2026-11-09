@@ -162,6 +162,19 @@ namespace ZEngine::Rendering::Renderers
         std::lock_guard lock(m_mutex);
         if (!m_device || (record.Record.Type != Managers::AssetType::MESH && record.Record.Type != Managers::AssetType::MATERIAL))
             return {};
+        Managers::AssetPayloadPin source_pin = {};
+        if (record.Record.Type == Managers::AssetType::MESH)
+        {
+            if (auto* assets = Managers::AssetManager::Instance())
+            {
+                source_pin      = assets->PinMeshPayload(record.Record.UUID);
+                auto* resources = static_cast<RenderResourceManager*>(m_device->RRM);
+                if (!source_pin && (!resources || !resources->IsMeshResident(resources->FindMeshBuffer(record.Record.UUID))))
+                {
+                    return {};
+                }
+            }
+        }
         for (auto& task : m_tasks)
         {
             if (task.CurrentState != State::Empty)
@@ -169,7 +182,7 @@ namespace ZEngine::Rendering::Renderers
             const auto texture = m_device->CreateTexture({.IsUsageTransfert = false, .IsUsageTransferSource = true, .Width = Extent, .Height = Extent, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM}, "AssetPreview", RenderResourceManager::ThumbnailTextureSlotReserve);
             if (!texture.Valid())
                 return {};
-            task = {.Owner = this, .Record = record, .Texture = texture, .DependencyHash = dependency_hash, .CurrentState = State::Queued};
+            task = {.Owner = this, .Record = record, .Texture = texture, .SourcePin = std::move(source_pin), .DependencyHash = dependency_hash, .CurrentState = State::Queued};
             if (cache_path && identity && Helpers::secure_strlen(cache_path) < sizeof(task.CachePath))
             {
                 Helpers::secure_strcpy(task.CachePath, sizeof(task.CachePath), cache_path);
@@ -243,6 +256,13 @@ namespace ZEngine::Rendering::Renderers
                 task.CurrentState = State::Failed;
                 return false;
             }
+            uint32_t                                       material_index = 0;
+            RenderResourceManager::MaterialVersionSnapshot retained       = {};
+            if (!resources->GetFrameMaterialVersion(material, &material_index, &retained))
+            {
+                return false;
+            }
+            material           = retained.Material;
             m_uniform.Albedo   = material.AlbedoColor;
             m_uniform.Emissive = material.EmissiveColor;
             m_uniform.Surface  = {std::clamp(material.RoughnessColor.y, 0.04f, 1.f), std::clamp(material.RoughnessColor.x, 0.f, 1.f), material.Factors.z, 1};
@@ -261,22 +281,27 @@ namespace ZEngine::Rendering::Renderers
                 resources->RequestMeshLoad(handle, current.Record.UUID);
             return false;
         }
-        std::unique_lock lock(assets->IngestMutex, std::try_to_lock);
-        if (!lock.owns_lock())
+        RenderResourceManager::MeshGeometrySnapshot geometry = {};
+        if (!resources->GetFrameMeshGeometry(handle, &geometry))
+        {
             return false;
-        const auto* mesh = assets->GetMeshAsset(current.Record.UUID);
+        }
+        // Geometry staging and the frame's exact GPU version now own all bytes
+        // needed by this draw; no CPU source is needed for accepted submission.
+        task.SourcePin.Reset();
+        const auto* mesh = geometry.DrawMetadata;
         if (!mesh || !mesh->BoundsValid || mesh->SubMeshes.empty() || mesh->SubMeshes.size() > MaxDraws || !FrameBounds(mesh->BoundsCenter, mesh->BoundsRadius, &m_uniform.ViewProjection))
         {
             task.CurrentState = State::Failed;
             return false;
         }
         m_uniform.CenterRadius = {mesh->BoundsCenter.x, mesh->BoundsCenter.y, mesh->BoundsCenter.z, mesh->BoundsRadius};
-        uint32_t vertex = 0, index = 0;
-        if (!resources->GetMeshOffsets(handle, vertex, index))
-            return false;
+        const uint32_t vertex  = geometry.VertexOffset();
+        const uint32_t index   = geometry.IndexOffset();
         for (const auto& submesh : mesh->SubMeshes)
+        {
             m_draws[m_draw_count++] = {vertex + submesh.VertexOffset, index + submesh.IndexOffset, submesh.IndexCount};
-        resources->MarkMeshReferenced(handle);
+        }
         return true;
     }
 
@@ -351,14 +376,19 @@ namespace ZEngine::Rendering::Renderers
         m_current = nullptr;
     }
 
-    Specifications::GraphicsPipelineDesc AssetPreviewPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator*) const
+    bool AssetPreviewPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         Specifications::GraphicsPipelineDesc desc = {};
         desc.DebugName                            = "AssetPreview-Pipeline";
         desc.EnableDepthTest = desc.EnableDepthWrite = true;
         desc.CullMode                                = VK_CULL_MODE_NONE;
         desc.ShaderSpecificationValue.Name           = "asset_preview";
-        return desc;
+        *out                                         = std::move(desc);
+        return true;
     }
 
     bool AssetPreviewPass::Register(Hardwares::VulkanDevicePtr device, cstring, const RenderGraphFrameContext&, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr)

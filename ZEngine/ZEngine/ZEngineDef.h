@@ -108,7 +108,8 @@ inline constexpr uint64_t ZGiga(std::integral auto size)
 template <typename Type, typename Allocator>
 inline void* ZPush(Allocator* allocator, std::size_t size, std::source_location location = std::source_location::current())
 {
-    return allocator->Allocate(size, DEFAULT_ALIGNMENT, location.file_name(), location.line());
+    constexpr auto alignment = alignof(Type) > DEFAULT_ALIGNMENT ? alignof(Type) : DEFAULT_ALIGNMENT;
+    return allocator->Allocate(size, alignment, location.file_name(), location.line());
 }
 
 // #define ZPushArray(arena, type, count) ZPush(arena, type, (sizeof(type) * count))

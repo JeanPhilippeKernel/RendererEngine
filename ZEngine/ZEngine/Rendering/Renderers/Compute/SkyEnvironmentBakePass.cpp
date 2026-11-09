@@ -327,7 +327,18 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadTexture(res_builder->ImportTexture(kAtmosphereTransmittanceName, atmosphere.Transmittance, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), "Transmittance");
         res_builder->ReadTexture(res_builder->ImportTexture(kAtmosphereMultiscatteringName, atmosphere.Multiscattering, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), "Multiscattering");
         res_builder->ImportTexture(kSourceRadianceName, m_environment->GetActiveBakeSource(), VK_IMAGE_LAYOUT_UNDEFINED);
-        res_builder->ReadWriteStorageImage(kSourceRadianceName, "Destination", {.LayerCount = 6});
+        // Initialize the whole chain's layout before the full-image sampled
+        // transition. Prepare binds only mip zero to the scalar image2DArray.
+        res_builder->ReadWriteStorageImage(kSourceRadianceName, nullptr);
+    }
+
+    void SkyAtmosphereSourceRadiancePass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass)
+    {
+        SkyEnvironmentBakePass::Prepare(device, scene, res_inspector, pass);
+        if (m_compute_pass && m_environment)
+        {
+            m_compute_pass->SetStorageImage("Destination", m_environment->GetActiveBakeSource(), MakeColorRange(0, 1));
+        }
     }
 
     void SkyAtmosphereSourceRadiancePass::ExecuteCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr /*scene*/, VkPipeline /*pipeline*/, VkPipelineLayout /*layout*/, Hardwares::CommandBufferPtr const command_buffer)
@@ -389,7 +400,9 @@ namespace ZEngine::Rendering::Renderers
             res_builder->ImportStreamingTexture(kSourceRadianceName, *ticket);
         else
             res_builder->ImportTexture(kSourceRadianceName, source, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        res_builder->ReadWriteStorageImage(kSourceRadianceName, "Destinations");
+        // Synchronize the whole chain, but Prepare binds one storage view per
+        // mip in the descriptor array. A whole-chain scalar view is invalid.
+        res_builder->ReadWriteStorageImage(kSourceRadianceName, nullptr);
     }
 
     void SkyEnvironmentMipGenerationPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass)
@@ -498,7 +511,7 @@ namespace ZEngine::Rendering::Renderers
         const Textures::TextureHandle output = m_environment->GetActiveBakeLighting().SpecularEnvironment;
         res_builder->ReadTexture(res_builder->ImportTexture(kSourceRadianceName, source, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), "SourceRadiance");
         res_builder->ImportTexture(kSpecularEnvironmentName, output, VK_IMAGE_LAYOUT_UNDEFINED);
-        res_builder->ReadWriteStorageImage(kSpecularEnvironmentName, "Destinations");
+        res_builder->ReadWriteStorageImage(kSpecularEnvironmentName, nullptr);
     }
 
     void SkyEnvironmentSpecularPrefilterPass::ExecuteCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr /*scene*/, VkPipeline /*pipeline*/, VkPipelineLayout /*layout*/, Hardwares::CommandBufferPtr const command_buffer)

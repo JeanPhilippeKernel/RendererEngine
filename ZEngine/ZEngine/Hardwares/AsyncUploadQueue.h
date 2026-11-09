@@ -16,12 +16,14 @@ namespace ZEngine::Hardwares
 
     /// @brief Describes a submitted texture upload awaiting graph-side consumption.
     /// @details The producer releases the image into PostReleaseLayout. The graph waits
-    ///          on CompletionTimeline and records the matching consumer acquire barrier.
+    ///          on CompletionTimeline and records the matching consumer acquire barrier,
+    ///          including the same old/new layout pair on a queue-family transfer.
     struct StreamingUploadTicket
     {
         Rendering::Textures::TextureHandle Texture             = {};
         Rendering::Primitives::Semaphore*  CompletionTimeline  = nullptr;
         uint64_t                           CompletionValue     = 0;
+        VkImageLayout                      PreReleaseLayout    = VK_IMAGE_LAYOUT_UNDEFINED;
         VkImageLayout                      PostReleaseLayout   = VK_IMAGE_LAYOUT_UNDEFINED;
         uint32_t                           ProducerQueueFamily = VK_QUEUE_FAMILY_IGNORED;
     };
@@ -42,6 +44,7 @@ namespace ZEngine::Hardwares
         bool                              ExposeToFrameWait = true;
         StreamingUploadTicket             StreamingTicket   = {};
         AsyncUploadSubmittedFn            OnSubmitted       = nullptr;
+        AsyncUploadSubmittedFn            OnRejected        = nullptr;
         void*                             SubmissionContext = nullptr;
     };
 

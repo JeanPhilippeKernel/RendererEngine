@@ -3,6 +3,7 @@
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <array>
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <thread>
+#include <vector>
 
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Core::VFS;
@@ -271,6 +273,207 @@ TEST_F(MeshAssetLoaderTest, LoadsReferencedMaterialBeforePublishingMeshDraws)
     EXPECT_FLOAT_EQ(material.AlbedoColor.x, 0.25f);
     EXPECT_FLOAT_EQ(material.AlbedoColor.y, 0.5f);
     EXPECT_FLOAT_EQ(material.AlbedoColor.z, 0.75f);
+}
+
+TEST_F(MeshAssetLoaderTest, CheckedMaterialReadRefusesOversizedMalformedAndExhaustedScratchWithoutChangingOutput)
+{
+    WriteMaterialDependency();
+    const auto     file  = (MaterialWorkspace / "Materials" / "triangle.zematerial").string();
+    ArenaAllocator small = {};
+    small.Initialize(128, 0, "MaterialReadRefusal");
+    AssetMaterial output = {};
+    output.MaterialUUID  = ID;
+    const auto before    = small.m_current_offset;
+    EXPECT_EQ(AssetCodec::TryDeserializeMaterialAssetFile(&small, file.c_str(), output, MaterialID).Error(), VFSError::OutOfMemory);
+    EXPECT_EQ(small.m_current_offset, before);
+    EXPECT_EQ(output.MaterialUUID, ID);
+    {
+        std::ofstream stream(file, std::ios::binary | std::ios::trunc);
+        stream << std::string(ZMega(1) + 1, ' ');
+    }
+    EXPECT_EQ(AssetCodec::TryDeserializeMaterialAssetFile(&Memory.MainArena, file.c_str(), output, MaterialID).Error(), VFSError::SizeLimitExceeded);
+    EXPECT_EQ(output.MaterialUUID, ID);
+    {
+        std::ofstream stream(file, std::ios::trunc);
+        stream << R"({"uuid":"33333333-3333-4333-8333-333333333333","metadata":[true,,false]})";
+    }
+    const auto cursor = Memory.MainArena.m_current_offset;
+    EXPECT_EQ(AssetCodec::TryDeserializeMaterialAssetFile(&Memory.MainArena, file.c_str(), output, MaterialID).Error(), VFSError::Corrupted);
+    EXPECT_EQ(Memory.MainArena.m_current_offset, cursor);
+    EXPECT_EQ(output.MaterialUUID, ID);
+}
+
+TEST_F(MeshAssetLoaderTest, CheckedMaterialIngestionRetainsDeepCopiesAndRepeatedDependencyReadsDoNotGrowEitherAllocator)
+{
+    WriteMaterialDependency();
+    auto* manager = AssetManager::Instance();
+    {
+        ArenaScratch decode(&Memory.MainArena);
+        ASSERT_TRUE(AssetManager::IngestMaterialFromUUID(decode.Arena(), MaterialID));
+    }
+    const auto  cursor   = Memory.MainArena.m_current_offset;
+    const auto  baseline = manager->ContainerSlab.GetStatistics();
+    const auto* slot     = manager->UUIDToMaterialSlot.find(MaterialID);
+    ASSERT_NE(slot, nullptr);
+    ASSERT_EQ(manager->MaterialCacheAllocations.size(), manager->Materials.size());
+    ASSERT_NE(manager->MaterialCacheAllocations[*slot], nullptr);
+    EXPECT_STREQ(manager->Materials[*slot].Name.c_str(), "triangle");
+    EXPECT_EQ(manager->Materials[*slot].AlphaMode, ZEngine::Rendering::Materials::AlphaMode::Legacy);
+    for (uint32_t cycle = 0; cycle < 1100; ++cycle)
+    {
+        ArenaScratch decode(&Memory.MainArena);
+        ASSERT_TRUE(AssetManager::IngestMaterialFromUUID(decode.Arena(), MaterialID));
+    }
+    EXPECT_EQ(Memory.MainArena.m_current_offset, cursor);
+    EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBytes, baseline.LiveBytes);
+    EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBlocks, baseline.LiveBlocks);
+    EXPECT_STREQ(manager->Materials[*slot].Name.c_str(), "triangle");
+}
+
+TEST_F(MeshAssetLoaderTest, RequiredTextureRefusalDoesNotPublishPartialMaterialOrMeshAndValidRetrySucceeds)
+{
+    WriteMaterialDependency();
+    {
+        std::ofstream stream(MaterialWorkspace / "Materials" / "triangle.zematerial", std::ios::trunc);
+        stream << R"({"uuid":"33333333-3333-4333-8333-333333333333","textures":{"albedo":{"uuid":"44444444-4444-4444-8444-444444444444","path":"/Textures/required.png"}}})";
+    }
+    auto*      manager = AssetManager::Instance();
+    const auto live    = manager->ContainerSlab.GetStatistics();
+    EXPECT_TRUE(manager->LoadMeshAsset(VFS, ID).Failed());
+    EXPECT_EQ(manager->UUIDToMaterialSlot.find(MaterialID), nullptr);
+    EXPECT_EQ(manager->Materials.size(), 1u);
+    EXPECT_EQ(manager->GPUMeshMaterials.size(), 1u);
+    EXPECT_EQ(manager->MaterialCacheAllocations.size(), 1u);
+    EXPECT_EQ(manager->Textures.size(), 0u);
+    EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBytes, live.LiveBytes);
+    EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBlocks, live.LiveBlocks);
+    AssetRecordSnapshot material = {};
+    ASSERT_TRUE(manager->Registry->TryReadRecord(MaterialID, &material));
+    EXPECT_FALSE(material.Record.HasLoadedSlot);
+    ExpectUnpublished();
+    {
+        std::ofstream stream(MaterialWorkspace / "Materials" / "triangle.zematerial", std::ios::trunc);
+        stream << R"({"uuid":"33333333-3333-4333-8333-333333333333","name":"retry","albedo_color":[1,1,1,1]})";
+    }
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    EXPECT_NE(manager->UUIDToMaterialSlot.find(MaterialID), nullptr);
+    EXPECT_EQ(manager->Meshes.size(), 1u);
+}
+
+TEST_F(MeshAssetLoaderTest, RequiredLoadingRechecksCachedCompatibilityMaterialsAndRecoversAfterTexturePromotion)
+{
+    WriteMaterialDependency();
+    auto*      manager             = AssetManager::Instance();
+    const auto texture             = *uuids::uuid::from_string("44444444-4444-4444-8444-444444444444");
+    manager->FallbackTextureHandle = {.Index = 5, .Generation = 1};
+    AssetMaterial material         = {};
+    material.MaterialUUID          = MaterialID;
+    material.AlbedoTexUUID         = texture;
+    material.AlbedoTexPath.init(&Memory.MainArena, "/Textures/required.png");
+    ASSERT_TRUE(AssetManager::IngestMaterial(std::move(material)));
+    const auto slot = *manager->UUIDToMaterialSlot.find(MaterialID);
+    ASSERT_EQ(manager->GPUMeshMaterials[slot].AlbedoMap, 5u);
+    const auto baseline = manager->ContainerSlab.GetStatistics();
+    EXPECT_FALSE(AssetManager::IngestMaterialFromUUID(&Memory.MainArena, MaterialID));
+    EXPECT_TRUE(manager->LoadMeshAsset(VFS, ID).Failed());
+    EXPECT_EQ(manager->Meshes.size(), 0u);
+    EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBytes, baseline.LiveBytes);
+    EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBlocks, baseline.LiveBlocks);
+    EXPECT_EQ(AssetManager::FindTextureHandle(texture), manager->FallbackTextureHandle);
+
+    // A mesh populated by a compatibility consumer cannot bypass the same gate.
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    ZEngine::Managers::AssetCacheLease lease = {};
+    ASSERT_TRUE(lease.Initialize(&Memory.MainArena));
+    EXPECT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Failed());
+    EXPECT_EQ(manager->MeshCacheAllocations[0]->References.load(), 1u);
+    EXPECT_EQ(manager->MaterialCacheAllocations[slot]->References.load(), 1u);
+
+    const ZEngine::Rendering::Textures::TextureHandle real            = {.Index = 7, .Generation = 2};
+    bool                                              retire_previous = true;
+    ASSERT_TRUE(AssetManager::TryReplaceTexture(texture, manager->FallbackTextureHandle, real, &retire_previous));
+    EXPECT_FALSE(retire_previous);
+    EXPECT_EQ(manager->GPUMeshMaterials[slot].AlbedoMap, 7u);
+    ASSERT_TRUE(AssetManager::IngestMaterialFromUUID(&Memory.MainArena, MaterialID));
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Succeeded());
+    EXPECT_EQ(manager->Meshes.size(), 1u);
+    EXPECT_EQ(manager->MeshCacheAllocations[0]->References.load(), 2u);
+    EXPECT_EQ(manager->Materials.size(), 2u);
+    lease.Reset();
+}
+
+TEST_F(MeshAssetLoaderTest, TextureReleasesAreDeduplicatedAndCannotDropThe257thDistinctAdmittedKey)
+{
+    auto*                        manager = AssetManager::Instance();
+    std::array<uuids::uuid, 300> ids     = {};
+    for (uint32_t index = 0; index < ids.size(); ++index)
+    {
+        std::array<uint8_t, 16> bytes                      = {};
+        bytes[0]                                           = uint8_t(index);
+        bytes[1]                                           = uint8_t(index >> 8);
+        bytes[15]                                          = 1;
+        ids[index]                                         = uuids::uuid(bytes.begin(), bytes.end());
+        ZEngine::Rendering::Textures::TextureHandle handle = {};
+        handle.Index                                       = index;
+        handle.Generation                                  = 1;
+        manager->UUIDToTextureHandle.insert(ids[index], handle);
+    }
+    for (const auto& id : ids)
+    {
+        AssetManager::ReleaseTexture(id);
+        AssetManager::ReleaseTexture(id);
+    }
+    EXPECT_EQ(manager->PendingTextureReleaseCount, ids.size());
+    AssetManager::FlushTextureReleases();
+    EXPECT_EQ(manager->PendingTextureReleaseCount, 0u);
+    for (const auto& id : ids)
+    {
+        EXPECT_FALSE(AssetManager::FindTextureHandle(id).Valid());
+    }
+}
+
+TEST_F(MeshAssetLoaderTest, MaterialSlabRefusalPreservesTablesAndChargesThenRetriesWithoutArenaRetention)
+{
+    auto*         manager  = AssetManager::Instance();
+    AssetMaterial material = {};
+    material.MaterialUUID  = MaterialID;
+    material.Name.init(&Memory.MainArena, "immutable material");
+    const auto cursor = Memory.MainArena.m_current_offset;
+    {
+        struct SlabFill
+        {
+            TLSFSlab*          Slab   = nullptr;
+            std::vector<void*> Blocks = {};
+            ~SlabFill()
+            {
+                for (auto* block : Blocks)
+                {
+                    Slab->Free(block);
+                }
+            }
+        } fill = {&manager->ContainerSlab};
+        for (const size_t bytes : {size_t(ZMega(1)), size_t(ZKilo(1)), size_t(1)})
+        {
+            while (auto* block = fill.Slab->TryRealloc(nullptr, bytes))
+            {
+                fill.Blocks.push_back(block);
+            }
+        }
+        const auto full = manager->ContainerSlab.GetStatistics();
+        EXPECT_FALSE(AssetManager::IngestMaterial(std::move(material)));
+        EXPECT_EQ(manager->Materials.size(), 1u);
+        EXPECT_EQ(manager->GPUMeshMaterials.size(), 1u);
+        EXPECT_EQ(manager->MaterialCacheAllocations.size(), 1u);
+        EXPECT_EQ(manager->UUIDToMaterialSlot.find(MaterialID), nullptr);
+        EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBytes, full.LiveBytes);
+        EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBlocks, full.LiveBlocks);
+    }
+    ASSERT_TRUE(AssetManager::IngestMaterial(std::move(material)));
+    ASSERT_EQ(manager->Materials.size(), 2u);
+    EXPECT_NE(manager->Materials[1].Name.c_str(), material.Name.c_str());
+    material.Name[0] = 'X';
+    EXPECT_STREQ(manager->Materials[1].Name.c_str(), "immutable material");
+    EXPECT_EQ(Memory.MainArena.m_current_offset, cursor);
 }
 
 TEST_F(MeshAssetLoaderTest, RepeatedPlacementReusesTheBindingWithoutReadingAllocatingOrNotifyingAgain)
@@ -688,11 +891,311 @@ TEST_F(MeshAssetLoaderTest, ConcurrentLoadsCannotMultiplyDecodeMemoryOrWaitOnAnE
     const bool started = gate.Started.load(std::memory_order_acquire);
     EXPECT_TRUE(started);
     if (started)
+    {
         EXPECT_EQ(manager->LoadMeshAsset(VFS, ID).Error(), VFSError::AlreadyExists);
+        EXPECT_EQ(manager->TrimCpuCache(), 0u); // No reclamation inside a live decode.
+    }
     gate.Release.store(true, std::memory_order_release);
     worker.join();
     ASSERT_TRUE(result.Succeeded());
     EXPECT_EQ(VFS.Reads, 1u);
     EXPECT_EQ(manager->MeshCacheAllocations.size(), 1u);
     EXPECT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+}
+
+TEST_F(MeshAssetLoaderTest, UninitializedCpuLeaseRefusesBeforeReadOrPublication)
+{
+    ZEngine::Managers::AssetCacheLease lease = {};
+    EXPECT_EQ(AssetManager::Instance()->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Error(), VFSError::OutOfMemory);
+    EXPECT_EQ(VFS.Reads, 0u);
+    ExpectUnpublished();
+}
+
+TEST_F(MeshAssetLoaderTest, CpuLeaseAdmissionIsBoundedAndDeduplicationDoesNotGrowItsOwner)
+{
+    ArenaAllocator tiny = {};
+    tiny.Initialize(ZKilo(4), 0, "CpuLease/Refusal");
+    ZEngine::Managers::AssetCacheLease refused = {};
+    EXPECT_FALSE(refused.Initialize(&tiny));
+    EXPECT_EQ(tiny.m_current_offset, 0u);
+
+    ZEngine::Managers::AssetCacheLease lease = {};
+    ASSERT_TRUE(lease.Initialize(&Memory.MainArena));
+    auto*      manager = AssetManager::Instance();
+    const auto offset  = Memory.MainArena.m_current_offset;
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Succeeded());
+    auto* allocation = manager->MeshCacheAllocations[0];
+    ASSERT_NE(allocation, nullptr);
+    const auto stable_offset = Memory.MainArena.m_current_offset;
+    for (uint32_t iteration = 0; iteration < 1100; ++iteration)
+    {
+        ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Succeeded());
+    }
+    EXPECT_EQ(allocation->References.load(), 2u);
+    EXPECT_EQ(manager->CpuAssetOwnerPins[0].load(), 1u);
+    // The registry creates the hierarchy once; repeated reads allocate nothing.
+    EXPECT_GE(stable_offset, offset);
+    EXPECT_EQ(manager->TrimCpuCache(), 0u);
+    EXPECT_EQ(Memory.MainArena.m_current_offset, stable_offset);
+    lease.Reset();
+    EXPECT_EQ(allocation->References.load(), 1u);
+    EXPECT_EQ(manager->CpuAssetOwnerPins[0].load(), 0u);
+    EXPECT_EQ(manager->TrimCpuCache(), 1u);
+}
+
+TEST_F(MeshAssetLoaderTest, CpuEvictionReclaimsPayloadAndReloadsStableMeshAndHierarchySlots)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    const auto mesh_binding   = *manager->MeshBindings.find(ID);
+    const auto hierarchy_uuid = manager->NodeHierarchies[mesh_binding.HierarchySlot].NodeHierarchyUUID;
+    const auto live           = manager->ContainerSlab.GetStatistics();
+    EXPECT_EQ(manager->TrimCpuCache(), 1u);
+    const auto evicted = manager->ContainerSlab.GetStatistics();
+    EXPECT_LT(evicted.LiveBytes, live.LiveBytes);
+    EXPECT_EQ(evicted.LiveBlocks + 1, live.LiveBlocks);
+    EXPECT_EQ(manager->GetMeshAsset(ID), nullptr);
+    EXPECT_EQ(manager->GetMeshNodeHierarchy(ID), nullptr);
+    uint32_t draws = 91;
+    EXPECT_FALSE(manager->TryGetMeshDrawCount(ID, &draws));
+    EXPECT_EQ(draws, 91u);
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    EXPECT_EQ(manager->Meshes.size(), 1u);
+    EXPECT_EQ(manager->NodeHierarchies.size(), 1u);
+    EXPECT_EQ(manager->MeshBindings.find(ID)->MeshSlot, mesh_binding.MeshSlot);
+    EXPECT_EQ(manager->MeshBindings.find(ID)->HierarchySlot, mesh_binding.HierarchySlot);
+    EXPECT_EQ(manager->GetMeshNodeHierarchy(ID)->NodeHierarchyUUID, hierarchy_uuid);
+    EXPECT_EQ(VFS.Reads, 2u);
+    EXPECT_TRUE(ReadySawCompleteData);
+}
+
+TEST_F(MeshAssetLoaderTest, CpuSourceLeaseProtectsBothImmutableOldAndCurrentReimportVersions)
+{
+    auto*                              manager = AssetManager::Instance();
+    ZEngine::Managers::AssetCacheLease lease   = {};
+    ASSERT_TRUE(lease.Initialize(&Memory.MainArena));
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Succeeded());
+    auto*       previous     = manager->MeshCacheAllocations[0];
+    const auto* old_vertices = manager->Meshes[0].Vertices.data();
+    const auto  before       = manager->ContainerSlab.GetStatistics();
+    Mesh.Vertices[8]         = 31.f;
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    ASSERT_NE(manager->MeshCacheAllocations[0], previous);
+    EXPECT_EQ(previous->References.load(), 1u); // Lease, not cache, owns old bytes.
+    EXPECT_FLOAT_EQ(old_vertices[8], 2.f);
+    EXPECT_EQ(manager->TrimCpuCache(), 0u); // UUID ownership protects new bytes too.
+    EXPECT_FLOAT_EQ(manager->GetMeshAsset(ID)->Vertices[8], 31.f);
+    EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBlocks, before.LiveBlocks + 1);
+    lease.Reset();
+    EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBlocks, before.LiveBlocks);
+    EXPECT_EQ(manager->TrimCpuCache(), 1u);
+    EXPECT_EQ(manager->ContainerSlab.GetStatistics().LiveBlocks + 1, before.LiveBlocks);
+}
+
+TEST_F(MeshAssetLoaderTest, CpuClosurePinsDependenciesAndRehydratesMaterialStringsIntoTheSameSlot)
+{
+    WriteMaterialDependency();
+    auto*                              manager = AssetManager::Instance();
+    ZEngine::Managers::AssetCacheLease lease   = {};
+    ASSERT_TRUE(lease.Initialize(&Memory.MainArena));
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Succeeded());
+    const auto slot = *manager->UUIDToMaterialSlot.find(MaterialID);
+    ASSERT_NE(manager->MaterialCacheAllocations[slot], nullptr);
+    EXPECT_STREQ(manager->Materials[slot].Name.c_str(), "triangle");
+    EXPECT_EQ(manager->TrimCpuCache(), 0u);
+    lease.Reset();
+    EXPECT_EQ(manager->TrimCpuCache(), 2u);
+    EXPECT_EQ(manager->MaterialCacheAllocations[slot], nullptr);
+    EXPECT_TRUE(manager->Materials[slot].Name.empty());
+    EXPECT_EQ(manager->Materials[slot].MaterialUUID, MaterialID);
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Succeeded());
+    EXPECT_EQ(*manager->UUIDToMaterialSlot.find(MaterialID), slot);
+    EXPECT_EQ(manager->Materials.size(), 2u); // Includes the permanent fallback.
+    EXPECT_STREQ(manager->Materials[slot].Name.c_str(), "triangle");
+    EXPECT_FLOAT_EQ(manager->GPUMeshMaterials[slot].AlbedoColor.x, 0.25f);
+}
+
+TEST_F(MeshAssetLoaderTest, MissingCpuDependencyCannotPartiallyRetainAMesh)
+{
+    auto* manager                  = AssetManager::Instance();
+    // Direct importer admission may precede material admission.
+    Mesh.SubMeshes[0].MaterialUUID = MaterialID;
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    ZEngine::Managers::AssetCacheLease lease = {};
+    ASSERT_TRUE(lease.Initialize(&Memory.MainArena));
+    EXPECT_FALSE(manager->RetainMeshAssets(ID, lease));
+    EXPECT_EQ(manager->MeshCacheAllocations[0]->References.load(), 1u);
+    EXPECT_EQ(manager->CpuAssetOwnerPins[0].load(), 0u);
+    EXPECT_EQ(manager->TrimCpuCache(), 1u);
+}
+
+TEST_F(MeshAssetLoaderTest, ZeroRetentionReloadsOnlyUnownedAssets)
+{
+    auto* manager = AssetManager::Instance();
+    manager->CpuRetention.store(AssetManager::CpuCacheRetention::ZeroRetention);
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    EXPECT_EQ(VFS.Reads, 2u);
+    ZEngine::Managers::AssetCacheLease lease = {};
+    ASSERT_TRUE(lease.Initialize(&Memory.MainArena));
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Succeeded());
+    EXPECT_EQ(VFS.Reads, 3u);
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Succeeded());
+    EXPECT_EQ(VFS.Reads, 3u);
+    lease.Reset();
+    EXPECT_EQ(manager->TrimCpuCache(), 1u);
+}
+
+TEST_F(MeshAssetLoaderTest, TargetedCpuEvictionUsesLeastRecentlyUsedOrderAndStopsAfterItsBudget)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    const auto other            = *uuids::uuid::from_string("55555555-5555-4555-8555-555555555555");
+    Mesh.MeshUUID               = other;
+    Hierarchy.MeshUUID          = other;
+    Hierarchy.NodeHierarchyUUID = *uuids::uuid::from_string("66666666-6666-4666-8666-666666666666");
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    // Touch the first entry after the second was published.
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    EXPECT_EQ(manager->TrimCpuCache(0), 0u);
+    EXPECT_EQ(manager->TrimCpuCache(1), 1u);
+    EXPECT_NE(manager->GetMeshAsset(ID), nullptr);
+    EXPECT_EQ(manager->GetMeshAsset(other), nullptr);
+    EXPECT_NE(manager->MeshCacheAllocations[0], nullptr);
+    EXPECT_EQ(manager->MeshCacheAllocations[1], nullptr);
+}
+
+TEST_F(MeshAssetLoaderTest, CpuTextureStringsFollowSceneClosureWithoutReleasingGpuOwnership)
+{
+    auto*      manager                        = AssetManager::Instance();
+    const auto texture                        = *uuids::uuid::from_string("55555555-5555-4555-8555-555555555555");
+    manager->FallbackTextureHandle.Index      = 5;
+    manager->FallbackTextureHandle.Generation = 1;
+    AssetMaterial material                    = {};
+    material.MaterialUUID                     = MaterialID;
+    material.Name.init(&Memory.MainArena, "textured");
+    material.AlbedoTexUUID = texture;
+    material.AlbedoTexPath.init(&Memory.MainArena, "Textures/a.png");
+    ASSERT_TRUE(AssetManager::IngestMaterial(std::move(material)));
+    Mesh.SubMeshes[0].MaterialUUID = MaterialID;
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    ZEngine::Managers::AssetCacheLease lease = {};
+    ASSERT_TRUE(lease.Initialize(&Memory.MainArena));
+    ASSERT_TRUE(manager->RetainMeshAssets(ID, lease));
+    ASSERT_EQ(manager->TextureCacheAllocations.size(), 1u);
+    EXPECT_EQ(manager->TextureCacheAllocations[0]->References.load(), 2u);
+    EXPECT_EQ(manager->TrimCpuCache(), 0u);
+    lease.Reset();
+    EXPECT_EQ(manager->TrimCpuCache(), 3u);
+    EXPECT_EQ(manager->TextureCacheAllocations[0], nullptr);
+    EXPECT_TRUE(manager->Textures[0].Path.empty());
+    EXPECT_EQ(AssetManager::FindTextureHandle(texture), manager->FallbackTextureHandle);
+    const auto slot = *manager->UUIDToMaterialSlot.find(MaterialID);
+    EXPECT_EQ(manager->GPUMeshMaterials[slot].AlbedoMap, 5u);
+    EXPECT_EQ(manager->Materials[slot].AlbedoTexUUID, texture);
+}
+
+TEST_F(MeshAssetLoaderTest, OperationCpuPinTransfersExactlyOnceAndProtectsReimport)
+{
+    auto* manager = AssetManager::Instance();
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    auto pin = manager->PinMeshPayload(ID);
+    ASSERT_TRUE(pin);
+    auto* previous = manager->MeshCacheAllocations[0];
+    EXPECT_EQ(previous->References.load(), 2u);
+    auto moved = std::move(pin);
+    EXPECT_FALSE(pin);
+    EXPECT_TRUE(moved);
+    Mesh.Vertices[8] = 44.f;
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+    EXPECT_EQ(previous->References.load(), 1u);
+    EXPECT_EQ(manager->TrimCpuCache(), 0u);
+    auto current = manager->PinMeshPayload(ID);
+    ASSERT_TRUE(current);
+    current = std::move(moved); // Releases its preceding version once.
+    EXPECT_FALSE(moved);
+    EXPECT_EQ(manager->CpuAssetOwnerPins[0].load(), 1u);
+    current.Reset();
+    current.Reset();
+    EXPECT_EQ(manager->CpuAssetOwnerPins[0].load(), 0u);
+    EXPECT_EQ(manager->TrimCpuCache(), 1u);
+    EXPECT_FALSE(manager->PinMeshPayload(ID));
+}
+
+TEST_F(MeshAssetLoaderTest, WorkerPublicationRecoversFromPressureByReclaimingColdCpuPayload)
+{
+    auto*     manager = AssetManager::Instance();
+    AssetMesh cold    = {};
+    cold.MeshUUID     = *uuids::uuid::from_string("55555555-5555-4555-8555-555555555555");
+    cold.Vertices.init(&Memory.MainArena, 65536, 65536);
+    cold.Indices.init(&Memory.MainArena, 3, 3);
+    cold.Indices[1] = 1;
+    cold.Indices[2] = 2;
+    cold.SubMeshes.init(&Memory.MainArena, 1);
+    cold.SubMeshes.push(Mesh.SubMeshes[0]);
+    AssetNodeHierarchy cold_hierarchy = {};
+    cold_hierarchy.MeshUUID           = cold.MeshUUID;
+    cold_hierarchy.NodeHierarchyUUID  = *uuids::uuid::from_string("66666666-6666-4666-8666-666666666666");
+    ASSERT_TRUE(AssetManager::IngestMesh(std::move(cold), std::move(cold_hierarchy)));
+    std::vector<void*> pressure = {};
+    for (const auto bytes : {size_t(ZMega(1)), size_t(512), size_t(128)})
+    {
+        while (auto* block = manager->ContainerSlab.TryRealloc(nullptr, bytes))
+        {
+            pressure.push_back(block);
+        }
+    }
+    ZEngine::Managers::AssetCacheLease lease = {};
+    ASSERT_TRUE(lease.Initialize(&Memory.MainArena));
+    const auto loaded = manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease);
+    for (auto* block : pressure)
+    {
+        manager->ContainerSlab.Free(block);
+    }
+    ASSERT_TRUE(loaded.Succeeded());
+    EXPECT_EQ(manager->MeshCacheAllocations[0], nullptr);
+    EXPECT_NE(manager->GetMeshAsset(ID), nullptr);
+    EXPECT_EQ(manager->TrimCpuCache(), 0u);
+}
+
+#if ZENGINE_PROFILING && !ZENGINE_TRACY
+TEST_F(MeshAssetLoaderTest, CpuLoadAndMaintenanceExposeBoundedSceneLoadTraceEvents)
+{
+    ASSERT_TRUE(ZEngine::Profiling::ProfilerBuffer::StartCapture("SceneLoad.Worker."));
+    const auto loaded    = AssetManager::Instance()->LoadMeshAsset(VFS, ID);
+    const auto reclaimed = AssetManager::Instance()->TrimCpuCache();
+    ZEngine::Profiling::ProfilerBuffer::StopCapture();
+    EXPECT_TRUE(loaded.Succeeded());
+    EXPECT_EQ(reclaimed, 1u);
+    EXPECT_EQ(ZEngine::Profiling::ProfilerBuffer::CaptureCount(), 2u);
+    EXPECT_EQ(ZEngine::Profiling::ProfilerBuffer::CaptureDropped(), 0u);
+}
+#endif
+
+TEST_F(MeshAssetLoaderTest, MixedCpuLoadCancelReimportAndZeroRetentionReturnToExactWarmBaseline)
+{
+    auto*                              manager = AssetManager::Instance();
+    ZEngine::Managers::AssetCacheLease lease   = {};
+    ASSERT_TRUE(lease.Initialize(&Memory.MainArena));
+    ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID).Succeeded());
+    ASSERT_EQ(manager->TrimCpuCache(), 1u);
+    const auto baseline = manager->ContainerSlab.GetStatistics();
+    const auto offset   = Memory.MainArena.m_current_offset;
+    for (uint32_t iteration = 0; iteration < 1100; ++iteration)
+    {
+        std::atomic<bool> cancelled = true;
+        ASSERT_EQ(manager->LoadMeshAsset(VFS, ID, {}, &cancelled, &lease).Error(), VFSError::Cancelled);
+        ASSERT_TRUE(manager->LoadMeshAsset(VFS, ID, {}, nullptr, &lease).Succeeded());
+        if (iteration % 7 == 0)
+        {
+            ASSERT_TRUE(AssetManager::IngestMesh(std::move(Mesh), std::move(Hierarchy)));
+        }
+        ASSERT_EQ(manager->TrimCpuCache(), 0u);
+        lease.Reset();
+        ASSERT_EQ(manager->TrimCpuCache(), 1u);
+        const auto current = manager->ContainerSlab.GetStatistics();
+        ASSERT_EQ(current.LiveBytes, baseline.LiveBytes) << iteration;
+        ASSERT_EQ(current.LiveBlocks, baseline.LiveBlocks) << iteration;
+        ASSERT_EQ(Memory.MainArena.m_current_offset, offset) << iteration;
+    }
 }

@@ -49,7 +49,7 @@ namespace ZEngine::Rendering::Scenes
         return true;
     }
 
-    bool SkyEnvironment::SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings, const SkyCelestialLight& celestial_light, uint64_t hdri_source_hash, bool hdri_artifact_ready)
+    bool SkyEnvironment::SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings, const SkyCelestialLight& celestial_light, uint64_t hdri_source_hash, bool hdri_artifact_ready, SkyEnvironmentPublication publication)
     {
         if (revision == 0 || revision < m_latest_revision)
             return false;
@@ -69,20 +69,40 @@ namespace ZEngine::Rendering::Scenes
         if (revision == m_latest_revision && (!is_hdri || (m_bake_config.IsHDRI() && m_bake_config.EnvironmentMap == sanitized.EnvironmentMap && m_bake_hdri_source_hash == hdri_source_hash && m_bake_hdri_artifact_ready == hdri_artifact_ready)))
             return false;
 
-        m_presentation_config          = sanitized;
-        m_presentation_celestial_light = celestial_light.IsValid() ? celestial_light : SkyCelestialLight{};
-        m_latest_revision              = revision;
+        const bool previous_request_was_deferred = m_defer_publication;
+        RetirePreparedSnapshot();
+        m_defer_publication         = publication == SkyEnvironmentPublication::Explicit;
+        m_requested_config          = sanitized;
+        m_requested_celestial_light = celestial_light.IsValid() ? celestial_light : SkyCelestialLight{};
+        m_latest_revision           = revision;
+        if (!m_defer_publication)
+        {
+            m_presentation_config          = m_requested_config;
+            m_presentation_celestial_light = m_requested_celestial_light;
+        }
 
         // SkySphere is presentation-only. It deliberately uses the permanent
         // engine fallback rather than retaining an unrelated HDRI/atmosphere
         // IBL snapshot, and it must not enter the asset or GPU bake path.
         if (sanitized.IsSkySphere())
         {
-            SkyEnvironmentSnapshot& published = m_snapshots[m_published_slot];
-            if (!published.IsFallback)
-                published.Retired = true;
-
-            m_published_slot           = 0;
+            if (m_defer_publication)
+            {
+                if (inputs_valid && m_snapshots[0].SourceRadiance.Valid() && m_fallback_lighting.Valid())
+                {
+                    m_prepared_slot     = 0;
+                    m_prepared_revision = revision;
+                }
+            }
+            else
+            {
+                SkyEnvironmentSnapshot& published = m_snapshots[m_published_slot];
+                if (!published.IsFallback)
+                {
+                    published.Retired = true;
+                }
+                m_published_slot = 0;
+            }
             m_pending_request          = {};
             m_has_pending_request      = false;
             m_bake_config.Mode         = static_cast<SkyMode>(UINT8_MAX);
@@ -91,7 +111,7 @@ namespace ZEngine::Rendering::Scenes
             m_bake_hdri_source_hash    = 0;
             m_bake_hdri_artifact_ready = true;
             m_latest_bake_revision     = revision;
-            m_state                    = SkyEnvironmentState::Fallback;
+            m_state                    = m_defer_publication ? (m_prepared_revision == revision ? SkyEnvironmentState::Ready : SkyEnvironmentState::Failed) : SkyEnvironmentState::Fallback;
             return true;
         }
 
@@ -100,10 +120,10 @@ namespace ZEngine::Rendering::Scenes
         // current until the fixed revision budget opens; the most recently
         // submitted direction is still retained as presentation state above.
         const bool only_dynamic_celestial_input_changed = sanitized.IsAtmosphere() && inputs_valid && m_bake_inputs_valid && m_bake_config.IsAtmosphere() && m_bake_settings.Matches(resolved_bake_settings) && HasEquivalentAtmosphereSourceInputs(m_bake_config, sanitized) && !m_bake_celestial_light.Matches(celestial_light) && !HasSignificantCelestialLightChange(m_bake_celestial_light, celestial_light);
-        if (only_dynamic_celestial_input_changed && revision >= m_latest_bake_revision && revision - m_latest_bake_revision < DynamicCelestialBakeRevisionInterval)
+        if (!m_defer_publication && !previous_request_was_deferred && only_dynamic_celestial_input_changed && revision >= m_latest_bake_revision && revision - m_latest_bake_revision < DynamicCelestialBakeRevisionInterval)
             return true;
 
-        if (inputs_valid && m_bake_inputs_valid && HasEquivalentBakeInputs(m_bake_config, m_bake_celestial_light, m_bake_hdri_source_hash, m_bake_hdri_artifact_ready, sanitized, celestial_light, hdri_source_hash, hdri_artifact_ready) && m_bake_settings.Matches(resolved_bake_settings))
+        if (!m_defer_publication && !previous_request_was_deferred && inputs_valid && m_bake_inputs_valid && HasEquivalentBakeInputs(m_bake_config, m_bake_celestial_light, m_bake_hdri_source_hash, m_bake_hdri_artifact_ready, sanitized, celestial_light, hdri_source_hash, hdri_artifact_ready) && m_bake_settings.Matches(resolved_bake_settings))
         {
             // The source radiance remains valid. Keep editor-facing presentation
             // changes (tint, intensity, and yaw) off the bake path.
@@ -138,6 +158,7 @@ namespace ZEngine::Rendering::Scenes
         m_pending_request.Revision          = revision;
         m_pending_request.HDRIArtifactReady = source_is_ready;
         m_pending_request.BakeInputsValid   = inputs_valid;
+        m_pending_request.Publication       = publication;
         m_latest_bake_revision              = revision;
         m_has_pending_request               = true;
         return true;
@@ -277,29 +298,50 @@ namespace ZEngine::Rendering::Scenes
         if (!m_has_active_bake || m_active_bake.Revision != revision)
             return SkyEnvironmentBakeResult::Ignored;
 
-        const bool                         active_bake_is_current = IsActiveBakeCurrent();
-        const bool                         requires_atmosphere    = m_active_bake.Config.IsAtmosphere();
-        const SkyCelestialLight            completed_celestial    = m_active_bake.CelestialLight;
-        const Textures::TextureHandle      completed_source       = source_radiance.Valid() ? source_radiance : m_active_bake_source;
-        const EnvironmentLightingResources completed_lighting     = lighting.Valid() ? lighting : m_active_bake_lighting.Valid() ? m_active_bake_lighting : m_fallback_lighting;
-        const AtmosphereStaticResources    completed_atmosphere   = atmosphere.Valid() ? atmosphere : m_active_bake_atmosphere;
-        const uint64_t                     completed_memory_bytes = m_active_bake_reserved_memory_bytes;
-        m_active_bake                                             = {};
-        m_active_bake_atmosphere                                  = {};
-        m_active_bake_owns_atmosphere                             = false;
-        m_active_bake_source                                      = {};
-        m_active_bake_lighting                                    = {};
-        m_active_bake_reserved_memory_bytes                       = 0;
-        m_active_bake_stage                                       = SkyEnvironmentBakeStage::AwaitingSource;
-        m_active_stage_timeline                                   = 0;
-        m_active_stage_submitted                                  = false;
-        m_active_stage_recorded                                   = false;
-        m_has_active_bake                                         = false;
+        const bool active_bake_is_current = IsActiveBakeCurrent();
+        const bool explicit_bake          = m_active_bake.Publication == SkyEnvironmentPublication::Explicit;
+        // A producer reporting success is not evidence that its submitted GPU
+        // stages completed. Leave the bake intact so it can continue draining.
+        if (explicit_bake && (m_active_stage_submitted || (active_bake_is_current && success && !IsGpuBakeReadyToPublish())))
+        {
+            return SkyEnvironmentBakeResult::Ignored;
+        }
+        const bool                            inputs_valid        = m_active_bake.BakeInputsValid;
+        const EnvironmentLightingBakeSettings completed_settings  = m_active_bake.BakeSettings;
+        const bool                            requires_atmosphere = m_active_bake.Config.IsAtmosphere();
+        const SkyCelestialLight               completed_celestial = m_active_bake.CelestialLight;
+        const Textures::TextureHandle         completed_source    = source_radiance.Valid() ? source_radiance : m_active_bake_source;
+        EnvironmentLightingResources          completed_lighting  = lighting.Valid() ? lighting : m_active_bake_lighting;
+        if (!completed_lighting.Valid() && !explicit_bake)
+        {
+            completed_lighting = m_fallback_lighting;
+        }
+        const AtmosphereStaticResources completed_atmosphere     = atmosphere.Valid() ? atmosphere : m_active_bake_atmosphere;
+        const uint64_t                  completed_memory_bytes   = m_active_bake_reserved_memory_bytes;
+        const auto                      same_texture             = [](Textures::TextureHandle left, Textures::TextureHandle right) { return left.Index == right.Index && left.Generation == right.Generation; };
+        // A completion must describe the resources that actually ran the GPU
+        // stages, not a newly substituted source or lighting generation.
+        const bool                      source_matches           = same_texture(completed_source, m_active_bake_source) && !same_texture(completed_source, m_snapshots[0].SourceRadiance);
+        const bool                      lighting_matches         = completed_lighting.Valid() && completed_lighting.BakeSettings.Matches(completed_settings) && same_texture(completed_lighting.DiffuseIrradiance, m_active_bake_lighting.DiffuseIrradiance) && !same_texture(completed_lighting.DiffuseIrradiance, m_fallback_lighting.DiffuseIrradiance) && same_texture(completed_lighting.SpecularEnvironment, m_active_bake_lighting.SpecularEnvironment) && !same_texture(completed_lighting.SpecularEnvironment, m_fallback_lighting.SpecularEnvironment) &&
+                                                                   same_texture(completed_lighting.BrdfIntegrationLut, m_active_bake_lighting.BrdfIntegrationLut) && completed_lighting.BrdfIntegrationKey.Matches(m_active_bake_lighting.BrdfIntegrationKey) && completed_lighting.SpecularMipCount == m_active_bake_lighting.SpecularMipCount;
+        const bool                      atmosphere_matches       = !requires_atmosphere || (same_texture(completed_atmosphere.Transmittance, m_active_bake_atmosphere.Transmittance) && same_texture(completed_atmosphere.Multiscattering, m_active_bake_atmosphere.Multiscattering));
+        const bool                      explicit_resources_valid = inputs_valid && source_matches && lighting_matches && atmosphere_matches;
+        m_active_bake                                            = {};
+        m_active_bake_atmosphere                                 = {};
+        m_active_bake_owns_atmosphere                            = false;
+        m_active_bake_source                                     = {};
+        m_active_bake_lighting                                   = {};
+        m_active_bake_reserved_memory_bytes                      = 0;
+        m_active_bake_stage                                      = SkyEnvironmentBakeStage::AwaitingSource;
+        m_active_stage_timeline                                  = 0;
+        m_active_stage_submitted                                 = false;
+        m_active_stage_recorded                                  = false;
+        m_has_active_bake                                        = false;
 
         if (!active_bake_is_current)
             return SkyEnvironmentBakeResult::Discarded;
 
-        if (!success || !completed_source.Valid() || (requires_atmosphere && !completed_atmosphere.Valid()))
+        if (!success || !completed_source.Valid() || (requires_atmosphere && !completed_atmosphere.Valid()) || (explicit_bake && !explicit_resources_valid))
         {
             m_state = SkyEnvironmentState::Failed;
             return SkyEnvironmentBakeResult::Failed;
@@ -312,13 +354,18 @@ namespace ZEngine::Rendering::Scenes
             return SkyEnvironmentBakeResult::Failed;
         }
 
-        SkyEnvironmentSnapshot& previous = m_snapshots[m_published_slot];
-        if (!previous.IsFallback)
-            previous.Retired = true;
+        if (!m_defer_publication)
+        {
+            SkyEnvironmentSnapshot& previous = m_snapshots[m_published_slot];
+            if (!previous.IsFallback)
+            {
+                previous.Retired = true;
+            }
+        }
 
         SkyEnvironmentSnapshot& published = m_snapshots[new_slot];
         published                         = {};
-        published.Config                  = m_presentation_config;
+        published.Config                  = m_requested_config;
         published.CelestialLight          = completed_celestial;
         published.Atmosphere              = completed_atmosphere;
         published.SourceRadiance          = completed_source;
@@ -326,9 +373,70 @@ namespace ZEngine::Rendering::Scenes
         published.Revision                = revision;
         published.MemoryBytes             = completed_memory_bytes;
         published.State                   = SkyEnvironmentState::Ready;
-        m_published_slot                  = static_cast<uint32_t>(new_slot);
         m_state                           = SkyEnvironmentState::Ready;
+        if (m_defer_publication)
+        {
+            m_prepared_slot     = static_cast<uint32_t>(new_slot);
+            m_prepared_revision = revision;
+            return SkyEnvironmentBakeResult::Prepared;
+        }
+        m_published_slot = static_cast<uint32_t>(new_slot);
         return SkyEnvironmentBakeResult::Published;
+    }
+
+    const SkyEnvironmentSnapshot* SkyEnvironment::GetPreparedSnapshot(uint64_t revision) const
+    {
+        if (revision == 0 || revision != m_latest_revision || revision != m_prepared_revision || m_prepared_slot >= MaxSnapshots)
+        {
+            return nullptr;
+        }
+        return &m_snapshots[m_prepared_slot];
+    }
+
+    bool SkyEnvironment::ActivatePrepared(uint64_t revision)
+    {
+        if (!GetPreparedSnapshot(revision))
+        {
+            return false;
+        }
+        SkyEnvironmentSnapshot& previous = m_snapshots[m_published_slot];
+        if (!previous.IsFallback && m_published_slot != m_prepared_slot)
+        {
+            previous.Retired = true;
+        }
+        m_published_slot               = m_prepared_slot;
+        m_presentation_config          = m_requested_config;
+        m_presentation_celestial_light = m_requested_celestial_light;
+        m_prepared_slot                = MaxSnapshots;
+        m_prepared_revision            = 0;
+        m_defer_publication            = false;
+        m_state                        = m_snapshots[m_published_slot].State;
+        return true;
+    }
+
+    bool SkyEnvironment::CancelPrepared(uint64_t revision)
+    {
+        if (!m_defer_publication || revision == 0 || revision != m_latest_revision)
+        {
+            return false;
+        }
+        RetirePreparedSnapshot();
+        m_has_pending_request  = false;
+        m_latest_bake_revision = 0;
+        m_bake_inputs_valid    = false;
+        m_defer_publication    = false;
+        m_state                = m_snapshots[m_published_slot].State;
+        return true;
+    }
+
+    void SkyEnvironment::RetirePreparedSnapshot()
+    {
+        if (m_prepared_slot < MaxSnapshots && m_prepared_slot != m_published_slot && !m_snapshots[m_prepared_slot].IsFallback)
+        {
+            m_snapshots[m_prepared_slot].Retired = true;
+        }
+        m_prepared_slot     = MaxSnapshots;
+        m_prepared_revision = 0;
     }
 
     const SkyEnvironmentSnapshot* SkyEnvironment::AcquireForFrame()
@@ -378,6 +486,8 @@ namespace ZEngine::Rendering::Scenes
 
     SkyEnvironmentResources SkyEnvironment::Shutdown()
     {
+        RetirePreparedSnapshot();
+        m_defer_publication = false;
         while (m_frame_pin_count > 0)
             ReleaseNextFramePin(UINT64_MAX);
 

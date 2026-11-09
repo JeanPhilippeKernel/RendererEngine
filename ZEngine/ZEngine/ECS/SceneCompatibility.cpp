@@ -81,6 +81,20 @@ namespace ZEngine::ECS
         m_capacity = capacity;
         return true;
     }
+    bool SceneMigrationRegistry::Freeze()
+    {
+        if (m_frozen)
+        {
+            return true;
+        }
+        if (!IsInitialized())
+        {
+            return false;
+        }
+        m_frozen = true;
+        return true;
+    }
+
     bool SceneMigrationRegistry::IsInitialized() const
     {
         return m_capacity != 0;
@@ -124,7 +138,7 @@ namespace ZEngine::ECS
     }
     bool SceneMigrationRegistry::Register(cstring key, uint32_t from, uint32_t to, void* context, SceneMigrationFn migrate, SceneDiagnostics* diagnostics)
     {
-        if (!IsInitialized() || !from || to <= from || !migrate || m_entries.size() == m_capacity || Find(key, from))
+        if (m_frozen || !IsInitialized() || !from || to <= from || !migrate || m_entries.size() == m_capacity || Find(key, from))
         {
             return RejectStep(diagnostics, key, from, to, "invalid, duplicate/branching or full registration");
         }

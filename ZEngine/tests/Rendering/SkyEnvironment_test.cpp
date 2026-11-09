@@ -44,6 +44,33 @@ namespace
         };
     }
 
+    bool FinishSkyGpuStages(SkyEnvironment& environment, uint64_t revision, uint64_t first_timeline = 1)
+    {
+        // Atmosphere has six stages; HDRI has three. Never spin on a bad state.
+        for (uint64_t index = 0; index < 6 && !environment.IsGpuBakeReadyToPublish(); ++index)
+        {
+            if (!environment.NotifyGpuBakeStageRecorded(revision, environment.GetActiveBakeStage()) || !environment.MarkGpuBakeStageSubmitted(revision, first_timeline + index) || !environment.AdvanceCompletedGpuBakeStage(first_timeline + index))
+            {
+                return false;
+            }
+        }
+        return environment.IsGpuBakeReadyToPublish();
+    }
+
+    bool RunSkyGpuBake(SkyEnvironment& environment, uint64_t revision, uint64_t source_index = 20)
+    {
+        SkyEnvironmentBakeRequest request = {};
+        if (!environment.TakeBakeRequest(request) || request.Revision != revision || !environment.AttachBakeResource(revision, Texture(source_index)) || !environment.AttachBakeLighting(revision, Lighting(source_index + 1)))
+        {
+            return false;
+        }
+        if (request.Config.IsAtmosphere() && !environment.AttachBakeAtmosphere(revision, Atmosphere(source_index + 4)))
+        {
+            return false;
+        }
+        return environment.BeginGpuBake(revision) && FinishSkyGpuStages(environment, revision);
+    }
+
     struct SkyAtmosphereViewPassProbe final : Renderers::SkyAtmosphereViewPass
     {
         using Renderers::SkyAtmosphereViewPass::MakePushConstants;
@@ -56,6 +83,385 @@ namespace
         }
     };
 } // namespace
+
+TEST(SkyEnvironmentPreparationTest, CandidateRemainsInvisibleUntilExactRevisionIsActivated)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    const SkyConfig original = SkySphereConfig();
+    ASSERT_TRUE(environment.SubmitConfig(original, 1));
+    const SkyEnvironmentSnapshot* const original_snapshot = environment.AcquireForFrame();
+    ASSERT_NE(original_snapshot, nullptr);
+
+    SkyConfig candidate            = HDRIConfig();
+    candidate.EnvironmentIntensity = 3.0f;
+    ASSERT_TRUE(environment.SubmitConfig(candidate, 2, {}, {}, 0, true, SkyEnvironmentPublication::Explicit));
+    EXPECT_EQ(environment.GetPresentationConfig(), original);
+    EXPECT_EQ(environment.GetPreparedSnapshot(2), nullptr);
+    EXPECT_FALSE(environment.ActivatePrepared(2));
+    ASSERT_TRUE(RunSkyGpuBake(environment, 2));
+    ASSERT_EQ(environment.CompleteBake(2, {}, true), SkyEnvironmentBakeResult::Prepared);
+
+    const SkyEnvironmentSnapshot* const prepared = environment.GetPreparedSnapshot(2);
+    ASSERT_NE(prepared, nullptr);
+    EXPECT_EQ(prepared->Config, candidate);
+    EXPECT_EQ(prepared->Revision, 2u);
+    EXPECT_EQ(environment.GetPublishedSnapshot(), original_snapshot);
+    EXPECT_EQ(environment.GetPresentationConfig(), original);
+    EXPECT_EQ(environment.GetPreparedSnapshot(1), nullptr);
+    EXPECT_FALSE(environment.ActivatePrepared(1));
+    EXPECT_FALSE(environment.CancelPrepared(1));
+    SkyEnvironmentResources retired = {};
+    EXPECT_FALSE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+
+    ASSERT_TRUE(environment.ActivatePrepared(2));
+    EXPECT_EQ(environment.GetPublishedSnapshot(), prepared);
+    EXPECT_EQ(environment.GetPresentationConfig(), candidate);
+    EXPECT_EQ(environment.GetPreparedSnapshot(2), nullptr);
+    EXPECT_FALSE(environment.ActivatePrepared(2));
+    EXPECT_FALSE(environment.CancelPrepared(2));
+    EXPECT_EQ(original_snapshot->PinCount, 1u);
+    environment.ReleaseSubmittedFrame(50);
+    EXPECT_EQ(original_snapshot->PinCount, 0u);
+}
+
+TEST(SkyEnvironmentPreparationTest, EarlySuccessCannotBypassSubmittedGpuCompletion)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 0, true, SkyEnvironmentPublication::Explicit));
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(20)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(21)));
+    ASSERT_TRUE(environment.BeginGpuBake(1));
+    ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, environment.GetActiveBakeStage()));
+    ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, 7));
+    EXPECT_FALSE(environment.AdvanceCompletedGpuBakeStage(6));
+    EXPECT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Ignored);
+    ASSERT_NE(environment.GetActiveBake(), nullptr);
+    EXPECT_EQ(environment.GetPreparedSnapshot(1), nullptr);
+    ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(7));
+    ASSERT_TRUE(FinishSkyGpuStages(environment, 1, 8));
+    ASSERT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Prepared);
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+}
+
+TEST(SkyEnvironmentPreparationTest, CandidateAndOutgoingSnapshotsShareOneMemoryBudget)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    environment.ConfigureMemoryBudget(100, 10);
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 1));
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.ReserveActiveBakeMemory(1, 60));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
+    ASSERT_NE(environment.AcquireForFrame(), nullptr);
+
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 2, {}, {}, 2, true, SkyEnvironmentPublication::Explicit));
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    EXPECT_FALSE(environment.ReserveActiveBakeMemory(2, 31));
+    ASSERT_TRUE(environment.ReserveActiveBakeMemory(2, 30));
+    ASSERT_TRUE(environment.AttachBakeResource(2, Texture(20)));
+    ASSERT_TRUE(environment.AttachBakeLighting(2, Lighting(21)));
+    ASSERT_TRUE(environment.BeginGpuBake(2));
+    ASSERT_TRUE(FinishSkyGpuStages(environment, 2));
+    ASSERT_EQ(environment.CompleteBake(2, {}, true), SkyEnvironmentBakeResult::Prepared);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 100u);
+    SkyEnvironmentResources retired = {};
+    EXPECT_FALSE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+
+    ASSERT_TRUE(environment.ActivatePrepared(2));
+    EXPECT_FALSE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+    environment.ReleaseSubmittedFrame(50);
+    EXPECT_FALSE(environment.TakeRetiredSnapshot(49, retired));
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(50, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 2u);
+    EXPECT_EQ(environment.GetReservedMemoryBytes(), 40u);
+}
+
+TEST(SkyEnvironmentPreparationTest, CancellingCompletedCandidateReleasesOnlyItsResources)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 1));
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
+    const SkyEnvironmentSnapshot* const visible = environment.GetPublishedSnapshot();
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 2, {}, {}, 2, true, SkyEnvironmentPublication::Explicit));
+    ASSERT_TRUE(RunSkyGpuBake(environment, 2));
+    ASSERT_EQ(environment.CompleteBake(2, {}, true), SkyEnvironmentBakeResult::Prepared);
+    ASSERT_TRUE(environment.CancelPrepared(2));
+    EXPECT_EQ(environment.GetPreparedSnapshot(2), nullptr);
+    EXPECT_FALSE(environment.ActivatePrepared(2));
+    EXPECT_FALSE(environment.CancelPrepared(2));
+    EXPECT_EQ(environment.GetPublishedSnapshot(), visible);
+    EXPECT_FALSE(visible->Retired);
+    SkyEnvironmentResources retired = {};
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 20u);
+    EXPECT_EQ(retired.Lighting.DiffuseIrradiance.Index, 21u);
+    EXPECT_FALSE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+}
+
+TEST(SkyEnvironmentPreparationTest, CancellingSubmittedCandidateKeepsItsGpuWorkOwnedUntilDrained)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 0, true, SkyEnvironmentPublication::Explicit));
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(20)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(21)));
+    ASSERT_TRUE(environment.BeginGpuBake(1));
+    ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, environment.GetActiveBakeStage()));
+    ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, 7));
+    ASSERT_TRUE(environment.CancelPrepared(1));
+    EXPECT_FALSE(environment.IsActiveBakeCurrent());
+    EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Ignored);
+    EXPECT_FALSE(environment.AdvanceCompletedGpuBakeStage(6));
+    ASSERT_NE(environment.GetActiveBake(), nullptr);
+    EXPECT_EQ(environment.GetActiveBakeSource().Index, 20u);
+    EXPECT_EQ(environment.GetActiveBakeLighting().DiffuseIrradiance.Index, 21u);
+    ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(7));
+    EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Discarded);
+    EXPECT_EQ(environment.GetPreparedSnapshot(1), nullptr);
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+}
+
+TEST(SkyEnvironmentPreparationTest, SupersededCandidateCannotBeActivatedAndItsSlotIsRetired)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 1, true, SkyEnvironmentPublication::Explicit));
+    ASSERT_TRUE(RunSkyGpuBake(environment, 1));
+    ASSERT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Prepared);
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 2, {}, {}, 2, true, SkyEnvironmentPublication::Explicit));
+    EXPECT_FALSE(environment.ActivatePrepared(1));
+    EXPECT_FALSE(environment.CancelPrepared(1));
+    SkyEnvironmentResources retired = {};
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 20u);
+    ASSERT_TRUE(RunSkyGpuBake(environment, 2, 30));
+    ASSERT_EQ(environment.CompleteBake(2, {}, true), SkyEnvironmentBakeResult::Prepared);
+    ASSERT_TRUE(environment.ActivatePrepared(2));
+    EXPECT_EQ(environment.GetPublishedSnapshot()->SourceRadiance.Index, 30u);
+}
+
+TEST(SkyEnvironmentPreparationTest, ImmediateEditCannotReuseAnUnpublishedCandidateAsVisibleState)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 1, true, SkyEnvironmentPublication::Explicit));
+    ASSERT_TRUE(RunSkyGpuBake(environment, 1));
+    ASSERT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Prepared);
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 2, {}, {}, 1));
+    EXPECT_FALSE(environment.ActivatePrepared(1));
+    ASSERT_TRUE(RunSkyGpuBake(environment, 2, 30));
+    ASSERT_EQ(environment.CompleteBake(2, {}, true), SkyEnvironmentBakeResult::Published);
+    EXPECT_EQ(environment.GetPublishedSnapshot()->SourceRadiance.Index, 30u);
+}
+
+TEST(SkyEnvironmentPreparationTest, SkySphereIsPreparedWithoutBakingButDoesNotHideTheOutgoingSky)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1));
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_EQ(environment.CompleteBake(1, Texture(2), true), SkyEnvironmentBakeResult::Published);
+    const SkyEnvironmentSnapshot* const visible  = environment.GetPublishedSnapshot();
+    const SkyConfig                     original = environment.GetPresentationConfig();
+    SkyCelestialLight                   sun      = {};
+    sun.IsAvailable                              = true;
+    ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2, {}, sun, 0, true, SkyEnvironmentPublication::Explicit));
+    ASSERT_NE(environment.GetPreparedSnapshot(2), nullptr);
+    EXPECT_FALSE(environment.TakeBakeRequest(request));
+    EXPECT_EQ(environment.GetPublishedSnapshot(), visible);
+    EXPECT_EQ(environment.GetPresentationConfig(), original);
+    EXPECT_FALSE(environment.GetPresentationCelestialLight().IsAvailable);
+    ASSERT_TRUE(environment.ActivatePrepared(2));
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+    EXPECT_TRUE(environment.GetPresentationConfig().IsSkySphere());
+    EXPECT_TRUE(environment.GetPresentationCelestialLight().IsAvailable);
+    EXPECT_TRUE(visible->Retired);
+}
+
+TEST(SkyEnvironmentPreparationTest, MissingEngineFallbackCannotSatisfySkySpherePreparation)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize({}, {});
+    ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 1, {}, {}, 0, true, SkyEnvironmentPublication::Explicit));
+    EXPECT_EQ(environment.GetState(), SkyEnvironmentState::Failed);
+    EXPECT_EQ(environment.GetPreparedSnapshot(1), nullptr);
+    EXPECT_FALSE(environment.ActivatePrepared(1));
+}
+
+TEST(SkyEnvironmentPreparationTest, RequiredHdrSourceCannotUseTheEngineFallback)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 0, true, SkyEnvironmentPublication::Explicit));
+    ASSERT_TRUE(RunSkyGpuBake(environment, 1, 1));
+    EXPECT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Failed);
+    EXPECT_EQ(environment.GetPreparedSnapshot(1), nullptr);
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+}
+
+TEST(SkyEnvironmentPreparationTest, InvalidRequiredInputsCannotBePreparedEvenAfterGpuStages)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 0, false, SkyEnvironmentPublication::Explicit));
+    ASSERT_TRUE(RunSkyGpuBake(environment, 1));
+    EXPECT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Failed);
+    EXPECT_EQ(environment.GetPreparedSnapshot(1), nullptr);
+    EXPECT_FALSE(environment.ActivatePrepared(1));
+}
+
+TEST(SkyEnvironmentPreparationTest, CompletionCannotSubstituteUnbakedResourceGenerationsOrMetadata)
+{
+    for (uint32_t changed_field = 0; changed_field < 8; ++changed_field)
+    {
+        SCOPED_TRACE(changed_field);
+        SkyEnvironment environment = {};
+        environment.Initialize(Texture(1), Lighting(10));
+        SkyCelestialLight sun = {};
+        sun.IsAvailable       = true;
+        ASSERT_TRUE(environment.SubmitConfig({}, 1, {}, sun, 0, true, SkyEnvironmentPublication::Explicit));
+        ASSERT_TRUE(RunSkyGpuBake(environment, 1));
+        Textures::TextureHandle      source     = Texture(20);
+        EnvironmentLightingResources lighting   = Lighting(21);
+        AtmosphereStaticResources    atmosphere = Atmosphere(24);
+        switch (changed_field)
+        {
+            case 0:
+                ++source.Generation;
+                break;
+            case 1:
+                ++lighting.DiffuseIrradiance.Generation;
+                break;
+            case 2:
+                ++lighting.SpecularEnvironment.Generation;
+                break;
+            case 3:
+                ++lighting.BrdfIntegrationLut.Generation;
+                break;
+            case 4:
+                ++lighting.SpecularMipCount;
+                break;
+            case 5:
+                ++lighting.BrdfIntegrationKey.ShaderVersion;
+                break;
+            case 6:
+                ++atmosphere.Transmittance.Generation;
+                break;
+            case 7:
+                ++atmosphere.Multiscattering.Generation;
+                break;
+        }
+        EXPECT_EQ(environment.CompleteBake(1, source, true, lighting, atmosphere), SkyEnvironmentBakeResult::Failed);
+        EXPECT_EQ(environment.GetPreparedSnapshot(1), nullptr);
+        EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+    }
+}
+
+TEST(SkyEnvironmentPreparationTest, StaleSubmittedBakeCannotReleaseOwnershipBeforeItsTimeline)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, {}, {}, 1, true, SkyEnvironmentPublication::Explicit));
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(20)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(21)));
+    ASSERT_TRUE(environment.BeginGpuBake(1));
+    ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, environment.GetActiveBakeStage()));
+    ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, 50));
+    ASSERT_TRUE(environment.SubmitConfig(SkySphereConfig(), 2));
+    EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Ignored);
+    ASSERT_NE(environment.GetActiveBake(), nullptr);
+    EXPECT_EQ(environment.GetActiveBake()->Publication, SkyEnvironmentPublication::Explicit);
+    ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(50));
+    EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Discarded);
+    EXPECT_TRUE(environment.GetPresentationConfig().IsSkySphere());
+    EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+}
+
+TEST(SkyEnvironmentPreparationTest, SnapshotCapacityFailurePreservesTheOutgoingFrame)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    for (uint64_t revision = 1; revision < SkyEnvironment::MaxSnapshots; ++revision)
+    {
+        ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), revision, {}, {}, revision));
+        SkyEnvironmentBakeRequest request = {};
+        ASSERT_TRUE(environment.TakeBakeRequest(request));
+        ASSERT_EQ(environment.CompleteBake(revision, Texture(revision + 1), true), SkyEnvironmentBakeResult::Published);
+        ASSERT_NE(environment.AcquireForFrame(), nullptr);
+    }
+    const SkyEnvironmentSnapshot* const visible            = environment.GetPublishedSnapshot();
+    const uint64_t                      candidate_revision = SkyEnvironment::MaxSnapshots;
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), candidate_revision, {}, {}, candidate_revision, true, SkyEnvironmentPublication::Explicit));
+    ASSERT_TRUE(RunSkyGpuBake(environment, candidate_revision));
+    EXPECT_EQ(environment.CompleteBake(candidate_revision, {}, true), SkyEnvironmentBakeResult::Failed);
+    EXPECT_EQ(environment.GetPreparedSnapshot(candidate_revision), nullptr);
+    EXPECT_EQ(environment.GetPublishedSnapshot(), visible);
+    EXPECT_FALSE(visible->Retired);
+    for (uint32_t index = 1; index < SkyEnvironment::MaxSnapshots; ++index)
+    {
+        environment.ReleaseSubmittedFrame(50);
+    }
+}
+
+TEST(SkyEnvironmentPreparationTest, RepeatedPreparationAndCancellationRecoverTheBoundedReservation)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    environment.ConfigureMemoryBudget(100, 10);
+    for (uint64_t revision = 1; revision <= 1100; ++revision)
+    {
+        SCOPED_TRACE(revision);
+        ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), revision, {}, {}, revision, true, SkyEnvironmentPublication::Explicit));
+        SkyEnvironmentBakeRequest request = {};
+        ASSERT_TRUE(environment.TakeBakeRequest(request));
+        ASSERT_TRUE(environment.ReserveActiveBakeMemory(revision, 90));
+        ASSERT_TRUE(environment.AttachBakeResource(revision, Texture(20)));
+        ASSERT_TRUE(environment.AttachBakeLighting(revision, Lighting(21)));
+        ASSERT_TRUE(environment.BeginGpuBake(revision));
+        ASSERT_TRUE(FinishSkyGpuStages(environment, revision));
+        ASSERT_EQ(environment.CompleteBake(revision, {}, true), SkyEnvironmentBakeResult::Prepared);
+        EXPECT_EQ(environment.GetReservedMemoryBytes(), 100u);
+        ASSERT_TRUE(environment.CancelPrepared(revision));
+        SkyEnvironmentResources retired = {};
+        ASSERT_TRUE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+        EXPECT_EQ(environment.GetReservedMemoryBytes(), 10u);
+        EXPECT_FALSE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+        EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
+    }
+}
+
+TEST(SkyEnvironmentPreparationTest, ShutdownRetiresPreparedAndPublishedSnapshotsWithoutActivation)
+{
+    SkyEnvironment environment = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    SkyCelestialLight sun = {};
+    sun.IsAvailable       = true;
+    ASSERT_TRUE(environment.SubmitConfig({}, 1, {}, sun, 0, true, SkyEnvironmentPublication::Explicit));
+    ASSERT_TRUE(RunSkyGpuBake(environment, 1));
+    ASSERT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Prepared);
+    EXPECT_FALSE(environment.Shutdown().SourceRadiance.Valid());
+    EXPECT_EQ(environment.GetPreparedSnapshot(1), nullptr);
+    EXPECT_FALSE(environment.ActivatePrepared(1));
+    SkyEnvironmentResources retired = {};
+    ASSERT_TRUE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+    EXPECT_EQ(retired.SourceRadiance.Index, 20u);
+    EXPECT_EQ(retired.Atmosphere.Transmittance.Index, 24u);
+    EXPECT_EQ(retired.Lighting.DiffuseIrradiance.Index, 21u);
+    EXPECT_FALSE(environment.TakeRetiredSnapshot(UINT64_MAX, retired));
+}
 
 TEST(SkyEnvironmentTest, FirstFramePinsTheValidFallbackSnapshot)
 {

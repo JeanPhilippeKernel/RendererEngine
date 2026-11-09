@@ -10,6 +10,7 @@
 #include <ZEngine/Managers/AssetManager.h>
 #include <gtest/gtest.h>
 #include <array>
+#include <thread>
 
 using namespace Tetragrama;
 using namespace ZEngine::Core::VFS;
@@ -19,20 +20,21 @@ using namespace ZEngine::ECS::Components;
 class EditorSceneCandidateTest : public testing::Test
 {
 protected:
-    ZEngine::Core::Memory::MemoryManager    Memory             = {};
-    std::unique_ptr<ZEngine::EngineContext> Engine             = {};
-    Scene                                   Source             = {};
-    SceneComponentSchemaRegistry            Schemas            = {};
-    SceneDiagnostics                        Diagnostics        = {};
-    SceneDocumentSettings                   Settings           = {};
-    std::unique_ptr<EditorSceneCandidate>   Candidate          = {};
-    VFSPath                                 Path               = VFSPath::Parse("/Scenes/loaded.zescene").Value();
-    uint32_t                                ResolveCalls       = 0;
-    uint32_t                                Draws              = 1;
-    bool                                    AssetExists        = true;
-    bool                                    FailWithDiagnostic = false;
+    ZEngine::Core::Memory::MemoryManager                       Memory             = {};
+    std::unique_ptr<ZEngine::EngineContext>                    Engine             = {};
+    Scene                                                      Source             = {};
+    SceneComponentSchemaRegistry                               Schemas            = {};
+    SceneDiagnostics                                           Diagnostics        = {};
+    SceneDocumentSettings                                      Settings           = {};
+    std::unique_ptr<EditorSceneCandidate>                      Candidate          = {};
+    std::unique_ptr<ZEngine::Rendering::RenderResourceManager> ResourceService    = {};
+    VFSPath                                                    Path               = VFSPath::Parse("/Scenes/loaded.zescene").Value();
+    uint32_t                                                   ResolveCalls       = 0;
+    uint32_t                                                   Draws              = 1;
+    bool                                                       AssetExists        = true;
+    bool                                                       FailWithDiagnostic = false;
 
-    static uuids::uuid                      Identity(uint32_t index)
+    static uuids::uuid                                         Identity(uint32_t index)
     {
         std::array<uint8_t, 16> bytes = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x47, 0x88, 0x99, 0xaa, 0xbb, 0xcc};
         for (uint32_t i = 0; i < 4; ++i)
@@ -57,6 +59,7 @@ protected:
     void TearDown() override
     {
         Candidate.reset();
+        ResourceService.reset();
         Source.Shutdown();
         Engine.reset();
     }
@@ -101,6 +104,82 @@ protected:
         return Engine->EditorSceneLoadArenaAInUse.value.load() || Engine->EditorSceneLoadArenaBInUse.value.load();
     }
 };
+
+TEST_F(EditorSceneCandidateTest, RenderPreparationCopiesTheCandidatesResolvedSunInsteadOfOutgoingLightState)
+{
+    const auto light = AddEntity(7);
+    Source.AddComponent<LightComponent>(light, {.LightType = LightComponent::Type::Directional});
+    Settings.Sky.PrimaryCelestialLight = Identity(7);
+    SceneDocument document             = {};
+    ASSERT_TRUE(Capture(&document));
+    ASSERT_TRUE(Prepare(std::move(document)));
+    EXPECT_FALSE(Candidate->Render().CelestialLight.IsAvailable);
+    ResourceService = std::make_unique<ZEngine::Rendering::RenderResourceManager>();
+    ASSERT_TRUE(Candidate->PrepareRenderResources(*ResourceService, {1, 1}, 1));
+    ZEngine::Rendering::RenderResourceManager::SceneResourcePreparationResult result = {};
+    ASSERT_TRUE(Candidate->PollRenderResources(&result));
+    ZEngine::Rendering::RenderResourceManager::SceneEnvironmentPreparation environment = {};
+    ASSERT_TRUE(ResourceService->GetSceneEnvironmentPreparation(result.Id, &environment));
+    EXPECT_TRUE(environment.Input.CelestialLight.IsAvailable);
+    EXPECT_FLOAT_EQ(environment.Input.CelestialLight.DirectionToLight[0], 0.0f);
+    EXPECT_FLOAT_EQ(environment.Input.CelestialLight.DirectionToLight[1], 0.0f);
+    EXPECT_FLOAT_EQ(environment.Input.CelestialLight.DirectionToLight[2], -1.0f);
+    EXPECT_EQ(environment.Input.Sky.PrimaryCelestialLight, Identity(7));
+    EXPECT_EQ(environment.Input.SkyRevision, Candidate->Render().SkyRevision.value.load());
+    EXPECT_EQ(result.Environment, ZEngine::Rendering::RenderResourceManager::SceneEnvironmentPreparationState::Queued);
+}
+
+TEST_F(EditorSceneCandidateTest, AdmittedSlotTransfersToCandidateWithoutASecondReservation)
+{
+    SceneDocument document = {};
+    ASSERT_TRUE(Capture(&document));
+    SceneStorageLease admitted = {}, other = {};
+    ASSERT_TRUE(Engine->TryAcquireSceneStorage(&admitted));
+    ASSERT_TRUE(Engine->TryAcquireSceneStorage(&other));
+    auto* expected = admitted.Arena();
+    ASSERT_TRUE(EditorSceneCandidate::Prepare(std::move(admitted), std::move(document), Schemas, Path, Resolver(), &Candidate, &Diagnostics));
+    EXPECT_EQ(admitted.Arena(), nullptr);
+    EXPECT_EQ(Candidate->Render().LocalArena, expected);
+    EXPECT_TRUE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_TRUE(Engine->EditorSceneLoadArenaBInUse.value.load());
+    Candidate.reset();
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_TRUE(Engine->EditorSceneLoadArenaBInUse.value.load());
+}
+
+TEST_F(EditorSceneCandidateTest, PopulatedAdapterCanBePreparedByItsExclusiveWorkerWithoutChangingActiveBindings)
+{
+    AddEntity(7, true);
+    SceneDocument document = {};
+    ASSERT_TRUE(Capture(&document));
+    SceneStorageLease storage = {};
+    ASSERT_TRUE(Engine->TryAcquireSceneStorage(&storage));
+    std::unique_ptr<SceneInstance> instance = {};
+    ASSERT_TRUE(SceneInstance::Create(std::move(storage), &instance, &Diagnostics));
+    ASSERT_TRUE(instance->Populate(std::move(document), Schemas, &Diagnostics));
+    const auto                     owner_thread    = std::this_thread::get_id();
+    std::thread::id                resolver_thread = {};
+    const EditorSceneAssetResolver resolver        = {&resolver_thread, [](void* context, const uuids::uuid&, uint32_t* draws, SceneDiagnostics*) {
+                                                   *static_cast<std::thread::id*>(context) = std::this_thread::get_id();
+                                                   *draws                                  = 1;
+                                                   return true;
+                                                      }};
+    bool                           prepared        = false;
+    std::thread                    worker([&] { prepared = EditorSceneCandidate::PreparePopulated(std::move(instance), Path, resolver, &Candidate, &Diagnostics); });
+    worker.join();
+    ASSERT_TRUE(prepared);
+    EXPECT_NE(resolver_thread, owner_thread);
+    EXPECT_EQ(Engine->Scene, &Source);
+    EXPECT_EQ(Source.AliveCount(), 1u);
+    ASSERT_NE(Candidate, nullptr);
+    ASSERT_EQ(Candidate->Render().Instances.size(), 1u);
+    EXPECT_FLOAT_EQ(Candidate->Render().Instances[0].Transform(0, 3), 7.f);
+    EXPECT_EQ(Candidate->Actors().Count(), 0u);
+    EXPECT_EQ(Candidate->Render().Session, nullptr);
+    EXPECT_TRUE(AnySlotBusy());
+    Candidate.reset();
+    EXPECT_FALSE(AnySlotBusy());
+}
 
 TEST_F(EditorSceneCandidateTest, EmptyDocumentHasOwnedMetadataAndNoDefaultContent)
 {
@@ -200,7 +279,12 @@ TEST_F(EditorSceneCandidateTest, MeshDrawCountRejectsScannerSlotZeroAliasesAndIn
     ZEngine::Managers::AssetManager   manager  = {};
     ZEngine::Core::VFS::AssetRegistry registry = {};
     registry.Initialize(&Memory.MainArena);
-    manager.Registry = &registry;
+    manager.Registry                                                = &registry;
+    // This synthetic cache bypasses ingestion; supply its matching ownership
+    // marker as well as the manually constructed descriptor below.
+    ZEngine::Managers::AssetManager::AssetPayloadAllocation payload = {};
+    manager.MeshCacheAllocations.init(&Memory.MainArena, 1);
+    manager.MeshCacheAllocations.push(&payload);
     manager.Meshes.init(&Memory.MainArena, 1);
     auto& mesh    = manager.Meshes.push_use({});
     mesh.MeshUUID = Identity(100);

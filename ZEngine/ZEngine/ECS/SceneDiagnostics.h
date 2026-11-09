@@ -14,6 +14,7 @@ namespace ZEngine::ECS
         UnsupportedVersion,
         LimitExceeded,
         AllocationFailed,
+        UnsupportedCapability,
     };
 
     enum class SceneDiagnosticSeverity : uint8_t

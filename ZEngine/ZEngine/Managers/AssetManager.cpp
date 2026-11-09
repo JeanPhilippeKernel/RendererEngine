@@ -5,6 +5,7 @@
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <ZEngine/Rendering/Meshes/Mesh.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <algorithm>
@@ -26,14 +27,64 @@ namespace ZEngine::Managers
 
     namespace
     {
-        struct MeshStorageDeleter
+        struct PayloadStorageDeleter
         {
-            void operator()(AssetManager::MeshCacheAllocation* storage) const
+            void operator()(AssetManager::AssetPayloadAllocation* storage) const
             {
-                AssetManager::MeshCacheAllocation::Destroy(storage);
+                AssetManager::AssetPayloadAllocation::Destroy(storage);
             }
         };
-        using MeshStorage = std::unique_ptr<AssetManager::MeshCacheAllocation, MeshStorageDeleter>;
+        using PayloadStorage = std::unique_ptr<AssetManager::AssetPayloadAllocation, PayloadStorageDeleter>;
+
+        PayloadStorage AllocatePayload(TLSFSlab& slab, size_t bytes)
+        {
+            bytes = std::max(size_t(1), bytes);
+            if (bytes > SIZE_MAX - sizeof(AssetManager::AssetPayloadAllocation))
+            {
+                return {};
+            }
+            auto* block = slab.TryRealloc(nullptr, sizeof(AssetManager::AssetPayloadAllocation) + bytes);
+            if (!block)
+            {
+                return {};
+            }
+            PayloadStorage storage(new (block) AssetManager::AssetPayloadAllocation{});
+            storage->Slab = &slab;
+            if (!storage->Arena.InitializeBorrowed(static_cast<char*>(block) + sizeof(AssetManager::AssetPayloadAllocation), bytes, "AssetManager/Payload"))
+            {
+                return {};
+            }
+            return storage;
+        }
+
+        PayloadStorage CloneMaterial(TLSFSlab& slab, const AssetMaterial& source, AssetMaterial& destination)
+        {
+            const String* strings[] = {&source.Name, &source.AlbedoTexPath, &source.EmissiveTexPath, &source.NormalTexPath, &source.OpacityTexPath, &source.SpecularTexPath};
+            size_t        bytes     = 0;
+            for (const auto* string : strings)
+            {
+                if (string->size() == SIZE_MAX || string->size() + 1 > SIZE_MAX - bytes)
+                {
+                    return {};
+                }
+                bytes += string->size() + 1;
+            }
+            auto storage = AllocatePayload(slab, bytes);
+            if (!storage)
+            {
+                return {};
+            }
+            destination      = source;
+            String* copies[] = {&destination.Name, &destination.AlbedoTexPath, &destination.EmissiveTexPath, &destination.NormalTexPath, &destination.OpacityTexPath, &destination.SpecularTexPath};
+            for (size_t index = 0; index < std::size(strings); ++index)
+            {
+                if (!copies[index]->try_init(&storage->Arena, strings[index]->c_str()))
+                {
+                    return {};
+                }
+            }
+            return storage;
+        }
 
         template <typename T>
         bool ReserveMeshSlot(Array<T>& slots, size_t index)
@@ -154,28 +205,24 @@ namespace ZEngine::Managers
             return true;
         }
 
-        MeshStorage CloneMesh(TLSFSlab& slab, const AssetMesh& source, const AssetNodeHierarchy& source_hierarchy, AssetMesh& mesh, AssetNodeHierarchy& hierarchy)
+        bool MeasureMesh(const AssetMesh& source, const AssetNodeHierarchy& source_hierarchy, PayloadSize& size)
+        {
+            if (!size.Add<float>(source.Vertices.size()) || !size.Add<uint32_t>(source.Indices.size()) || !size.Add<AssetSubMesh>(source.SubMeshes.size()))
+                return false;
+            if (!size.Add<Helpers::NodeHierarchy>(source_hierarchy.Hierarchies.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.LocalTransforms.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.GlobalTransforms.size()))
+                return false;
+            if (!size.Names(source_hierarchy.Names) || !size.Names(source_hierarchy.MaterialNames) || !size.Map(source_hierarchy.NodeNames) || !size.Map(source_hierarchy.NodeMeshes) || !size.Map(source_hierarchy.NodeMaterials))
+                return false;
+            return true;
+        }
+
+        PayloadStorage CloneMesh(TLSFSlab& slab, const AssetMesh& source, const AssetNodeHierarchy& source_hierarchy, AssetMesh& mesh, AssetNodeHierarchy& hierarchy)
         {
             PayloadSize size = {};
-            if (!size.Add<float>(source.Vertices.size()) || !size.Add<uint32_t>(source.Indices.size()) || !size.Add<AssetSubMesh>(source.SubMeshes.size()))
+            if (!MeasureMesh(source, source_hierarchy, size))
                 return {};
-            if (!size.Add<Helpers::NodeHierarchy>(source_hierarchy.Hierarchies.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.LocalTransforms.size()) || !size.Add<Core::Maths::Mat4f>(source_hierarchy.GlobalTransforms.size()))
-                return {};
-            if (!size.Names(source_hierarchy.Names) || !size.Names(source_hierarchy.MaterialNames) || !size.Map(source_hierarchy.NodeNames) || !size.Map(source_hierarchy.NodeMeshes) || !size.Map(source_hierarchy.NodeMaterials))
-                return {};
-            if (size.Bytes > SIZE_MAX - sizeof(AssetManager::MeshCacheAllocation))
-                return {};
-
-            // Header and retained data share one reclaimable block. The arena
-            // aligns absolute addresses; the budget includes each alignment gap.
-            size.Bytes  = std::max(size_t(1), size.Bytes);
-            auto* block = slab.TryRealloc(nullptr, sizeof(AssetManager::MeshCacheAllocation) + size.Bytes);
-            if (!block)
-                return {};
-            MeshStorage storage(new (block) AssetManager::MeshCacheAllocation{});
-            storage->Slab = &slab;
-            // Borrowed arenas require a nonempty range, even for an empty mesh.
-            if (!storage->Arena.InitializeBorrowed(static_cast<char*>(block) + sizeof(AssetManager::MeshCacheAllocation), size.Bytes, "AssetManager/MeshPayload"))
+            auto storage = AllocatePayload(slab, size.Bytes);
+            if (!storage)
                 return {};
             auto& arena = storage->Arena;
             if (!CopyArray(source.Vertices, mesh.Vertices, arena) || !CopyArray(source.Indices, mesh.Indices, arena) || !CopyArray(source.SubMeshes, mesh.SubMeshes, arena))
@@ -265,12 +312,14 @@ namespace ZEngine::Managers
         s_Instance->NodeHierarchies.init(slab, 5000);
         s_Instance->Meshes.init(slab, 5000);
         s_Instance->Materials.init(slab, 5000);
-        s_Instance->GPUMeshMaterials.init(s_Instance->Arena, 5000);
-        s_Instance->Textures.init(s_Instance->Arena, 5000);
+        s_Instance->GPUMeshMaterials.init(slab, 5000);
+        s_Instance->Textures.init(slab, 5000);
         s_Instance->UUIDToTextureHandle.init(slab, 5000);
         s_Instance->MeshBindings.init(s_Instance->Arena, 5000);
         s_Instance->UUIDToMaterialSlot.init(slab, 5000);
         s_Instance->MeshCacheAllocations.init(slab, 128);
+        s_Instance->MaterialCacheAllocations.init(slab, 128);
+        s_Instance->TextureCacheAllocations.init(slab, 128);
 
         // Registry callbacks borrow their observers. A process-static registry
         // would retain those pointers after this manager and its arena retire.
@@ -283,6 +332,7 @@ namespace ZEngine::Managers
         // whichever real material happens to be ingested first.
         Importers::AssetMaterial fallback_mat = {};
         s_Instance->Materials.push(fallback_mat);
+        s_Instance->MaterialCacheAllocations.push(nullptr);
         Rendering::Meshes::MeshMaterial fallback_gpu = {};
         fallback_gpu.AlbedoColor                     = Core::Maths::Vec4f(1.0f, 0.078f, 0.576f, 1.0f); // matches FallbackTextureHandle's (255, 20, 147)
         s_Instance->GPUMeshMaterials.push(fallback_gpu);
@@ -301,9 +351,23 @@ namespace ZEngine::Managers
     {
         if (s_Instance)
         {
+            for (const auto& pins : s_Instance->CpuAssetOwnerPins)
+            {
+                ZENGINE_VALIDATE_ASSERT(pins.load(std::memory_order_acquire) == 0, "CPU asset owner survived shutdown of its cache slab")
+            }
             for (auto* allocation : s_Instance->MeshCacheAllocations)
-                MeshCacheAllocation::Destroy(allocation);
+                AssetPayloadAllocation::Destroy(allocation);
             s_Instance->MeshCacheAllocations.clear();
+            for (auto* allocation : s_Instance->MaterialCacheAllocations)
+            {
+                AssetPayloadAllocation::Destroy(allocation);
+            }
+            s_Instance->MaterialCacheAllocations.clear();
+            for (auto* allocation : s_Instance->TextureCacheAllocations)
+            {
+                AssetPayloadAllocation::Destroy(allocation);
+            }
+            s_Instance->TextureCacheAllocations.clear();
             if (s_Instance->Registry)
             {
                 s_Instance->Registry->~AssetRegistry();
@@ -427,7 +491,12 @@ namespace ZEngine::Managers
 
     Rendering::Textures::TextureHandle AssetManager::IngestTexture(const uuids::uuid& uuid, const Core::Containers::String& path)
     {
-        if (!s_Instance)
+        return IngestTextureInternal(uuid, path, false, true);
+    }
+
+    Rendering::Textures::TextureHandle AssetManager::IngestTextureInternal(const uuids::uuid& uuid, const Core::Containers::String& path, bool required, bool reload)
+    {
+        if (!s_Instance || uuid.is_nil())
             return {};
         std::lock_guard lock(s_Instance->IngestMutex);
 
@@ -437,26 +506,64 @@ namespace ZEngine::Managers
         if (auto* h = s_Instance->UUIDToTextureHandle.find(uuid))
         {
             // Already known — this is a reimport signal (e.g. TextureImporter after a file
-            // edit). The handle value doesn't change: RRM's reload path reconstructs the
-            // existing GPU resource in place. Ask RRM to do that on the render thread.
-            if (s_Instance->Device && s_Instance->Device->RRM)
+            // edit). Keep returning the current image until RRM publishes a ready
+            // copy-on-write replacement on the render thread.
+            if (reload && s_Instance->Device && s_Instance->Device->RRM)
                 static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM)->ScheduleTextureReload(uuid);
-            return *h;
+            if (!required || *h != s_Instance->FallbackTextureHandle)
+            {
+                return *h;
+            }
+            // A compatibility preview may have cached the debug fallback before
+            // the source became available. Required loading must retry admission,
+            // not permanently treat that placeholder as the texture's identity.
         }
 
-        auto  slot          = static_cast<uint32_t>(s_Instance->Textures.size());
-        auto& new_tex       = s_Instance->Textures.push_use({});
+        if (!s_Instance->Registry || (s_Instance->UUIDToTextureHandle.size() + 1) * 4 > s_Instance->UUIDToTextureHandle.capacity() * 3 || path.size() == SIZE_MAX)
+        {
+            return {};
+        }
+        auto         storage = AllocatePayload(s_Instance->ContainerSlab, path.size() + 1);
+        AssetTexture new_tex = {};
+        if (!storage || !new_tex.Path.try_init(&storage->Arena, path.c_str()))
+        {
+            return {};
+        }
+        AssetRecordSnapshot expected = {};
+        if (!s_Instance->Registry->TryReadRecord(uuid, &expected))
+        {
+            if (!s_Instance->Registry->Register(uuid, AssetType::TEXTURE, {}, {}).IsOk() || !s_Instance->Registry->TryReadRecord(uuid, &expected))
+            {
+                return {};
+            }
+        }
+        if (expected.Record.Type != AssetType::TEXTURE)
+        {
+            return {};
+        }
+        const auto slot = expected.Record.HasLoadedSlot ? size_t(ReadAssetHandleIndex(expected.Record.SlotHandle)) : s_Instance->Textures.size();
+        if (slot > s_Instance->Textures.size() || (slot < s_Instance->Textures.size() && s_Instance->Textures[slot].TextureUUID != uuid) || slot >= AssetCacheLease::SlotsPerType || !ReserveMeshSlot(s_Instance->Textures, slot) || !ReserveMeshSlot(s_Instance->TextureCacheAllocations, slot))
+        {
+            return {};
+        }
         new_tex.TextureUUID = uuid;
-        new_tex.Path.init(s_Instance->Arena, path.c_str());
 
         if (!new_tex.Path.empty() && s_Instance->Device && s_Instance->Device->RRM)
         {
-            char full_path[MAX_FILE_PATH_COUNT] = {};
-            snprintf(full_path, sizeof(full_path), "%s%c%s", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, new_tex.Path.c_str());
+            char       full_path[MAX_FILE_PATH_COUNT] = {};
+            const auto count                          = snprintf(full_path, sizeof(full_path), "%s%c%s", s_Instance->CurrentWorkingSpacePath, PLATFORM_OS_BACKSLASH, new_tex.Path.c_str());
+            if (count < 0 || size_t(count) >= sizeof(full_path))
+            {
+                return {};
+            }
             auto* rrm      = static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM);
-            new_tex.Handle = rrm->SubmitTextureFile(full_path);
+            new_tex.Handle = rrm->SubmitTextureFile(full_path, {}, true);
             if (!new_tex.Handle.Valid())
             {
+                if (required)
+                {
+                    return {};
+                }
                 ZENGINE_VALIDATE_ASSERT(s_Instance->FallbackTextureHandle.Valid(), "FallbackTextureHandle not initialized — InitFallbackTexture must be called before ingesting assets")
                 ZENGINE_LOG_ASSET_WARN("Texture not found: '{}' — using fallback", full_path)
                 new_tex.Handle = s_Instance->FallbackTextureHandle;
@@ -464,14 +571,53 @@ namespace ZEngine::Managers
         }
         else
         {
+            if (required)
+            {
+                return {};
+            }
             ZENGINE_VALIDATE_ASSERT(s_Instance->FallbackTextureHandle.Valid(), "FallbackTextureHandle not initialized — InitFallbackTexture must be called before ingesting assets")
             ZENGINE_LOG_ASSET_WARN("Texture {} has no path — extraction may have failed, using fallback", uuids::to_string(uuid))
             new_tex.Handle = s_Instance->FallbackTextureHandle;
         }
 
-        RegisterAsset(AssetType::TEXTURE, new_tex.TextureUUID, slot);
-        s_Instance->UUIDToTextureHandle.insert(new_tex.TextureUUID, new_tex.Handle);
-        return new_tex.Handle;
+        if (!s_Instance->Registry->TryBindLoadedAsset(expected, CreateHandle(uint32_t(slot), AssetType::TEXTURE)))
+        {
+            if (new_tex.Handle.Valid() && new_tex.Handle != s_Instance->FallbackTextureHandle && s_Instance->Device && s_Instance->Device->RRM)
+            {
+                static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM)->ReleaseTexture(new_tex.Handle);
+            }
+            return {};
+        }
+        if (const auto* previous = s_Instance->UUIDToTextureHandle.find(uuid); previous && *previous == s_Instance->FallbackTextureHandle)
+        {
+            bool retire_previous = false;
+            if (!TryReplaceTexture(uuid, *previous, new_tex.Handle, &retire_previous))
+            {
+                static_cast<Rendering::RenderResourceManager*>(s_Instance->Device->RRM)->ReleaseTexture(new_tex.Handle);
+                return {};
+            }
+            ZENGINE_VALIDATE_ASSERT(!retire_previous, "The shared fallback texture must never be retired by promotion")
+        }
+        while (s_Instance->TextureCacheAllocations.size() <= slot)
+        {
+            s_Instance->TextureCacheAllocations.push(nullptr);
+        }
+        storage->OwnerPins = &s_Instance->CpuAssetOwnerPins[AssetCacheLease::SlotsPerType * 2 + slot];
+        storage->LastUse   = s_Instance->NextCpuCacheUse();
+        AssetPayloadAllocation::Destroy(s_Instance->TextureCacheAllocations[slot]);
+        s_Instance->TextureCacheAllocations[slot] = storage.release();
+        const auto handle                         = new_tex.Handle;
+        if (slot == s_Instance->Textures.size())
+        {
+            s_Instance->Textures.push(std::move(new_tex));
+        }
+        else
+        {
+            s_Instance->Textures[slot] = std::move(new_tex);
+        }
+        s_Instance->UUIDToTextureHandle.insert(uuid, handle);
+        (void) s_Instance->Registry->SetState(uuid, AssetState::Loaded);
+        return handle;
     }
 
     void AssetManager::IngestTextures(Core::Containers::Array<AssetTexture>&& textures)
@@ -482,40 +628,129 @@ namespace ZEngine::Managers
             IngestTexture(textures[i].TextureUUID, textures[i].Path);
     }
 
-    void AssetManager::IngestMaterial(AssetMaterial&& mat)
+    bool AssetManager::IngestMaterial(AssetMaterial&& mat)
     {
-        if (!s_Instance)
-            return;
+        return TryIngestMaterial(mat, nullptr, false);
+    }
+
+    bool AssetManager::ResolveMaterialTextures(const AssetMaterial& mat, Rendering::Meshes::MeshMaterial& gpu_mat, bool required)
+    {
+        const uuids::uuid* ids[]   = {&mat.AlbedoTexUUID, &mat.EmissiveTexUUID, &mat.NormalTexUUID, &mat.OpacityTexUUID, &mat.SpecularTexUUID};
+        const String*      paths[] = {&mat.AlbedoTexPath, &mat.EmissiveTexPath, &mat.NormalTexPath, &mat.OpacityTexPath, &mat.SpecularTexPath};
+        uint32_t*          maps[]  = {&gpu_mat.AlbedoMap, &gpu_mat.EmissiveMap, &gpu_mat.NormalMap, &gpu_mat.OpacityMap, &gpu_mat.SpecularMap};
+        for (size_t index = 0; index < std::size(ids); ++index)
+        {
+            *maps[index] = INVALID_MAP_HANDLE;
+            if (ids[index]->is_nil())
+            {
+                continue;
+            }
+            if (!required && paths[index]->empty() && !s_Instance->UUIDToTextureHandle.find(*ids[index]))
+            {
+                continue;
+            }
+            const auto texture = IngestTextureInternal(*ids[index], *paths[index], required, false);
+            if (required && !texture.Valid())
+            {
+                return false;
+            }
+            if (texture.Valid())
+            {
+                *maps[index] = texture.Index;
+            }
+        }
+        return true;
+    }
+
+    bool AssetManager::TryIngestMaterial(const AssetMaterial& mat, const AssetRecordSnapshot* expected_record, bool required)
+    {
+        if (!s_Instance || !s_Instance->Registry || mat.MaterialUUID.is_nil())
+        {
+            return false;
+        }
         std::lock_guard lock(s_Instance->IngestMutex);
         // Use UUIDToMaterialSlot — populated only after data is actually ingested.
         // GetAsset gives false positives: VFSScanner pre-registers all .zematerial UUIDs
         // with SlotHandle=0, so GetAsset<AssetMaterial>(uuid_N) returns Materials[0]
         // (the first ingested material) for every subsequent material → all skipped.
-        if (s_Instance->UUIDToMaterialSlot.find(mat.MaterialUUID) != nullptr)
-            return;
-
-        auto slot = static_cast<uint32_t>(s_Instance->Materials.size());
-        s_Instance->Materials.push(mat.Clone(s_Instance->Arena));
-        RegisterAsset(AssetType::MATERIAL, mat.MaterialUUID, slot);
-        s_Instance->UUIDToMaterialSlot.insert(mat.MaterialUUID, slot);
-
-        Rendering::Meshes::MeshMaterial& gpu_mat = s_Instance->GPUMeshMaterials.push_use({});
-        gpu_mat.AlbedoColor                      = {mat.AlbedoColor[0], mat.AlbedoColor[1], mat.AlbedoColor[2], mat.AlbedoColor[3]};
-        gpu_mat.EmissiveColor                    = {mat.EmissiveColor[0], mat.EmissiveColor[1], mat.EmissiveColor[2], mat.EmissiveColor[3]};
-        gpu_mat.RoughnessColor                   = {mat.RoughnessColor[0], mat.RoughnessColor[1], mat.RoughnessColor[2], mat.RoughnessColor[3]};
-        gpu_mat.SpecularColor                    = {mat.SpecularColor[0], mat.SpecularColor[1], mat.SpecularColor[2], mat.SpecularColor[3]};
-        gpu_mat.AmbientColor                     = {mat.AmbientColor[0], mat.AmbientColor[1], mat.AmbientColor[2], mat.AmbientColor[3]};
-        gpu_mat.Factors                          = {mat.Factors[0], mat.Factors[1], mat.Factors[2], mat.Factors[3]};
-        gpu_mat.AlphaMode                        = mat.AlphaMode;
+        const auto*     cached_slot = s_Instance->UUIDToMaterialSlot.find(mat.MaterialUUID);
+        if (cached_slot && *cached_slot < s_Instance->MaterialCacheAllocations.size() && s_Instance->MaterialCacheAllocations[*cached_slot])
+        {
+            if (required)
+            {
+                auto gpu = s_Instance->GPUMeshMaterials[*cached_slot];
+                if (!ResolveMaterialTextures(mat, gpu, true))
+                {
+                    return false;
+                }
+                s_Instance->GPUMeshMaterials[*cached_slot] = gpu;
+            }
+            return true;
+        }
+        const auto slot = cached_slot ? size_t(*cached_slot) : s_Instance->Materials.size();
+        if (slot >= AssetCacheLease::SlotsPerType || (s_Instance->UUIDToMaterialSlot.size() + (cached_slot ? 0 : 1)) * 4 > s_Instance->UUIDToMaterialSlot.capacity() * 3 || s_Instance->GPUMeshMaterials.size() != s_Instance->Materials.size() || !ReserveMeshSlot(s_Instance->Materials, slot) || !ReserveMeshSlot(s_Instance->GPUMeshMaterials, slot) || !ReserveMeshSlot(s_Instance->MaterialCacheAllocations, slot))
+        {
+            return false;
+        }
+        AssetMaterial copy    = {};
+        auto          storage = CloneMaterial(s_Instance->ContainerSlab, mat, copy);
+        if (!storage)
+        {
+            return false;
+        }
+        AssetRecordSnapshot expected = {};
+        if (expected_record)
+        {
+            expected = *expected_record;
+        }
+        else if (!s_Instance->Registry->TryReadRecord(mat.MaterialUUID, &expected))
+        {
+            if (!s_Instance->Registry->Register(mat.MaterialUUID, AssetType::MATERIAL, {}, {}).IsOk() || !s_Instance->Registry->TryReadRecord(mat.MaterialUUID, &expected))
+            {
+                return false;
+            }
+        }
+        if (expected.Record.Type != AssetType::MATERIAL || expected.Record.UUID != mat.MaterialUUID)
+        {
+            return false;
+        }
+        Rendering::Meshes::MeshMaterial gpu_mat = {};
+        gpu_mat.AlbedoColor                     = {mat.AlbedoColor[0], mat.AlbedoColor[1], mat.AlbedoColor[2], mat.AlbedoColor[3]};
+        gpu_mat.EmissiveColor                   = {mat.EmissiveColor[0], mat.EmissiveColor[1], mat.EmissiveColor[2], mat.EmissiveColor[3]};
+        gpu_mat.RoughnessColor                  = {mat.RoughnessColor[0], mat.RoughnessColor[1], mat.RoughnessColor[2], mat.RoughnessColor[3]};
+        gpu_mat.SpecularColor                   = {mat.SpecularColor[0], mat.SpecularColor[1], mat.SpecularColor[2], mat.SpecularColor[3]};
+        gpu_mat.AmbientColor                    = {mat.AmbientColor[0], mat.AmbientColor[1], mat.AmbientColor[2], mat.AmbientColor[3]};
+        gpu_mat.Factors                         = {mat.Factors[0], mat.Factors[1], mat.Factors[2], mat.Factors[3]};
+        gpu_mat.AlphaMode                       = mat.AlphaMode;
 
         // Resolve handle for each texture slot: UUID lookup first, then fall back to
         // uploading from the stored path — handles scene-reload and dragged-.zmesh cases
         // where IngestTextures may not have run yet for this material's textures.
-        gpu_mat.AlbedoMap                        = ResolveTextureMapIndex(mat.AlbedoTexUUID, mat.AlbedoTexPath);
-        gpu_mat.EmissiveMap                      = ResolveTextureMapIndex(mat.EmissiveTexUUID, mat.EmissiveTexPath);
-        gpu_mat.NormalMap                        = ResolveTextureMapIndex(mat.NormalTexUUID, mat.NormalTexPath);
-        gpu_mat.OpacityMap                       = ResolveTextureMapIndex(mat.OpacityTexUUID, mat.OpacityTexPath);
-        gpu_mat.SpecularMap                      = ResolveTextureMapIndex(mat.SpecularTexUUID, mat.SpecularTexPath);
+        if (!ResolveMaterialTextures(mat, gpu_mat, required))
+        {
+            return false;
+        }
+        if (!s_Instance->Registry->TryBindLoadedAsset(expected, CreateHandle(uint32_t(slot), AssetType::MATERIAL)))
+        {
+            return false;
+        }
+        storage->OwnerPins = &s_Instance->CpuAssetOwnerPins[AssetCacheLease::SlotsPerType + slot];
+        storage->LastUse   = s_Instance->NextCpuCacheUse();
+        if (cached_slot)
+        {
+            s_Instance->Materials[slot]                = std::move(copy);
+            s_Instance->GPUMeshMaterials[slot]         = gpu_mat;
+            s_Instance->MaterialCacheAllocations[slot] = storage.release();
+        }
+        else
+        {
+            s_Instance->Materials.push(std::move(copy));
+            s_Instance->GPUMeshMaterials.push(gpu_mat);
+            s_Instance->MaterialCacheAllocations.push(storage.release());
+        }
+        s_Instance->UUIDToMaterialSlot.insert(mat.MaterialUUID, uint32_t(slot));
+        (void) s_Instance->Registry->SetState(mat.MaterialUUID, AssetState::Loaded);
+        return true;
     }
 
     bool AssetManager::IngestMaterialFromUUID(Core::Memory::ArenaAllocator* scratch, const uuids::uuid& material_uuid)
@@ -526,8 +761,11 @@ namespace ZEngine::Managers
             // The map is mutated by import workers. Its fast deduplication path
             // still needs the same ownership guard as the eventual insertion.
             std::lock_guard lock(s_Instance->IngestMutex);
-            if (s_Instance->UUIDToMaterialSlot.find(material_uuid) != nullptr)
-                return true;
+            const auto*     slot = s_Instance->UUIDToMaterialSlot.find(material_uuid);
+            if (slot && *slot < s_Instance->MaterialCacheAllocations.size() && s_Instance->MaterialCacheAllocations[*slot])
+            {
+                return TryIngestMaterial(s_Instance->Materials[*slot], nullptr, true);
+            }
         }
 
         AssetRecordSnapshot expected = {};
@@ -538,13 +776,11 @@ namespace ZEngine::Managers
         char native[MAX_FILE_PATH_COUNT] = {};
         expected.Record.Path.ResolveNative(s_Instance->CurrentWorkingSpacePath, native, sizeof(native));
 
-        Importers::AssetMaterial mat = {};
-        Importers::AssetCodec::DeserializeMaterialAssetFile(scratch, native, mat);
-        if (mat.MaterialUUID != material_uuid)
+        Importers::AssetMaterial mat  = {};
+        const auto               read = Importers::AssetCodec::TryDeserializeMaterialAssetFile(scratch, native, mat, material_uuid);
+        if (read.Failed())
             return false;
-        IngestMaterial(std::move(mat)); // transitively ingests each referenced texture map
-        std::lock_guard lock(s_Instance->IngestMutex);
-        return s_Instance->UUIDToMaterialSlot.find(material_uuid) != nullptr;
+        return TryIngestMaterial(mat, &expected, true);
     }
 
     uint32_t AssetManager::ResolveTextureMapIndex(const uuids::uuid& id, const Core::Containers::String& path)
@@ -568,38 +804,125 @@ namespace ZEngine::Managers
         return h ? *h : Rendering::Textures::TextureHandle{};
     }
 
+    bool AssetManager::TryReplaceTexture(const uuids::uuid& uuid, Rendering::Textures::TextureHandle expected, Rendering::Textures::TextureHandle replacement, bool* retire_previous)
+    {
+        if (retire_previous)
+        {
+            *retire_previous = false;
+        }
+        if (!s_Instance || !replacement.Valid() || replacement.Index >= INVALID_MAP_HANDLE || !retire_previous)
+        {
+            return false;
+        }
+        std::scoped_lock lock(s_Instance->IngestMutex, s_Instance->PendingTextureReleaseMutex);
+        auto*            current = s_Instance->UUIDToTextureHandle.find(uuid);
+        if (!current || current->Index != expected.Index || current->Generation != expected.Generation || (expected.Index == replacement.Index && expected.Generation == replacement.Generation))
+        {
+            return false;
+        }
+        for (uint32_t index = 0; index < s_Instance->PendingTextureReleaseCount; ++index)
+        {
+            if (s_Instance->PendingTextureReleases[index] == uuid)
+            {
+                return false;
+            }
+        }
+        Importers::AssetTexture* descriptor = nullptr;
+        for (auto& texture : s_Instance->Textures)
+        {
+            if (texture.TextureUUID == uuid && texture.Handle.Index == expected.Index && texture.Handle.Generation == expected.Generation)
+            {
+                descriptor = &texture;
+                break;
+            }
+        }
+        if (!descriptor || s_Instance->GPUMeshMaterials.size() < s_Instance->Materials.size())
+        {
+            return false;
+        }
+        *current           = replacement;
+        descriptor->Handle = replacement;
+        const auto map     = static_cast<uint32_t>(replacement.Index);
+        for (uint32_t index = 0; index < s_Instance->Materials.size(); ++index)
+        {
+            const auto& material = s_Instance->Materials[index];
+            auto&       gpu      = s_Instance->GPUMeshMaterials[index];
+            if (material.AlbedoTexUUID == uuid)
+            {
+                gpu.AlbedoMap = map;
+            }
+            if (material.EmissiveTexUUID == uuid)
+            {
+                gpu.EmissiveMap = map;
+            }
+            if (material.NormalTexUUID == uuid)
+            {
+                gpu.NormalMap = map;
+            }
+            if (material.OpacityTexUUID == uuid)
+            {
+                gpu.OpacityMap = map;
+            }
+            if (material.SpecularTexUUID == uuid)
+            {
+                gpu.SpecularMap = map;
+            }
+        }
+        const auto fallback = s_Instance->FallbackTextureHandle;
+        *retire_previous    = expected.Valid() && (expected.Index != fallback.Index || expected.Generation != fallback.Generation);
+        for (const auto entry : s_Instance->UUIDToTextureHandle)
+        {
+            if (entry.second.Index == expected.Index && entry.second.Generation == expected.Generation)
+            {
+                *retire_previous = false;
+                break;
+            }
+        }
+        return true;
+    }
+
     void AssetManager::ReleaseTexture(const uuids::uuid& uuid)
     {
         if (!s_Instance)
             return;
-        std::lock_guard lock(s_Instance->PendingTextureReleaseMutex);
-        if (s_Instance->PendingTextureReleaseCount >= MAX_PENDING_TEXTURE_RELEASES)
+        std::scoped_lock lock(s_Instance->IngestMutex, s_Instance->PendingTextureReleaseMutex);
+        if (!s_Instance->UUIDToTextureHandle.find(uuid))
         {
-            ZENGINE_LOG_ASSET_WARN("[AssetManager] Pending texture release queue full — dropping release for {}", uuids::to_string(uuid))
             return;
         }
+        for (uint32_t index = 0; index < s_Instance->PendingTextureReleaseCount; ++index)
+        {
+            if (s_Instance->PendingTextureReleases[index] == uuid)
+            {
+                return;
+            }
+        }
+        ZENGINE_VALIDATE_ASSERT(s_Instance->PendingTextureReleaseCount < MAX_PENDING_TEXTURE_RELEASES, "Texture release must fit the admitted UUID cache")
         s_Instance->PendingTextureReleases[s_Instance->PendingTextureReleaseCount++] = uuid;
     }
 
     void AssetManager::FlushTextureReleases()
     {
         if (!s_Instance)
-            return;
-
-        uuids::uuid local[MAX_PENDING_TEXTURE_RELEASES];
-        uint32_t    count = 0;
         {
-            std::lock_guard lock(s_Instance->PendingTextureReleaseMutex);
-            count = s_Instance->PendingTextureReleaseCount;
-            Helpers::secure_memcpy(local, sizeof(local), s_Instance->PendingTextureReleases, count * sizeof(local[0]));
-            s_Instance->PendingTextureReleaseCount = 0;
-        }
-        if (count == 0)
             return;
+        }
+
+        // Do not drain pending deletion before taking the cache lock: a reload
+        // could otherwise publish in that gap and the delayed UUID patch would
+        // erase a different image than the one captured for GPU retirement.
+        std::scoped_lock cache_lock(s_Instance->IngestMutex, s_Instance->PendingTextureReleaseMutex);
+        uuids::uuid      local[MAX_PENDING_TEXTURE_RELEASES] = {};
+        const uint32_t   count                               = s_Instance->PendingTextureReleaseCount;
+        Helpers::secure_memcpy(local, sizeof(local), s_Instance->PendingTextureReleases, count * sizeof(local[0]));
+        s_Instance->PendingTextureReleaseCount = 0;
+        if (count == 0)
+        {
+            return;
+        }
 
         // IngestMutex, not just PendingTextureReleaseMutex: Materials/GPUMeshMaterials are
         // unsynchronized and also written by IngestMaterial/IngestTexture under this lock.
-        std::lock_guard lock(s_Instance->IngestMutex);
         for (uint32_t r = 0; r < count; ++r)
         {
             s_Instance->UUIDToTextureHandle.remove(local[r]);
@@ -611,15 +934,25 @@ namespace ZEngine::Managers
                 auto& mat     = s_Instance->Materials[i];
                 auto& gpu_mat = s_Instance->GPUMeshMaterials[i];
                 if (mat.AlbedoTexUUID == local[r])
+                {
                     gpu_mat.AlbedoMap = INVALID_MAP_HANDLE;
+                }
                 if (mat.EmissiveTexUUID == local[r])
+                {
                     gpu_mat.EmissiveMap = INVALID_MAP_HANDLE;
+                }
                 if (mat.NormalTexUUID == local[r])
+                {
                     gpu_mat.NormalMap = INVALID_MAP_HANDLE;
+                }
                 if (mat.OpacityTexUUID == local[r])
+                {
                     gpu_mat.OpacityMap = INVALID_MAP_HANDLE;
+                }
                 if (mat.SpecularTexUUID == local[r])
+                {
                     gpu_mat.SpecularMap = INVALID_MAP_HANDLE;
+                }
             }
         }
     }
@@ -632,7 +965,7 @@ namespace ZEngine::Managers
         if (!Registry->TryReadSlot(id, AssetType::MESH, &slot) || ReadAssetHandleType(slot) != AssetType::MESH)
             return nullptr;
         uint32_t index = ReadAssetHandleIndex(slot);
-        return index < Meshes.size() && Meshes[index].MeshUUID == id ? &Meshes[index] : nullptr;
+        return index < Meshes.size() && index < MeshCacheAllocations.size() && MeshCacheAllocations[index] && Meshes[index].MeshUUID == id ? &Meshes[index] : nullptr;
     }
 
     bool AssetManager::TryGetMeshDrawCount(const uuids::uuid& id, uint32_t* out_draws)
@@ -790,7 +1123,7 @@ namespace ZEngine::Managers
         return gen();
     }
 
-    VFSResult<uint32_t> AssetManager::PublishMesh(const AssetRecordSnapshot& expected, AssetMesh&& mesh, AssetNodeHierarchy&& hierarchy, MeshCacheAllocation* storage)
+    VFSResult<uint32_t> AssetManager::PublishMesh(const AssetRecordSnapshot& expected, AssetMesh&& mesh, AssetNodeHierarchy&& hierarchy, AssetPayloadAllocation* storage)
     {
         const auto uuid = mesh.MeshUUID;
         if (!Registry || !storage || uuid != expected.Record.UUID || expected.Record.Type != AssetType::MESH || hierarchy.MeshUUID != uuid)
@@ -803,13 +1136,13 @@ namespace ZEngine::Managers
         const AssetRecordSnapshot* retained           = nullptr;
         if (replacing)
         {
-            if (mesh_slot >= Meshes.size() || mesh_slot >= MeshCacheAllocations.size() || !MeshCacheAllocations[mesh_slot] || hierarchy_slot >= NodeHierarchies.size() || Meshes[mesh_slot].MeshUUID != uuid || NodeHierarchies[hierarchy_slot].MeshUUID != uuid)
+            if (mesh_slot >= Meshes.size() || mesh_slot >= MeshCacheAllocations.size() || hierarchy_slot >= NodeHierarchies.size() || Meshes[mesh_slot].MeshUUID != uuid || NodeHierarchies[hierarchy_slot].MeshUUID != uuid)
                 return VFSResult<uint32_t>::Fail(VFSError::Corrupted);
             hierarchy.NodeHierarchyUUID = NodeHierarchies[hierarchy_slot].NodeHierarchyUUID;
             if (Registry->TryReadRecord(hierarchy.NodeHierarchyUUID, &retained_hierarchy))
                 retained = &retained_hierarchy;
         }
-        if (mesh_slot >= 0x10000000 || hierarchy_slot >= 0x10000000 || (!replacing && (MeshBindings.size() + 1) * 4 > MeshBindings.capacity() * 3))
+        if (mesh_slot >= AssetCacheLease::SlotsPerType || hierarchy_slot >= AssetCacheLease::SlotsPerType || (!replacing && (MeshBindings.size() + 1) * 4 > MeshBindings.capacity() * 3))
             return VFSResult<uint32_t>::Fail(VFSError::SizeLimitExceeded);
         if (!ReserveMeshSlot(Meshes, mesh_slot) || !ReserveMeshSlot(NodeHierarchies, hierarchy_slot) || !ReserveMeshSlot(MeshCacheAllocations, mesh_slot))
             return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
@@ -819,6 +1152,8 @@ namespace ZEngine::Managers
             return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
         const auto draws          = uint32_t(mesh.SubMeshes.size());
         const auto hierarchy_uuid = hierarchy.NodeHierarchyUUID;
+        storage->OwnerPins        = &CpuAssetOwnerPins[mesh_slot];
+        storage->LastUse          = NextCpuCacheUse();
         // Capacity is established. No allocation, IO or callback between paired
         // registry publication and the complete CPU descriptor commit.
         if (replacing)
@@ -827,7 +1162,7 @@ namespace ZEngine::Managers
             NodeHierarchies[hierarchy_slot] = std::move(hierarchy);
             auto* previous                  = MeshCacheAllocations[mesh_slot];
             MeshCacheAllocations[mesh_slot] = storage;
-            MeshCacheAllocation::Destroy(previous);
+            AssetPayloadAllocation::Destroy(previous);
         }
         else
         {
@@ -851,20 +1186,287 @@ namespace ZEngine::Managers
         return VFSResult<uint32_t>::Ok(draws);
     }
 
-    VFSResult<uint32_t> AssetManager::LoadMeshAsset(IVFSContext& vfs, const uuids::uuid& uuid, const AssetCodec::MeshAssetReadLimits& limits, const std::atomic<bool>* cancelled)
+    AssetPayloadPin AssetManager::PinMeshPayload(const uuids::uuid& uuid)
     {
+        std::lock_guard lock(IngestMutex);
+        const auto*     binding = MeshBindings.find(uuid);
+        if (!binding || !GetMeshAsset(uuid))
+        {
+            return {};
+        }
+        auto* allocation    = MeshCacheAllocations[binding->MeshSlot];
+        allocation->LastUse = NextCpuCacheUse();
+        return AssetPayloadPin(allocation);
+    }
+
+    bool AssetManager::RetainMeshAssets(const uuids::uuid& uuid, AssetCacheLease& lease)
+    {
+        std::lock_guard lock(IngestMutex);
+        const auto*     binding = MeshBindings.find(uuid);
+        const auto*     mesh    = GetMeshAsset(uuid);
+        if (!lease.Initialized() || !binding || !mesh || binding->MeshSlot >= AssetCacheLease::SlotsPerType)
+        {
+            return false;
+        }
+        // Validate every potentially failing lookup before changing the lease.
+        // Once admission succeeds, retaining the closure cannot allocate/fail.
+        for (const auto& submesh : mesh->SubMeshes)
+        {
+            if (!submesh.MaterialUUID.is_nil())
+            {
+                const auto* slot = UUIDToMaterialSlot.find(submesh.MaterialUUID);
+                if (!slot || *slot >= MaterialCacheAllocations.size() || *slot >= AssetCacheLease::SlotsPerType)
+                {
+                    return false;
+                }
+            }
+        }
+        (void) lease.Retain(binding->MeshSlot, MeshCacheAllocations[binding->MeshSlot]);
+        const auto use                                   = NextCpuCacheUse();
+        MeshCacheAllocations[binding->MeshSlot]->LastUse = use;
+        for (const auto& submesh : mesh->SubMeshes)
+        {
+            if (submesh.MaterialUUID.is_nil())
+            {
+                continue;
+            }
+            const auto* slot = UUIDToMaterialSlot.find(submesh.MaterialUUID);
+            if (!slot || *slot >= MaterialCacheAllocations.size() || *slot >= AssetCacheLease::SlotsPerType)
+            {
+                return false;
+            }
+            // Scalar material/GPU descriptors remain in their stable tables;
+            // only optional source strings can have been reclaimed previously.
+            if (MaterialCacheAllocations[*slot])
+            {
+                MaterialCacheAllocations[*slot]->LastUse = use;
+            }
+            if (MaterialCacheAllocations[*slot] && !lease.Retain(AssetCacheLease::SlotsPerType + *slot, MaterialCacheAllocations[*slot]))
+            {
+                return false;
+            }
+            const auto&       material   = Materials[*slot];
+            const uuids::uuid textures[] = {material.AlbedoTexUUID, material.EmissiveTexUUID, material.NormalTexUUID, material.OpacityTexUUID, material.SpecularTexUUID};
+            for (const auto& texture : textures)
+            {
+                AssetHandle handle = {};
+                if (!texture.is_nil() && Registry->TryReadSlot(texture, AssetType::TEXTURE, &handle))
+                {
+                    const auto index = ReadAssetHandleIndex(handle);
+                    if (index < TextureCacheAllocations.size() && TextureCacheAllocations[index])
+                    {
+                        TextureCacheAllocations[index]->LastUse = use;
+                    }
+                    if (index < TextureCacheAllocations.size() && TextureCacheAllocations[index] && !lease.Retain(AssetCacheLease::SlotsPerType * 2 + index, TextureCacheAllocations[index]))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    uint64_t AssetManager::NextCpuCacheUse() noexcept
+    {
+        if (CpuCacheClock != UINT64_MAX)
+        {
+            ++CpuCacheClock;
+        }
+        return CpuCacheClock;
+    }
+
+    size_t AssetManager::TrimCpuCache(size_t target_bytes)
+    {
+        // Never reclaim between a worker's dependency decode and final pin.
+        std::unique_lock decode_lock(MeshLoadMutex, std::try_to_lock);
+        std::unique_lock cache_lock(IngestMutex, std::try_to_lock);
+        if (!decode_lock.owns_lock() || !cache_lock.owns_lock())
+        {
+            return 0;
+        }
+        return TrimCpuCacheLocked(nullptr, target_bytes);
+    }
+
+    size_t AssetManager::TrimCpuCacheLocked(const AssetMesh* protected_source, size_t target_bytes)
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Worker.CpuCacheMaintenance");
+        if (!target_bytes)
+        {
+            return 0;
+        }
+        constexpr auto slots                   = AssetCacheLease::SlotsPerType;
+        bool           dependencies[slots * 2] = {};
+        const auto     protect_materials       = [&](const AssetMesh& mesh) {
+            for (const auto& submesh : mesh.SubMeshes)
+            {
+                const auto* material = UUIDToMaterialSlot.find(submesh.MaterialUUID);
+                if (material && *material < slots)
+                {
+                    dependencies[*material] = true;
+                }
+            }
+        };
+        if (protected_source)
+        {
+            protect_materials(*protected_source);
+        }
+        // Logical UUID pins also protect dependencies introduced by reimport
+        // while an owner still retains its previous immutable CPU version.
+        for (size_t slot = 0; slot < MeshCacheAllocations.size(); ++slot)
+        {
+            const auto* allocation = MeshCacheAllocations[slot];
+            if (allocation && (allocation->References.load(std::memory_order_acquire) != 1 || CpuAssetOwnerPins[slot].load(std::memory_order_acquire) != 0))
+            {
+                protect_materials(Meshes[slot]);
+            }
+        }
+        for (size_t slot = 0; slot < Materials.size(); ++slot)
+        {
+            if (!dependencies[slot] && CpuAssetOwnerPins[slots + slot].load(std::memory_order_acquire) == 0)
+            {
+                continue;
+            }
+            const auto&       material   = Materials[slot];
+            const uuids::uuid textures[] = {material.AlbedoTexUUID, material.EmissiveTexUUID, material.NormalTexUUID, material.OpacityTexUUID, material.SpecularTexUUID};
+            for (const auto& uuid : textures)
+            {
+                AssetHandle handle = {};
+                if (!uuid.is_nil() && Registry && Registry->TryReadSlot(uuid, AssetType::TEXTURE, &handle))
+                {
+                    const auto index = ReadAssetHandleIndex(handle);
+                    if (index < slots)
+                    {
+                        dependencies[slots + index] = true;
+                    }
+                }
+            }
+        }
+        uint32_t   count   = 0;
+        const auto collect = [&](const Array<AssetPayloadAllocation*>& allocations, uint32_t base) {
+            for (uint32_t slot = 0; slot < allocations.size(); ++slot)
+            {
+                const auto  key        = base + slot;
+                const auto* allocation = allocations[slot];
+                if (allocation && allocation->References.load(std::memory_order_acquire) == 1 && CpuAssetOwnerPins[key].load(std::memory_order_acquire) == 0 && (base == 0 || !dependencies[key - slots]))
+                {
+                    CpuEvictionOrder[count++] = key;
+                }
+            }
+        };
+        collect(MeshCacheAllocations, 0);
+        collect(MaterialCacheAllocations, slots);
+        collect(TextureCacheAllocations, slots * 2);
+        const auto allocation_at = [&](uint32_t key) -> AssetPayloadAllocation*& {
+            if (key < slots)
+            {
+                return MeshCacheAllocations[key];
+            }
+            if (key < slots * 2)
+            {
+                return MaterialCacheAllocations[key - slots];
+            }
+            return TextureCacheAllocations[key - slots * 2];
+        };
+        std::sort(CpuEvictionOrder, CpuEvictionOrder + count, [&](uint32_t left, uint32_t right) {
+            const auto a = allocation_at(left)->LastUse;
+            const auto b = allocation_at(right)->LastUse;
+            return a == b ? left < right : a < b;
+        });
+        size_t reclaimed = 0;
+        size_t bytes     = 0;
+        for (uint32_t index = 0; index < count && bytes < target_bytes; ++index)
+        {
+            const auto key        = CpuEvictionOrder[index];
+            auto*&     allocation = allocation_at(key);
+            if (key < slots)
+            {
+                const auto* binding = MeshBindings.find(Meshes[key].MeshUUID);
+                if (!binding || binding->HierarchySlot >= NodeHierarchies.size())
+                {
+                    continue;
+                }
+                const auto uuid                                           = Meshes[key].MeshUUID;
+                const auto hierarchy_uuid                                 = NodeHierarchies[binding->HierarchySlot].NodeHierarchyUUID;
+                Meshes[key]                                               = {};
+                Meshes[key].MeshUUID                                      = uuid;
+                NodeHierarchies[binding->HierarchySlot]                   = {};
+                NodeHierarchies[binding->HierarchySlot].MeshUUID          = uuid;
+                NodeHierarchies[binding->HierarchySlot].NodeHierarchyUUID = hierarchy_uuid;
+            }
+            else if (key < slots * 2)
+            {
+                // Scalar UUID/GPU descriptors retain their stable table slots.
+                // All borrowed source views must disappear before block release.
+                auto& material           = Materials[key - slots];
+                material.Name            = {};
+                material.AlbedoTexPath   = {};
+                material.EmissiveTexPath = {};
+                material.NormalTexPath   = {};
+                material.OpacityTexPath  = {};
+                material.SpecularTexPath = {};
+            }
+            else
+            {
+                Textures[key - slots * 2].Path = {};
+            }
+            const auto released = allocation->Arena.m_total_size + sizeof(AssetPayloadAllocation);
+            bytes               = released > SIZE_MAX - bytes ? SIZE_MAX : bytes + released;
+            AssetPayloadAllocation::Destroy(allocation);
+            allocation = nullptr;
+            ++reclaimed;
+        }
+        return reclaimed;
+    }
+
+    VFSResult<uint32_t> AssetManager::LoadMeshAsset(IVFSContext& vfs, const uuids::uuid& uuid, const AssetCodec::MeshAssetReadLimits& limits, const std::atomic<bool>* cancelled, AssetCacheLease* lease)
+    {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Worker.MeshLoad");
         const auto stopped = [&] { return cancelled && cancelled->load(std::memory_order_acquire); };
         if (stopped())
             return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
-        uint32_t draws = 0;
-        if (TryGetMeshDrawCount(uuid, &draws))
+        if (lease && !lease->Initialized())
+        {
+            return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
+        }
+        if (CpuRetention.load(std::memory_order_relaxed) == CpuCacheRetention::ZeroRetention)
+        {
+            (void) TrimCpuCache();
+        }
+        uint32_t   draws = 0;
+        const auto reuse = [&] {
+            std::lock_guard lock(IngestMutex);
+            if (!TryGetMeshDrawCountLocked(uuid, &draws))
+            {
+                return false;
+            }
+            const auto* binding = MeshBindings.find(uuid);
+            if (binding)
+            {
+                for (const auto& submesh : Meshes[binding->MeshSlot].SubMeshes)
+                {
+                    if (submesh.MaterialUUID.is_nil())
+                    {
+                        continue;
+                    }
+                    const auto* material = UUIDToMaterialSlot.find(submesh.MaterialUUID);
+                    if (!material || *material >= MaterialCacheAllocations.size() || !MaterialCacheAllocations[*material] || !TryIngestMaterial(Materials[*material], nullptr, true))
+                    {
+                        return false;
+                    }
+                }
+                MeshCacheAllocations[binding->MeshSlot]->LastUse = NextCpuCacheUse();
+            }
+            return !lease || RetainMeshAssets(uuid, *lease);
+        };
+        if (reuse())
             return VFSResult<uint32_t>::Ok(draws);
         std::unique_lock decode_lock(MeshLoadMutex, std::try_to_lock);
         if (!decode_lock.owns_lock())
             return VFSResult<uint32_t>::Fail(VFSError::AlreadyExists);
         if (stopped())
             return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
-        if (TryGetMeshDrawCount(uuid, &draws))
+        if (reuse())
             return VFSResult<uint32_t>::Ok(draws);
         AssetRecordSnapshot expected = {};
         auto*               registry = Registry;
@@ -908,13 +1510,34 @@ namespace ZEngine::Managers
             if (stopped() || Registry != registry)
                 return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
             // Avoid a clone if an importer won during decoding.
-            if (TryGetMeshDrawCountLocked(uuid, &draws))
+            if (reuse())
                 return VFSResult<uint32_t>::Ok(draws);
         }
         AssetMesh          mesh      = {};
         AssetNodeHierarchy hierarchy = {};
         // Large payload copies must not hold the lock needed by frame queries.
         auto               storage   = CloneMesh(ContainerSlab, source, source_hierarchy, mesh, hierarchy);
+        for (uint32_t attempt = 0; !storage && attempt < 2; ++attempt)
+        {
+            // Keep the single decode lease throughout recovery: releasing it
+            // while scratch is live would admit a second full workspace.
+            std::unique_lock cache_lock(IngestMutex, std::try_to_lock);
+            if (cache_lock.owns_lock())
+            {
+                PayloadSize requested = {};
+                if (!MeasureMesh(source, source_hierarchy, requested))
+                {
+                    break;
+                }
+                const auto target = attempt == 0 ? requested.Bytes + sizeof(AssetPayloadAllocation) : SIZE_MAX;
+                if (!TrimCpuCacheLocked(&source, target))
+                {
+                    break;
+                }
+                cache_lock.unlock();
+                storage = CloneMesh(ContainerSlab, source, source_hierarchy, mesh, hierarchy);
+            }
+        }
         if (!storage)
             return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
         std::lock_guard lock(IngestMutex);
@@ -922,11 +1545,17 @@ namespace ZEngine::Managers
             return VFSResult<uint32_t>::Fail(VFSError::Cancelled);
         // A competing ingestion may also win during staging. Placement reuses
         // its complete binding; it must never replace or mark that binding stale.
-        if (TryGetMeshDrawCountLocked(uuid, &draws))
+        if (reuse())
             return VFSResult<uint32_t>::Ok(draws);
         const auto published = PublishMesh(expected, std::move(mesh), std::move(hierarchy), storage.get());
         if (published.Succeeded())
+        {
             (void) storage.release();
+            if (lease && !RetainMeshAssets(uuid, *lease))
+            {
+                return VFSResult<uint32_t>::Fail(VFSError::OutOfMemory);
+            }
+        }
         return published;
     }
 } // namespace ZEngine::Managers

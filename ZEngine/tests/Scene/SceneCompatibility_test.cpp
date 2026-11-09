@@ -252,6 +252,20 @@ namespace
         }
     }
 
+    TEST_F(SceneCompatibilityTest, FrozenMigrationRegistryRejectsLateRegistrationWithoutAllocating)
+    {
+        ECS::SceneMigrationRegistry uninitialized = {};
+        EXPECT_FALSE(uninitialized.Freeze());
+        ASSERT_TRUE(Migrations.RegisterDocumentMigration(1, 2, nullptr, UpgradeDocument, &Diagnostics));
+        const auto used = Memory.MainArena.m_current_offset;
+        EXPECT_TRUE(Migrations.Freeze());
+        EXPECT_TRUE(Migrations.Freeze());
+        EXPECT_TRUE(Migrations.Frozen());
+        EXPECT_FALSE(Migrations.RegisterComponentMigration("NameComponent", 1, 2, &First, RenameField, &Diagnostics));
+        EXPECT_EQ(Migrations.Count(), 1u);
+        EXPECT_EQ(Memory.MainArena.m_current_offset, used);
+    }
+
     TEST_F(SceneCompatibilityTest, MigrationDiagnosticsFormatAndTruncateInRetainedStorage)
     {
         Diagnostics.Clear();

@@ -110,7 +110,7 @@ namespace ZEngine::Profiling
         }
     }
 
-    void ProfilerBuffer::RecordValue(cstring name, float value)
+    void ProfilerBuffer::RecordValue(cstring name, double value)
     {
         ZENGINE_VALIDATE_ASSERT(name != nullptr, "ProfilerBuffer::RecordValue: name must not be null")
         Capture(name, value, true);
@@ -118,7 +118,7 @@ namespace ZEngine::Profiling
         if (write_pos < CAPACITY)
         {
             auto frame_index    = s_frame_index.value.load(std::memory_order_acquire);
-            s_values[write_pos] = {name, value, frame_index};
+            s_values[write_pos] = {name, static_cast<float>(value), frame_index};
         }
     }
 

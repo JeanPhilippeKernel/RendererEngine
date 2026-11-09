@@ -5,6 +5,51 @@
 
 namespace ZEngine::Core::Serialization
 {
+    bool JSONReader::SkipValue(Containers::ArrayView<char> scratch)
+    {
+        Containers::StringView text    = {};
+        bool                   boolean = false;
+        switch (PeekValueKind())
+        {
+            case JSONValueKind::Object:
+                if (!BeginObject())
+                {
+                    return false;
+                }
+                while (Member(scratch, &text))
+                {
+                    if (!SkipValue(scratch))
+                    {
+                        return false;
+                    }
+                }
+                return Error() == VFS::VFSError::OK;
+            case JSONValueKind::Array:
+                if (!BeginArray())
+                {
+                    return false;
+                }
+                while (Element())
+                {
+                    if (!SkipValue(scratch))
+                    {
+                        return false;
+                    }
+                }
+                return Error() == VFS::VFSError::OK;
+            case JSONValueKind::String:
+                return String(scratch, &text);
+            case JSONValueKind::Number:
+                return Number(&text);
+            case JSONValueKind::Boolean:
+                return Boolean(&boolean);
+            case JSONValueKind::Null:
+                return Null();
+            default:
+                return Reject();
+        }
+    }
+
     JSONReader::JSONReader(Containers::ArrayView<const uint8_t> input, JSONReadLimits limits)
     {
         Reset(input, limits);

@@ -39,8 +39,12 @@ namespace ZEngine::Rendering::Renderers
         return true;
     }
 
-    GraphicsPipelineDesc SkySpherePass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
+    bool SkySpherePass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         GraphicsPipelineDesc description          = {};
         description.DebugName                     = "Sky-Sphere-Pipeline";
         description.EnableDepthTest               = true;
@@ -49,7 +53,8 @@ namespace ZEngine::Rendering::Renderers
         description.EnableBlending                = false;
         description.CullMode                      = VK_CULL_MODE_NONE;
         description.ShaderSpecificationValue.Name = "sky_sphere";
-        return description;
+        *out                                      = std::move(description);
+        return true;
     }
 
     void SkySpherePass::Prepare(Hardwares::VulkanDevicePtr const /*device*/, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr const /*res_inspector*/, RenderPasses::RenderPass* const pass)

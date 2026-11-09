@@ -1,13 +1,19 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/Primitives/ImageMemoryBarrier.h>
 #include <ZEngine/Rendering/Renderers/Base/IInlineComputePass.h>
 #include <ZEngine/Rendering/Renderers/Base/ITransferPass.h>
 #include <ZEngine/Rendering/Renderers/Base/RenderPass.h>
+#include <ZEngine/Rendering/Renderers/Compute/SkyEnvironmentBakePass.h>
+#include <ZEngine/Rendering/Renderers/Graphics/GizmoPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridPass.h>
 #include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
+#include <ZEngine/Rendering/Renderers/SceneDescriptorRecipes.h>
 #include <ZEngine/Rendering/Renderers/SelectionOutlineFrame.h>
 #include <ZEngine/Rendering/Renderers/ZUIPass.h>
 #include <gtest/gtest.h>
+#include <array>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 
@@ -15,6 +21,475 @@ using namespace ZEngine;
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Rendering::Renderers;
+using ZEngine::Rendering::Specifications::AttachmentSpecification;
+using ZEngine::Rendering::Specifications::ImageFormat;
+using ZEngine::Rendering::Specifications::ImageLayout;
+using ZEngine::Rendering::Specifications::LoadOperation;
+using ZEngine::Rendering::Specifications::PipelineBindPoint;
+using ZEngine::Rendering::Specifications::StoreOperation;
+
+TEST(RenderGraphSceneDescriptorRecipeTest, ExactImagesAreScopedByPassAndDescriptorKind)
+{
+    using Type = Rendering::Specifications::DescriptorType;
+    struct Expected
+    {
+        RGSceneDescriptorProfile Profile = RGSceneDescriptorProfile::None;
+        const char*              Name    = nullptr;
+        SceneRenderTarget        Target  = SceneRenderTarget::Count;
+        Type                     Kind    = Type::SAMPLED_IMAGE;
+    };
+    const Expected bindings[] = {
+        {RGSceneDescriptorProfile::Lighting, "GBufferAlbedoAO", SceneRenderTarget::AlbedoAO},
+        {RGSceneDescriptorProfile::Lighting, "GBufferNormalRoughness", SceneRenderTarget::NormalRoughness},
+        {RGSceneDescriptorProfile::Lighting, "GBufferMetallicEmissive", SceneRenderTarget::MetallicEmissive},
+        {RGSceneDescriptorProfile::Lighting, "GBufferDepth", SceneRenderTarget::Depth},
+        {RGSceneDescriptorProfile::Grid, "SceneDepth", SceneRenderTarget::Depth},
+        {RGSceneDescriptorProfile::GridLabels, "SceneDepth", SceneRenderTarget::Depth},
+        {RGSceneDescriptorProfile::SelectionOutline, "ObjectId", SceneRenderTarget::ObjectId},
+        {RGSceneDescriptorProfile::SkyComposite, "OpaqueSceneColor", SceneRenderTarget::HdrColor},
+        {RGSceneDescriptorProfile::SkyComposite, "SceneDepth", SceneRenderTarget::Depth},
+        {RGSceneDescriptorProfile::SkyComposite, "SkyViewLut", SceneRenderTarget::SkyViewLut},
+        {RGSceneDescriptorProfile::SkyComposite, "AerialInscatter", SceneRenderTarget::AerialInscatter},
+        {RGSceneDescriptorProfile::SkyComposite, "AerialTransmittance", SceneRenderTarget::AerialTransmittance},
+        {RGSceneDescriptorProfile::SkyViewLut, "Destination", SceneRenderTarget::SkyViewLut, Type::STORAGE_IMAGE},
+        {RGSceneDescriptorProfile::AerialPerspective, "InscatterDestination", SceneRenderTarget::AerialInscatter, Type::STORAGE_IMAGE},
+        {RGSceneDescriptorProfile::AerialPerspective, "TransmittanceDestination", SceneRenderTarget::AerialTransmittance, Type::STORAGE_IMAGE},
+    };
+    for (const auto& binding : bindings)
+    {
+        SCOPED_TRACE(binding.Name);
+        EXPECT_EQ(ResolveSceneDescriptorTarget(binding.Profile, binding.Name, binding.Kind, false), binding.Target);
+        EXPECT_EQ(ResolveSceneDescriptorTarget(RGSceneDescriptorProfile::Geometry, binding.Name, binding.Kind, false), SceneRenderTarget::Count);
+        EXPECT_EQ(ResolveSceneDescriptorTarget(binding.Profile, binding.Name, binding.Kind == Type::SAMPLED_IMAGE ? Type::STORAGE_IMAGE : Type::SAMPLED_IMAGE, false), SceneRenderTarget::Count);
+    }
+    EXPECT_EQ(ResolveSceneDescriptorTarget(RGSceneDescriptorProfile::ToneMapping, "SceneColor", Type::SAMPLED_IMAGE, false), SceneRenderTarget::HdrColor);
+    EXPECT_EQ(ResolveSceneDescriptorTarget(RGSceneDescriptorProfile::ToneMapping, "SceneColor", Type::SAMPLED_IMAGE, true), SceneRenderTarget::HdrComposited);
+    EXPECT_EQ(ResolveSceneDescriptorTarget(RGSceneDescriptorProfile::ToneMapping, nullptr, Type::SAMPLED_IMAGE, true), SceneRenderTarget::Count);
+    EXPECT_EQ(ResolveSceneDescriptorTarget(RGSceneDescriptorProfile::Lighting, "Unknown", Type::SAMPLED_IMAGE, false), SceneRenderTarget::Count);
+}
+
+TEST(RenderGraphSceneDescriptorRecipeTest, EnvironmentAndSamplersDoNotLeakAcrossProfiles)
+{
+    Rendering::RenderResourceManager::TextureVersionPin pins[6]     = {};
+    const SceneDescriptorEnvironment                    environment = {&pins[0], &pins[1], &pins[2], &pins[3], &pins[4], &pins[5], false, &pins[0]};
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::Lighting, "DiffuseIrradiance", environment), &pins[1]);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::Lighting, "SpecularEnvironment", environment), &pins[2]);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::Lighting, "BrdfIntegrationLut", environment), &pins[3]);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::SkyViewLut, "Transmittance", environment), &pins[4]);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::AerialPerspective, "Multiscattering", environment), &pins[5]);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::SkyComposite, "AtmosphereTransmittance", environment), &pins[4]);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::Grid, "DiffuseIrradiance", environment), nullptr);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::Lighting, "Transmittance", environment), nullptr);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::ToneMapping, "SceneColor", environment), nullptr);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::GridLabels, "FontAtlas", environment), &pins[0]);
+    EXPECT_EQ(ResolveSceneDescriptorEnvironment(RGSceneDescriptorProfile::Grid, "FontAtlas", environment), nullptr);
+    EXPECT_EQ(ResolveSceneDescriptorSampler(RGSceneDescriptorProfile::Lighting, "GBufferSampler"), SceneDescriptorSampler::Wrap);
+    EXPECT_EQ(ResolveSceneDescriptorSampler(RGSceneDescriptorProfile::Lighting, "EnvironmentSampler"), SceneDescriptorSampler::Clamp);
+    EXPECT_EQ(ResolveSceneDescriptorSampler(RGSceneDescriptorProfile::Grid, "DepthSampler"), SceneDescriptorSampler::Clamp);
+    EXPECT_EQ(ResolveSceneDescriptorSampler(RGSceneDescriptorProfile::GridLabels, "AtlasSampler"), SceneDescriptorSampler::Clamp);
+    EXPECT_EQ(ResolveSceneDescriptorSampler(RGSceneDescriptorProfile::SelectionOutline, "ObjectIdSampler"), SceneDescriptorSampler::NearestClamp);
+    EXPECT_EQ(ResolveSceneDescriptorSampler(RGSceneDescriptorProfile::SkyComposite, "SkyViewSampler"), SceneDescriptorSampler::SkyView);
+    EXPECT_EQ(ResolveSceneDescriptorSampler(RGSceneDescriptorProfile::Grid, "SkyViewSampler"), SceneDescriptorSampler::None);
+    EXPECT_EQ(ResolveSceneDescriptorSampler(RGSceneDescriptorProfile::ToneMapping, "Unknown"), SceneDescriptorSampler::None);
+}
+
+TEST(RenderGraphSceneTargetTest, SchemaUsesDistinctNamesAndExactStorage)
+{
+    uint32_t mask = 0;
+    for (uint32_t index = 0; index < static_cast<uint32_t>(SceneRenderTarget::Count); ++index)
+    {
+        const auto target      = static_cast<SceneRenderTarget>(index);
+        const auto declaration = DescribeSceneTarget(target, 640, 480);
+        ASSERT_NE(declaration.Name, nullptr);
+        EXPECT_EQ(mask & SceneTargetMask(target), 0u);
+        mask                          |= SceneTargetMask(target);
+        const bool atmosphere_storage  = target == SceneRenderTarget::SkyViewLut || target == SceneRenderTarget::AerialInscatter || target == SceneRenderTarget::AerialTransmittance;
+        const bool aerial              = target == SceneRenderTarget::AerialInscatter || target == SceneRenderTarget::AerialTransmittance;
+        EXPECT_EQ(declaration.Spec.Width, atmosphere_storage ? (aerial ? SceneAerialResolution : SceneSkyViewWidth) : 640u);
+        EXPECT_EQ(declaration.Spec.Height, atmosphere_storage ? (aerial ? SceneAerialResolution : SceneSkyViewHeight) : 480u);
+        EXPECT_EQ(declaration.Spec.Depth, aerial ? SceneAerialResolution : 1u);
+        EXPECT_EQ(declaration.Spec.Is3D, aerial);
+        EXPECT_EQ(declaration.Spec.IsRenderTargetSized, !atmosphere_storage);
+        EXPECT_TRUE(declaration.Spec.IsAliasable);
+        EXPECT_TRUE(declaration.Spec.IsUsageSampled);
+        EXPECT_EQ(declaration.Spec.IsUsageStorage, atmosphere_storage);
+        const bool atmosphere = atmosphere_storage || target == SceneRenderTarget::HdrComposited;
+        EXPECT_EQ(declaration.Spec.IsUsageTransferSource, !atmosphere);
+        EXPECT_EQ(declaration.Spec.IsUsageTransfert, !atmosphere);
+        if (atmosphere)
+        {
+            EXPECT_EQ(declaration.Spec.BytePerPixel, 8u);
+            EXPECT_EQ(declaration.Spec.Format, Rendering::Specifications::ImageFormat::R16G16B16A16_SFLOAT);
+        }
+        for (uint32_t other = 0; other < index; ++other)
+        {
+            EXPECT_STRNE(declaration.Name, DescribeSceneTarget(static_cast<SceneRenderTarget>(other), 640, 480).Name);
+        }
+    }
+    EXPECT_EQ(DescribeSceneTarget(SceneRenderTarget::NormalRoughness, 1, 1).Spec.BytePerPixel, 8u);
+    EXPECT_EQ(DescribeSceneTarget(SceneRenderTarget::HdrColor, 1, 1).Spec.BytePerPixel, 8u);
+    EXPECT_EQ(DescribeSceneTarget(SceneRenderTarget::ObjectId, 1, 1).Spec.Format, Rendering::Specifications::ImageFormat::R32_UINT);
+}
+
+TEST(RenderGraphSceneTargetTest, TransientPoolReusesRetiredSlotMetadata)
+{
+    MemoryManager memory = {};
+    memory.Initialize(ZMega(1), {});
+    RGTransientPool pool = {};
+    pool.Initialize(&memory.MainArena);
+    const auto declaration = DescribeSceneTarget(SceneRenderTarget::Color, 64, 64);
+    auto*      original    = pool.Register({1, 2}, declaration.Spec, 1);
+    pool.RegisterAlias(original, declaration.Name, original->Handle, declaration.Spec, 0, 1);
+    const auto offset = memory.MainArena.m_current_offset;
+    original->Handle  = {};
+    original->Aliases.clear();
+    auto* replacement = pool.Register({2, 3}, declaration.Spec, 1);
+    EXPECT_EQ(replacement, original);
+    EXPECT_EQ(pool.Slots.size(), 1u);
+    pool.RegisterAlias(replacement, declaration.Name, replacement->Handle, declaration.Spec, 0, 1);
+    EXPECT_EQ(memory.MainArena.m_current_offset, offset);
+    EXPECT_EQ(pool.FindNamedAlias(declaration.Name, declaration.Spec, 0, 1), (Rendering::Textures::TextureHandle{})); // Already active.
+    pool.BeginFrame();
+    EXPECT_EQ(pool.FindNamedAlias(declaration.Name, declaration.Spec, 0, 1), replacement->Handle);
+}
+
+TEST(RenderGraphScenePipelineTest, AttachmentProfileChecksCountFormatAndDepthOrder)
+{
+    MemoryManager memory = {};
+    memory.Initialize(16384, {});
+    Rendering::Specifications::AttachmentSpecification attachment = {};
+    attachment.ColorsMap.init(&memory.MainArena, RGScenePipelineProfile::MaxAttachments);
+    const RGScenePipelineProfile profile = {
+        .Usage           = RGScenePipelineUsage::Core,
+        .Formats         = {Rendering::Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE, Rendering::Specifications::ImageFormat::R8G8B8A8_UNORM},
+        .AttachmentCount = 2,
+    };
+    EXPECT_FALSE(profile.Matches(attachment));
+    attachment.ColorsMap[0] = {.Format = profile.Formats[0]};
+    EXPECT_FALSE(profile.Matches(attachment));
+    attachment.ColorsMap[1] = {.Format = profile.Formats[1]};
+    EXPECT_TRUE(profile.Matches(attachment));
+    std::swap(attachment.ColorsMap[0], attachment.ColorsMap[1]);
+    EXPECT_FALSE(profile.Matches(attachment));
+    std::swap(attachment.ColorsMap[0], attachment.ColorsMap[1]);
+    attachment.ColorsMap[1].Format = Rendering::Specifications::ImageFormat::R16G16B16A16_SFLOAT;
+    EXPECT_FALSE(profile.Matches(attachment));
+    auto invalid            = profile;
+    invalid.AttachmentCount = 0;
+    EXPECT_FALSE(invalid.Matches(attachment));
+    invalid.AttachmentCount = RGScenePipelineProfile::MaxAttachments + 1;
+    EXPECT_FALSE(invalid.Matches(attachment));
+}
+
+TEST(RenderGraphScenePipelineTest, AttachmentRecipesAreExplicitOrderedAndOnlyRedirectOptedInHdr)
+{
+    RGScenePipelineProfile profile = {
+        .AttachmentCount = 2, .AttachmentTargets = {SceneRenderTarget::Depth, SceneRenderTarget::HdrColor},
+             .CompositedHdrAttachment = true
+    };
+    EXPECT_EQ(profile.ResolveAttachmentTarget(0, true), SceneRenderTarget::Depth);
+    EXPECT_EQ(profile.ResolveAttachmentTarget(1, false), SceneRenderTarget::HdrColor);
+    EXPECT_EQ(profile.ResolveAttachmentTarget(1, true), SceneRenderTarget::HdrComposited);
+    EXPECT_EQ(profile.ResolveAttachmentTarget(2, true), SceneRenderTarget::Count);
+    EXPECT_EQ(profile.ResolveAttachmentTarget(UINT32_MAX, true), SceneRenderTarget::Count);
+    profile.CompositedHdrAttachment = false;
+    EXPECT_EQ(profile.ResolveAttachmentTarget(1, true), SceneRenderTarget::HdrColor);
+    profile = {.AttachmentCount = 2, .AttachmentTargets = {SceneRenderTarget::ObjectDepth}};
+    EXPECT_EQ(profile.ResolveAttachmentTarget(0, false), SceneRenderTarget::ObjectDepth);
+    EXPECT_EQ(profile.ResolveAttachmentTarget(1, false), SceneRenderTarget::Count); // Partial recipes must not default to Depth.
+}
+
+TEST(RenderGraphScenePipelineTest, CanonicalRenderPassCompatibilityIgnoresLoadsButChecksFormatsAndDependencies)
+{
+    MemoryManager memory = {};
+    memory.Initialize(ZKilo(32), {});
+    auto device                                   = std::make_unique<Hardwares::VulkanDevice>();
+    device->PhysicalDeviceSupportDynamicRendering = true; // No Vulkan objects are needed for this check.
+    const auto specification                      = [&](Rendering::Specifications::ImageFormat format, bool dependency) {
+        Rendering::Specifications::AttachmentSpecification result = {};
+        result.ColorsMap.init(&memory.MainArena, 1);
+        result.ColorsMap[0] = {.Format = format};
+        if (dependency)
+        {
+            result.DependenciesMap.init(&memory.MainArena, 1);
+            result.DependenciesMap[0] = {.srcSubpass = VK_SUBPASS_EXTERNAL, .dstSubpass = 0, .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+        }
+        return result;
+    };
+    const auto format           = Rendering::Specifications::ImageFormat::R8G8B8A8_UNORM;
+    auto       loaded           = specification(format, false);
+    loaded.ColorsMap[0].Load    = Rendering::Specifications::LoadOperation::LOAD;
+    loaded.ColorsMap[0].Initial = Rendering::Specifications::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+    RenderPasses::Attachment prepared(device.get(), specification(format, false));
+    RenderPasses::Attachment active(device.get(), std::move(loaded));
+    EXPECT_TRUE(prepared.IsRenderPassCompatibleWith(active));
+    RenderPasses::Attachment other_format(device.get(), specification(Rendering::Specifications::ImageFormat::R32_UINT, false));
+    EXPECT_FALSE(prepared.IsRenderPassCompatibleWith(other_format));
+    RenderPasses::Attachment dependency(device.get(), specification(format, true));
+    EXPECT_FALSE(prepared.IsRenderPassCompatibleWith(dependency));
+    RenderPasses::Attachment same_dependency(device.get(), specification(format, true));
+    EXPECT_TRUE(dependency.IsRenderPassCompatibleWith(same_dependency));
+    auto different_mask                               = specification(format, true);
+    different_mask.DependenciesMap[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+    RenderPasses::Attachment different_dependency(device.get(), std::move(different_mask));
+    EXPECT_FALSE(dependency.IsRenderPassCompatibleWith(different_dependency));
+}
+
+TEST(RenderGraphScenePipelineTest, CheckedAttachmentAdmissionRejectsMalformedRecipesWithoutNativeCalls)
+{
+    MemoryManager memory = {};
+    memory.Initialize(ZMega(1), {});
+    auto device                                   = std::make_unique<Hardwares::VulkanDevice>();
+    device->PhysicalDeviceSupportDynamicRendering = true;
+    for (uint32_t invalid = 0; invalid < 16; ++invalid)
+    {
+        SCOPED_TRACE(invalid);
+        AttachmentSpecification specification = {};
+        specification.ColorsMap.init(&memory.MainArena, 32);
+        specification.DependenciesMap.init(&memory.MainArena, 128);
+        specification.ColorsMap[0] = {.Format = ImageFormat::R8G8B8A8_UNORM};
+        auto expected              = VK_ERROR_INITIALIZATION_FAILED;
+        switch (invalid)
+        {
+            case 0:
+                specification.ColorsMap.clear();
+                break;
+            case 1:
+                specification.BindPoint = PipelineBindPoint::COMPUTE;
+                break;
+            case 2:
+                specification.ColorsMap[0].Format = static_cast<ImageFormat>(UINT32_MAX);
+                expected                          = VK_ERROR_FORMAT_NOT_SUPPORTED;
+                break;
+            case 3:
+                specification.ColorsMap[0].Load = static_cast<LoadOperation>(UINT32_MAX);
+                break;
+            case 4:
+                specification.ColorsMap[0].Store = static_cast<StoreOperation>(UINT32_MAX);
+                break;
+            case 5:
+                specification.ColorsMap[0].Initial = static_cast<ImageLayout>(UINT32_MAX);
+                break;
+            case 6:
+                specification.ColorsMap[0].Final = static_cast<ImageLayout>(UINT32_MAX);
+                break;
+            case 7:
+                specification.ColorsMap[0].ReferenceLayout = static_cast<ImageLayout>(UINT32_MAX);
+                break;
+            case 8:
+                specification.ColorsMap.clear();
+                specification.ColorsMap[1] = {.Format = ImageFormat::R8G8B8A8_UNORM};
+                break;
+            case 9:
+                specification.ColorsMap[0].Format = ImageFormat::DEPTH16_UNORM;
+                specification.ColorsMap[1].Format = ImageFormat::DEPTH16_UNORM;
+                break;
+            case 10:
+            case 11:
+                for (uint32_t i = 1; i < (invalid == 10 ? 9u : 10u); ++i)
+                {
+                    specification.ColorsMap[i].Format = ImageFormat::R8G8B8A8_UNORM;
+                }
+                break;
+            case 12:
+                specification.DependenciesMap[1] = {};
+                break;
+            case 13:
+                specification.DependenciesMap[0] = {.srcSubpass = 1};
+                break;
+            case 14:
+                specification.DependenciesMap[0] = {.srcSubpass = VK_SUBPASS_EXTERNAL, .dstSubpass = VK_SUBPASS_EXTERNAL};
+                break;
+            case 15:
+                for (uint32_t i = 0; i <= RenderPasses::Attachment::MaxDependencies; ++i)
+                {
+                    specification.DependenciesMap[i] = {};
+                }
+                break;
+        }
+        VkResult                 status = VK_SUCCESS;
+        RenderPasses::Attachment attachment(device.get(), std::move(specification), &status);
+        EXPECT_EQ(status, expected);
+        EXPECT_EQ(attachment.GetHandle(), VK_NULL_HANDLE);
+        EXPECT_EQ(attachment.GetColorAttachmentCount(), 0u);
+        EXPECT_FALSE(attachment.TryPrepare());
+    }
+}
+
+TEST(RenderGraphScenePipelineTest, AdmittedGraphicsDescriptionCloneChecksBothArraysAndPreservesOutputOnFailure)
+{
+    MemoryManager memory = {};
+    memory.Initialize(ZKilo(32), {});
+    Rendering::Specifications::GraphicsPipelineDesc source = {};
+    source.DebugName                                       = "admitted";
+    source.EnableBlending                                  = true;
+    source.EnableDepthWrite                                = false;
+    source.VertexInputBindingSpecifications.init(&memory.MainArena, 2, 2);
+    source.VertexInputBindingSpecifications[0].Stride = 32;
+    source.VertexInputAttributeSpecifications.init(&memory.MainArena, 1, 1);
+    source.VertexInputAttributeSpecifications[0].Location  = 3;
+    Rendering::Specifications::GraphicsPipelineDesc output = {};
+    output.DebugName                                       = "preserved";
+    std::array<std::max_align_t, 32> storage               = {};
+    for (const auto bytes : {size_t(1), 2 * sizeof(Rendering::Specifications::VertexInputBindingSpecification)})
+    {
+        ArenaAllocator bounded = {};
+        ASSERT_TRUE(bounded.InitializeBorrowed(storage.data(), bytes));
+        EXPECT_FALSE(Rendering::Specifications::TryCloneGraphicsPipelineDesc(source, &bounded, &output));
+        EXPECT_EQ(bounded.m_current_offset, 0u);
+        EXPECT_STREQ(output.DebugName, "preserved");
+        EXPECT_TRUE(output.VertexInputBindingSpecifications.empty());
+    }
+    ASSERT_TRUE(Rendering::Specifications::TryCloneGraphicsPipelineDesc(source, &memory.MainArena, &output));
+    EXPECT_STREQ(output.DebugName, "admitted");
+    EXPECT_TRUE(output.EnableBlending);
+    EXPECT_FALSE(output.EnableDepthWrite);
+    ASSERT_EQ(output.VertexInputBindingSpecifications.size(), 2u);
+    ASSERT_EQ(output.VertexInputAttributeSpecifications.size(), 1u);
+    source.VertexInputBindingSpecifications[0].Stride = 99;
+    EXPECT_EQ(output.VertexInputBindingSpecifications[0].Stride, 32u);
+    EXPECT_EQ(output.VertexInputAttributeSpecifications[0].Location, 3u);
+}
+
+namespace ZEngine::Rendering::Renderers::RenderPasses
+{
+    struct DescriptorReplayTestAccess
+    {
+        static void Record(DescriptorBoundPass& pass, const char* name)
+        {
+            pass.RecordDescriptorBinding({.Binding = {.Name = name}, .FrameIndex = 0});
+        }
+    };
+} // namespace ZEngine::Rendering::Renderers::RenderPasses
+
+TEST(RenderGraphScenePipelineTest, CheckedBuiltinDescriptionsPreserveOutputAndRecipeCursorAtEachReservationBoundary)
+{
+    GizmoPass                 gizmo              = {};
+    ZUIPass                   ui                 = {};
+    IRenderGraphCallbackPass* passes[]           = {&gizmo, &ui};
+    const size_t              attribute_counts[] = {6, 3};
+    for (uint32_t i = 0; i < 2; ++i)
+    {
+        SCOPED_TRACE(i);
+        Rendering::Specifications::GraphicsPipelineDesc output                    = {};
+        output.DebugName                                                          = "outgoing";
+        output.EnableStencilTest                                                  = true;
+        const auto                                                  binding_bytes = sizeof(Rendering::Specifications::VertexInputBindingSpecification);
+        const auto                                                  required      = Helpers::memory_align_size_t(binding_bytes, ZAlignof<Rendering::Specifications::VertexInputAttributeSpecification>()) + attribute_counts[i] * sizeof(Rendering::Specifications::VertexInputAttributeSpecification);
+        alignas(DEFAULT_ALIGNMENT) std::array<std::max_align_t, 64> storage       = {};
+        for (const auto bytes : {size_t(1), binding_bytes, required - 1})
+        {
+            ArenaAllocator arena = {};
+            ASSERT_TRUE(arena.InitializeBorrowed(storage.data(), bytes));
+            EXPECT_FALSE(passes[i]->TryBuildGraphicsPipelineDescription(&arena, &output));
+            EXPECT_EQ(arena.m_current_offset, 0u);
+            EXPECT_STREQ(output.DebugName, "outgoing");
+            EXPECT_TRUE(output.EnableStencilTest);
+            EXPECT_TRUE(output.VertexInputBindingSpecifications.empty());
+            EXPECT_TRUE(output.VertexInputAttributeSpecifications.empty());
+        }
+        EXPECT_FALSE(passes[i]->TryBuildGraphicsPipelineDescription(nullptr, &output));
+        ArenaAllocator exact = {};
+        ASSERT_TRUE(exact.InitializeBorrowed(storage.data(), required));
+        EXPECT_FALSE(passes[i]->TryBuildGraphicsPipelineDescription(&exact, nullptr));
+        EXPECT_EQ(exact.m_current_offset, 0u);
+        ASSERT_TRUE(passes[i]->TryBuildGraphicsPipelineDescription(&exact, &output));
+        ASSERT_EQ(output.VertexInputBindingSpecifications.size(), 1u);
+        EXPECT_EQ(output.VertexInputAttributeSpecifications.size(), attribute_counts[i]);
+        EXPECT_EQ(exact.m_current_offset, required);
+        EXPECT_FALSE(output.EnableStencilTest);
+        EXPECT_NE(output.ShaderSpecificationValue.Name, nullptr);
+    }
+}
+
+TEST(RenderGraphScenePipelineTest, UnqualifiedDescriptionCallbackFailsClosedAndStaticRecipeNeedsNoArena)
+{
+    struct Unqualified : IRenderGraphCallbackPass
+    {
+        bool Register(Hardwares::VulkanDevice*, cstring, const RenderGraphFrameContext&, RenderGraphResourceBuilder*, RenderGraphResourceInspector*) override
+        {
+            return false;
+        }
+        void Execute(Hardwares::VulkanDevice*, RenderGraphResourceInspector*, Rendering::Scenes::SceneData*, RenderPasses::RenderPass*, Rendering::Buffers::FramebufferVNext*, Hardwares::CommandBuffer*) override {}
+    } unqualified                                          = {};
+    Rendering::Specifications::GraphicsPipelineDesc output = {};
+    output.DebugName                                       = "preserved";
+    EXPECT_FALSE(unqualified.TryBuildGraphicsPipelineDescription(nullptr, &output));
+    EXPECT_STREQ(output.DebugName, "preserved");
+    GridPass grid = {};
+    EXPECT_FALSE(grid.TryBuildGraphicsPipelineDescription(nullptr, nullptr));
+    ASSERT_TRUE(grid.TryBuildGraphicsPipelineDescription(nullptr, &output));
+    EXPECT_STREQ(output.ShaderSpecificationValue.Name, "infinite_grid");
+    EXPECT_TRUE(output.VertexInputBindingSpecifications.empty());
+    EXPECT_TRUE(output.VertexInputAttributeSpecifications.empty());
+}
+
+TEST(RenderGraphScenePipelineTest, DescriptorReplayNamesHaveExactCapsAndResetWithoutArenaGrowth)
+{
+    struct Names final : RenderPasses::DescriptorBoundPass
+    {
+        void Initialize(Hardwares::VulkanDevice*, Rendering::Specifications::RenderPassSpecification) override {}
+        void Dispose() override {}
+        void Bake() override {}
+        bool Verify() override
+        {
+            return DescriptorReplayValid;
+        }
+        void Record(const char* name)
+        {
+            RenderPasses::DescriptorReplayTestAccess::Record(*this, name);
+        }
+        uint32_t Bytes() const
+        {
+            return DescriptorReplayNameBytes;
+        }
+        uint32_t Count() const
+        {
+            return DescriptorReplayRecordCount;
+        }
+        const char* First() const
+        {
+            return DescriptorReplayRecords[0].Name;
+        }
+        Pipelines::IPipeline* GetPipeline() const override
+        {
+            return nullptr;
+        }
+    } names;
+    // No device or arena exists: replay names must be entirely pass-owned.
+    std::array<char, RenderPasses::kMaxDescriptorReplayNameBytes> maximum = {};
+    maximum.fill('a');
+    maximum.back() = '\0';
+    names.Record(maximum.data());
+    ASSERT_TRUE(names.Verify());
+    EXPECT_EQ(names.Bytes(), maximum.size());
+    maximum[0] = 'z';
+    EXPECT_EQ(names.First()[0], 'a');
+    maximum[0] = 'a';
+    names.Record(maximum.data());
+    EXPECT_TRUE(names.Verify());
+    EXPECT_EQ(names.Bytes(), maximum.size());
+    names.Record("extra");
+    EXPECT_FALSE(names.Verify());
+    EXPECT_EQ(names.Count(), 1u);
+    names.ResetSceneBindings();
+    EXPECT_TRUE(names.Verify());
+    EXPECT_EQ(names.Bytes(), 0u);
+    for (uint32_t index = 0; index < RenderPasses::kMaxDescriptorReplayBindings; ++index)
+    {
+        char name[32] = {};
+        std::snprintf(name, sizeof(name), "binding%u", index);
+        names.Record(name);
+    }
+    EXPECT_TRUE(names.Verify());
+    EXPECT_EQ(names.Count(), RenderPasses::kMaxDescriptorReplayBindings);
+    names.Record("too-many-records");
+    EXPECT_FALSE(names.Verify());
+    names.ResetSceneBindings();
+    names.Record("retry");
+    EXPECT_TRUE(names.Verify());
+    EXPECT_STREQ(names.First(), "retry");
+}
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -31,6 +506,10 @@ namespace ZEngine::Rendering::Renderers
         static void BuildStreamingAcquirePlans(RenderGraph& graph)
         {
             graph.BuildStreamingAcquirePlans();
+        }
+        static void BuildQueueSchedule(RenderGraph& graph)
+        {
+            graph.BuildQueueSchedule();
         }
     };
 } // namespace ZEngine::Rendering::Renderers
@@ -738,6 +1217,134 @@ TEST(RenderGraphSynchronizationTest, DepthReadPreservesStoredAttachmentState)
     EXPECT_EQ(state.Layout, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 }
 
+TEST(RenderGraphSynchronizationTest, StreamingOwnershipAcquireRepeatsProducerLayoutPair)
+{
+    Hardwares::StreamingUploadTicket ticket = {};
+    ticket.PreReleaseLayout                 = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    ticket.PostReleaseLayout                = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    ticket.ProducerQueueFamily              = 3;
+    const auto               destination    = GetRGAccessState(RGAccess::ShaderRead);
+    const RGSubresourceRange range          = {.AspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .BaseMipLevel = 0, .LevelCount = 4, .BaseArrayLayer = 0, .LayerCount = 6};
+    const auto               barrier        = BuildRGStreamingAcquireBarrier(ticket, destination, 5, VK_NULL_HANDLE, range);
+
+    EXPECT_EQ(barrier.sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2);
+    EXPECT_EQ(barrier.srcStageMask, VK_PIPELINE_STAGE_2_NONE);
+    EXPECT_EQ(barrier.srcAccessMask, 0u);
+    EXPECT_EQ(barrier.dstStageMask, destination.Stage);
+    EXPECT_EQ(barrier.dstAccessMask, destination.Access);
+    EXPECT_EQ(barrier.oldLayout, ticket.PreReleaseLayout);
+    EXPECT_EQ(barrier.newLayout, ticket.PostReleaseLayout);
+    EXPECT_EQ(barrier.srcQueueFamilyIndex, 3u);
+    EXPECT_EQ(barrier.dstQueueFamilyIndex, 5u);
+    EXPECT_EQ(barrier.subresourceRange.aspectMask, VK_IMAGE_ASPECT_COLOR_BIT);
+    EXPECT_EQ(barrier.subresourceRange.baseMipLevel, 0u);
+    EXPECT_EQ(barrier.subresourceRange.levelCount, 4u);
+    EXPECT_EQ(barrier.subresourceRange.baseArrayLayer, 0u);
+    EXPECT_EQ(barrier.subresourceRange.layerCount, 6u);
+
+    Rendering::Specifications::ImageMemoryBarrierSpecification release = {};
+    release.OldLayout                                                  = ImageLayout::TRANSFER_DST_OPTIMAL;
+    release.NewLayout                                                  = ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+    release.ImageAspectMask                                            = VK_IMAGE_ASPECT_COLOR_BIT;
+    release.LayerCount                                                 = 6;
+    release.MipLevelCount                                              = 4;
+    release.SourceQueueFamily                                          = 3;
+    release.DestinationQueueFamily                                     = 5;
+    const Rendering::Primitives::ImageMemoryBarrier producer(release);
+    const auto&                                     producer_barrier = producer.GetHandle();
+    EXPECT_EQ(barrier.oldLayout, producer_barrier.oldLayout);
+    EXPECT_EQ(barrier.newLayout, producer_barrier.newLayout);
+    EXPECT_EQ(barrier.srcQueueFamilyIndex, producer_barrier.srcQueueFamilyIndex);
+    EXPECT_EQ(barrier.dstQueueFamilyIndex, producer_barrier.dstQueueFamilyIndex);
+    EXPECT_EQ(barrier.subresourceRange.aspectMask, producer_barrier.subresourceRange.aspectMask);
+    EXPECT_EQ(barrier.subresourceRange.baseMipLevel, producer_barrier.subresourceRange.baseMipLevel);
+    EXPECT_EQ(barrier.subresourceRange.levelCount, producer_barrier.subresourceRange.levelCount);
+    EXPECT_EQ(barrier.subresourceRange.baseArrayLayer, producer_barrier.subresourceRange.baseArrayLayer);
+    EXPECT_EQ(barrier.subresourceRange.layerCount, producer_barrier.subresourceRange.layerCount);
+}
+
+TEST(RenderGraphSynchronizationTest, StreamingSameFamilyAcquireDoesNotRepeatLayoutTransition)
+{
+    Hardwares::StreamingUploadTicket ticket = {};
+    ticket.PreReleaseLayout                 = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    ticket.PostReleaseLayout                = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    const auto               destination    = GetRGAccessState(RGAccess::ShaderRead);
+    const RGSubresourceRange range          = {.AspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .LevelCount = 1, .LayerCount = 1};
+    for (const uint32_t producer_family : {2u, uint32_t{VK_QUEUE_FAMILY_IGNORED}})
+    {
+        ticket.ProducerQueueFamily = producer_family;
+        const auto barrier         = BuildRGStreamingAcquireBarrier(ticket, destination, 2, VK_NULL_HANDLE, range);
+        EXPECT_EQ(barrier.oldLayout, ticket.PostReleaseLayout);
+        EXPECT_EQ(barrier.newLayout, ticket.PostReleaseLayout);
+        EXPECT_EQ(barrier.srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+        EXPECT_EQ(barrier.dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED);
+        EXPECT_EQ(barrier.dstStageMask, destination.Stage);
+        EXPECT_EQ(barrier.dstAccessMask, destination.Access);
+    }
+}
+
+TEST(RenderGraphDeclarationTest, SkyStorageBindingsSeparateSingleMipViewsFromWholeChainSynchronization)
+{
+    MemoryManager memory = {};
+    memory.Initialize(ZMega(4), {});
+    auto&       arena = memory.MainArena;
+    RenderGraph graph = {};
+    graph.FrameArena.Initialize(ZMega(2), 0);
+    graph.Passes.init(&arena, 3);
+    graph.Resources.init(&arena, 16);
+    graph.ResourceIndex.init(&arena, 16);
+    graph.ImportedResources.init(&arena, 16);
+    graph.ImportedResourceIndex.init(&arena, 16);
+    for (uint32_t index = 0; index < 3; ++index)
+    {
+        graph.Passes.push(MakePass(&arena, "Sky storage"));
+    }
+    Rendering::Scenes::SkyEnvironment environment = {};
+    environment.Initialize({});
+    ASSERT_TRUE(environment.SubmitConfig({}, 1));
+    Rendering::Scenes::SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeAtmosphere(
+        1,
+        {
+        .Transmittance = {.Index = 1, .Generation = 1},
+          .Multiscattering = {.Index = 2, .Generation = 1}
+    }));
+    ASSERT_TRUE(environment.AttachBakeResource(1, {.Index = 3, .Generation = 1}));
+    ASSERT_TRUE(environment.AttachBakeLighting(
+        1,
+        {
+        .DiffuseIrradiance = {.Index = 4, .Generation = 1},
+          .SpecularEnvironment = {.Index = 5, .Generation = 1},
+          .BrdfIntegrationLut = {.Index = 6, .Generation = 1},
+          .BakeSettings = Rendering::ResolveEnvironmentLightingQuality(Rendering::EnvironmentLightingQualityTier::Standard)
+    }));
+    ASSERT_TRUE(environment.BeginGpuBake(1));
+    RenderGraphResourceBuilder builder = {};
+    builder.Initialize(&graph);
+    builder.CurrentPass = 0;
+    SkyAtmosphereSourceRadiancePass source(&environment);
+    source.RegisterCompute(nullptr, {}, &builder);
+    ASSERT_EQ(graph.Passes[0].Writes.size(), 1u);
+    // The full-image sampled transition after source generation requires all
+    // mip layouts initialized, independently of the one-mip storage view.
+    EXPECT_EQ(graph.Passes[0].Writes[0].BindingKey, nullptr);
+    EXPECT_EQ(graph.Passes[0].Writes[0].Range.LevelCount, VK_REMAINING_MIP_LEVELS);
+    EXPECT_EQ(graph.Passes[0].Writes[0].Range.LayerCount, VK_REMAINING_ARRAY_LAYERS);
+    builder.CurrentPass = 1;
+    SkyEnvironmentMipGenerationPass mips(&environment, "sky_atmosphere_mips", true);
+    mips.RegisterCompute(nullptr, {}, &builder);
+    ASSERT_EQ(graph.Passes[1].Writes.size(), 1u);
+    EXPECT_EQ(graph.Passes[1].Writes[0].BindingKey, nullptr);
+    EXPECT_EQ(graph.Passes[1].Writes[0].Range.LevelCount, VK_REMAINING_MIP_LEVELS);
+    builder.CurrentPass = 2;
+    SkyEnvironmentSpecularPrefilterPass specular(&environment);
+    specular.RegisterCompute(nullptr, {}, &builder);
+    ASSERT_EQ(graph.Passes[2].Writes.size(), 1u);
+    EXPECT_EQ(graph.Passes[2].Writes[0].BindingKey, nullptr);
+    EXPECT_EQ(graph.Passes[2].Writes[0].Range.LevelCount, VK_REMAINING_MIP_LEVELS);
+}
+
 TEST(RenderGraphDeclarationTest, ZuiDeclaresBindlessReadsWithoutASceneOrPayload)
 {
     MemoryManager manager{};
@@ -770,6 +1377,7 @@ TEST(RenderGraphDeclarationTest, ZuiDeclaresBindlessReadsWithoutASceneOrPayload)
         .CompletionTimeline  = reinterpret_cast<ZEngine::Rendering::Primitives::Semaphore*>(uintptr_t{1}
                       ),
         .CompletionValue     = 42,
+        .PreReleaseLayout    = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .PostReleaseLayout   = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .ProducerQueueFamily = 1,
     };
@@ -1767,6 +2375,62 @@ TEST(RenderGraphTopologyTest, DetectsLongerCycleWithoutHanging)
     EXPECT_EQ(order.size(), 0u);
     EXPECT_LT(cycle_idx, 3u);
 
+    manager.Shutdown();
+}
+
+TEST(RenderGraphQueueScheduleTest, CompiledComputeBackendPreservesCallbackQueuePolicy)
+{
+    MemoryManager manager{};
+    manager.Initialize(16384, {});
+    auto& arena                      = manager.MainArena;
+    auto  device                     = std::make_unique<Hardwares::VulkanDevice>();
+    device->Arena                    = &arena;
+    device->HasSeparateComputeQueue  = true;
+    device->HasSeparateTransferQueue = true;
+
+    RenderGraph graph                = {};
+    graph.Device                     = device.get();
+    graph.Passes.init(&arena, 4);
+    graph.SortedPassIndices.init(&arena, 4);
+    graph.QueueBatches.init(&arena, 4);
+    graph.QueueDependencies.init(&arena, 4);
+    graph.QueueOwnershipTransfers.init(&arena, 4);
+    RenderPasses::ComputePass backend = {};
+    backend.Specification.Type        = Rendering::Specifications::RenderPassType::COMPUTE;
+    SkyEnvironmentMipGenerationPass sky(nullptr, "sky_hdri_mips", false);
+    TestComputePass                 compute = {};
+
+    for (uint32_t index = 0; index < 4; ++index)
+    {
+        graph.Passes.push(MakePass(&arena, "Queue policy"));
+        graph.Passes[index].Handle = &backend;
+        graph.SortedPassIndices.push(index);
+    }
+    graph.Passes[0].Callback = &sky;
+    graph.Passes[1].Callback = &compute;
+    // A callback-free legacy backend still infers its role from its kind.
+    graph.Passes[3].Callback = &compute;
+    graph.Passes[3].QueryWrites.push({});
+
+    RenderGraphTestAccess::BuildQueueSchedule(graph);
+
+    EXPECT_EQ(graph.Passes[0].RequestedQueue, Rendering::QueueType::GRAPHIC_QUEUE);
+    EXPECT_EQ(graph.Passes[0].Queue, Rendering::QueueType::GRAPHIC_QUEUE);
+    EXPECT_EQ(graph.Passes[1].Queue, Rendering::QueueType::COMPUTE_QUEUE);
+    EXPECT_EQ(graph.Passes[2].Queue, Rendering::QueueType::COMPUTE_QUEUE);
+    EXPECT_EQ(graph.Passes[3].Queue, Rendering::QueueType::GRAPHIC_QUEUE);
+    ASSERT_EQ(graph.QueueBatches.size(), 3u);
+    EXPECT_EQ(graph.QueueBatches[0].Queue, Rendering::QueueType::GRAPHIC_QUEUE);
+    EXPECT_EQ(graph.QueueBatches[1].Queue, Rendering::QueueType::COMPUTE_QUEUE);
+    EXPECT_EQ(graph.QueueBatches[1].PassCount, 2u);
+    EXPECT_EQ(graph.QueueBatches[2].Queue, Rendering::QueueType::GRAPHIC_QUEUE);
+
+    // Re-scheduling on a single-family device retains the normal fallback.
+    device->HasSeparateComputeQueue = false;
+    RenderGraphTestAccess::BuildQueueSchedule(graph);
+    ASSERT_EQ(graph.QueueBatches.size(), 1u);
+    EXPECT_EQ(graph.QueueBatches[0].Queue, Rendering::QueueType::GRAPHIC_QUEUE);
+    EXPECT_EQ(graph.QueueBatches[0].PassCount, 4u);
     manager.Shutdown();
 }
 

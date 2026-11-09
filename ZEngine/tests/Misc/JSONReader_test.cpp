@@ -51,6 +51,36 @@ namespace ZEngine::Core::Serialization
         }
     }
 
+    TEST(JSONReaderTest, ExplicitSkipValidatesNestedValuesAndRetainsContainerAndLimitChecks)
+    {
+        char                   scratch[16] = {};
+        JSONReader             reader(JSONBytes(R"({"unknown":[null,true,1.2,"str",{"a":false},[]],"known":7})"));
+        Containers::StringView key = {};
+        ASSERT_TRUE(reader.BeginObject());
+        ASSERT_TRUE(reader.Member(scratch, &key));
+        EXPECT_EQ(key, Containers::StringView("unknown"));
+        ASSERT_TRUE(reader.SkipValue(scratch));
+        ASSERT_TRUE(reader.Member(scratch, &key));
+        EXPECT_EQ(key, Containers::StringView("known"));
+        uint64_t value = 0;
+        ASSERT_TRUE(reader.UInt64(&value));
+        EXPECT_EQ(value, 7u);
+        EXPECT_FALSE(reader.Member(scratch, &key));
+        EXPECT_TRUE(reader.Finish());
+        for (cstring invalid : {"[true,,false]", "{\"a\":}", "[null,]", "\"\\ud800\"", "01", "{\"a\":[1}"})
+        {
+            reader.Reset(JSONBytes(invalid));
+            EXPECT_FALSE(reader.SkipValue(scratch)) << invalid;
+            EXPECT_FALSE(reader.Finish());
+        }
+        reader.Reset(JSONBytes("[[0]]"), {.MaxDepth = 1});
+        EXPECT_FALSE(reader.SkipValue(scratch));
+        EXPECT_EQ(reader.Error(), VFS::VFSError::SizeLimitExceeded);
+        reader.Reset(JSONBytes("\"too long\""), {.MaxStringBytes = 3});
+        EXPECT_FALSE(reader.SkipValue(scratch));
+        EXPECT_EQ(reader.Error(), VFS::VFSError::SizeLimitExceeded);
+    }
+
     TEST(JSONReaderTest, TokenDispatchDoesNotConsumeValuesOrHideMalformedInput)
     {
         JSONReader reader(JSONBytes(" \n{\"a\": [1,true,null,\"x\",{}]} "));

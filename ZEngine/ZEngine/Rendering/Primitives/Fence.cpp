@@ -13,7 +13,10 @@ namespace ZEngine::Rendering::Primitives
             frame_fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
         }
 
+        auto retirement = Device->PendingFree.Reserve();
+        ZENGINE_VALIDATE_ASSERT(retirement, "No retirement capacity for fence")
         ZENGINE_VALIDATE_ASSERT(vkCreateFence(Device->LogicalDevice, &frame_fence_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Fence")
+        m_retirement_reservation = retirement.Detach();
     }
 
     Fence::~Fence()
@@ -25,10 +28,12 @@ namespace ZEngine::Rendering::Primitives
 
         Hardwares::DeferredFreeEntry e = {};
         e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+        e.Reservation                  = m_retirement_reservation;
         e.Data.Vk                      = {m_handle, Rendering::DeviceResourceType::FENCE, nullptr};
         Device->DeferFree(e);
-        m_handle      = VK_NULL_HANDLE;
-        m_fence_state = FenceState::Idle;
+        m_handle                 = VK_NULL_HANDLE;
+        m_retirement_reservation = 0;
+        m_fence_state            = FenceState::Idle;
     }
 
     bool Fence::IsSignaled()

@@ -17,6 +17,31 @@ namespace ZEngine::Core::Containers
 
         String() : m_allocator(nullptr), m_size(0), m_capacity(0), m_data(nullptr) {}
 
+        // Checked immutable copy. Refusal preserves the previous value.
+        [[nodiscard]] bool try_init(Memory::ArenaAllocator* allocator, const char* str)
+        {
+            if (!allocator)
+            {
+                return false;
+            }
+            const size_type length = str ? Helpers::secure_strlen(str) : 0;
+            if (length == SIZE_MAX)
+            {
+                return false;
+            }
+            auto* data = static_cast<char*>(allocator->AllocateNoZero(length + 1, alignof(char)));
+            if (!data || (length && Helpers::secure_memcpy(data, length + 1, str, length) != Helpers::MEMORY_OP_SUCCESS))
+            {
+                return false;
+            }
+            data[length] = '\0';
+            m_allocator  = allocator;
+            m_data       = data;
+            m_size       = length;
+            m_capacity   = length + 1;
+            return true;
+        }
+
         void init(Memory::ArenaAllocator* allocator, size_type initial_capacity = 16)
         {
             m_allocator = allocator;

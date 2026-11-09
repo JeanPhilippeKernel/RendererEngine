@@ -95,6 +95,80 @@ TEST_F(EditorHistoryTest, ExecuteUndoRedoAndSavedCheckpointAreExact)
     EXPECT_FALSE(history.Redo(&value));
 }
 
+TEST_F(EditorHistoryTest, DeferredResetRetainsPayloadsWithoutCallbacksOrNewAllocations)
+{
+    uint32_t destroyed = 0;
+    ASSERT_TRUE(Push(1, &destroyed));
+    ASSERT_TRUE(Push(2, &destroyed));
+    ASSERT_TRUE(history.Undo(&value));
+    const auto offset = arena.m_current_offset;
+    ASSERT_TRUE(history.CanResetDeferred());
+    history.ResetDeferred();
+    EXPECT_EQ(destroyed, 0u);
+    EXPECT_EQ(history.UndoCount(), 0u);
+    EXPECT_EQ(history.RedoCount(), 0u);
+    EXPECT_FALSE(history.Dirty());
+    EXPECT_FALSE(history.CanResetDeferred());
+    EXPECT_FALSE(Push(3));
+    EXPECT_FALSE(history.Undo(&value));
+    EXPECT_FALSE(history.Redo(&value));
+    history.Reset(false);
+    EXPECT_FALSE(history.Dirty());
+    history.DrainRetired();
+    EXPECT_EQ(destroyed, 2u);
+    EXPECT_EQ(arena.m_current_offset, offset);
+    EXPECT_TRUE(history.CanResetDeferred());
+    ASSERT_TRUE(Push(4));
+    history.DrainRetired();
+    EXPECT_EQ(history.UndoCount(), 1u);
+    EXPECT_EQ(destroyed, 2u);
+}
+
+TEST_F(EditorHistoryTest, RetiredDestroyCannotRecursivelyDrainOrReuseItsRingStorage)
+{
+    struct Probe
+    {
+        EditorHistory* History   = nullptr;
+        uint32_t*      Destroyed = nullptr;
+    };
+    uint32_t destroyed = 0;
+    auto     operation = Operation();
+    operation.Destroy  = [](std::span<std::byte> data) {
+        const auto probe = *reinterpret_cast<const Probe*>(data.data());
+        ++*probe.Destroyed;
+        probe.History->DrainRetired();
+        probe.History->Reset();
+        EXPECT_FALSE(probe.History->CanStore(sizeof(Change)));
+        EXPECT_FALSE(probe.History->CanResetDeferred());
+    };
+    const Probe probe = {&history, &destroyed};
+    ASSERT_TRUE(history.PushAlreadyApplied(operation, std::as_bytes(std::span(&probe, 1))));
+    ASSERT_TRUE(history.PushAlreadyApplied(operation, std::as_bytes(std::span(&probe, 1))));
+    history.ResetDeferred();
+    EXPECT_EQ(destroyed, 0u);
+    history.DrainRetired();
+    EXPECT_EQ(destroyed, 2u);
+    EXPECT_TRUE(history.CanStore(sizeof(Change)));
+}
+
+TEST_F(EditorHistoryTest, DeferredResetDrainsWrappedUndoAndRedoEntriesExactlyOnce)
+{
+    uint32_t destroyed = 0;
+    for (int next = 1; next <= 39; ++next)
+    {
+        ASSERT_TRUE(Push(next, &destroyed));
+    }
+    EXPECT_EQ(destroyed, 35u);
+    ASSERT_TRUE(history.Undo(&value));
+    ASSERT_TRUE(history.Undo(&value));
+    history.ResetDeferred();
+    EXPECT_EQ(destroyed, 35u);
+    history.DrainRetired();
+    history.DrainRetired();
+    EXPECT_EQ(destroyed, 39u);
+    EXPECT_TRUE(Push(40));
+}
+
 TEST_F(EditorHistoryTest, AlreadyAppliedTransactionIsNotAppliedTwice)
 {
     const Change change{0, 1};

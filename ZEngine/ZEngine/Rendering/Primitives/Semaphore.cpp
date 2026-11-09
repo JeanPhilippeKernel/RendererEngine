@@ -17,7 +17,10 @@ namespace ZEngine::Rendering::Primitives
             semaphore_create_info.pNext        = &timeline_create_info;
         }
 
+        auto retirement = Device->PendingFree.Reserve();
+        ZENGINE_VALIDATE_ASSERT(retirement, "No retirement capacity for semaphore")
         ZENGINE_VALIDATE_ASSERT(vkCreateSemaphore(Device->LogicalDevice, &semaphore_create_info, nullptr, &m_handle) == VK_SUCCESS, "Failed to create Semaphore")
+        m_retirement_reservation = retirement.Detach();
     }
 
     Semaphore::~Semaphore()
@@ -29,10 +32,12 @@ namespace ZEngine::Rendering::Primitives
 
         Hardwares::DeferredFreeEntry e = {};
         e.EntryKind                    = Hardwares::DeferredFreeEntry::Kind::VkHandle;
+        e.Reservation                  = m_retirement_reservation;
         e.Data.Vk                      = {m_handle, Rendering::DeviceResourceType::SEMAPHORE, nullptr};
         Device->DeferFree(e);
-        m_handle          = VK_NULL_HANDLE;
-        m_semaphore_state = SemaphoreState::Idle;
+        m_handle                 = VK_NULL_HANDLE;
+        m_retirement_reservation = 0;
+        m_semaphore_state        = SemaphoreState::Idle;
     }
 
     void Semaphore::Wait(const uint64_t value, const uint64_t timeout)

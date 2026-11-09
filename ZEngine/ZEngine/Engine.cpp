@@ -280,6 +280,7 @@ namespace ZEngine
     void Engine::Deinitialize()
     {
         // Step 1 — signal all loops to exit
+        g_engine_ctx->SceneLoads.Shutdown();
         g_engine_ctx->RequestTerminate.value.store(true, std::memory_order_release);
 
         // Step 2 — join render thread before any GPU resource is destroyed
@@ -296,6 +297,7 @@ namespace ZEngine
         Core::MainThreadScheduler::Shutdown();
 
         g_engine_ctx->App->OnWorldShutdown(*g_engine_ctx);
+        ZENGINE_VALIDATE_ASSERT(g_engine_ctx->SceneLoads.Drained(), "Scene work survived shutdown of its owning application")
 
         // Step 3 — ECS shutdown: ActorManager before Scene (lifecycle order)
         if (g_engine_ctx->ActorManager)
@@ -304,14 +306,16 @@ namespace ZEngine
             g_engine_ctx->Scene->Shutdown();
 
         // Step 4 — shut down RRM before pipeline teardown (GPU must still be alive)
+        g_engine_ctx->App->RenderPipeline->ReleaseSceneResourceFramesAfterReadersJoined();
         if (g_engine_ctx->RenderResourceManager)
             g_engine_ctx->RenderResourceManager->Shutdown();
 
-        // Step 5 — drain async import queue before pipeline/device teardown
-        Managers::AssetManager::Shutdown();
-
         // Step 4 — destroy framebuffers, render passes, descriptor sets
         g_engine_ctx->App->RenderPipeline->Shutdown();
+
+        // CPU source leases owned by pending renderer/preview tasks must retire
+        // before their shared cache slab. Render/import readers already joined.
+        Managers::AssetManager::Shutdown();
 
         // Step 12 — close VFS file handles
         if (g_engine_ctx->VFS)
@@ -375,6 +379,12 @@ namespace ZEngine
 
     float Engine::AdvanceSimulation(EngineContext& context, Timing::FixedTimestepAccumulator& accumulator, float raw_dt)
     {
+        if (!context.ScenePublication.Idle())
+        {
+            accumulator.Reset();
+            return 1.f;
+        }
+        accumulator.BindSceneGeneration(context.ScenePublication.Generation());
         // Fail closed before touching runtime state. An editor's authored world
         // must stay unchanged even if a plugin registered systems or queued commands.
         if (!context.App || !context.App->ShouldSimulate() || context.CloseRequested.value.load(std::memory_order_acquire) || !context.Scene || !context.WorldTick || !context.WorldCommands || !context.ActorManager || context.ActorManager->BoundScene() != context.Scene || !std::isfinite(raw_dt) || raw_dt < 0.f)
@@ -395,7 +405,9 @@ namespace ZEngine
         {
             const float fixed_dt = accumulator.FixedDt();
             if (has_systems)
+            {
                 context.WorldTick->Tick(*context.Scene, fixed_dt, *context.WorldCommands);
+            }
             context.WorldCommands->Flush(*context.Scene);
             context.ActorManager->Tick(fixed_dt);
             context.Scene->SnapshotTransforms();
@@ -413,14 +425,15 @@ namespace ZEngine
 
     void Engine::MainThreadRun()
     {
-        Timing::FrameTimer                   frame_timer;
-        Timing::FixedTimestepAccumulator     accumulator;
-        Timing::FrameRateCap                 frame_cap;
+        Timing::FrameTimer               frame_timer;
+        Timing::FixedTimestepAccumulator accumulator;
+        Timing::FrameRateCap             frame_cap;
 
-        uint64_t                             frame_index     = 0;
+        uint64_t                         frame_index         = 0;
         // Reuse fixed gizmo storage; only live counts are reset for each update.
-        Applications::RenderFrameState       state           = {};
-        const Applications::RenderFrameState minimized_state = {};
+        Applications::RenderFrameState   state               = {};
+        Applications::RenderFrameState   minimized_state     = {};
+        auto                             previous_main_start = std::chrono::steady_clock::now();
 
         ZENGINE_CORE_INFO("Engine main loop starting — FixedDT={:.4f}s MaxSteps=5", accumulator.FixedDt())
 
@@ -435,6 +448,9 @@ namespace ZEngine
             frame_timer.Begin();
             frame_cap.MarkFrameStart();
             ++frame_index;
+            const auto main_work_start = std::chrono::steady_clock::now();
+            ZENGINE_PROFILE_VALUE("SceneLoad.Main.FrameIntervalMs", (std::chrono::duration<double, std::milli>(main_work_start - previous_main_start).count()));
+            previous_main_start = main_work_start;
 
             //  Platform events
             window->PollEvent();
@@ -456,6 +472,7 @@ namespace ZEngine
                     break;
                 // Publish a zero-size snapshot so the render thread pauses too;
                 // retaining the last visible extent is not sufficient on Wayland.
+                minimized_state.SceneGeneration = g_engine_ctx->ScenePublication.Generation();
                 g_engine_ctx->App->RenderPipeline->PublishFrameState(minimized_state);
                 frame_cap.WaitForFrameBudget();
                 continue;
@@ -512,11 +529,13 @@ namespace ZEngine
 
             state.Gizmo.Reset();
             g_engine_ctx->App->PrepareScene(state);
-            state.FramebufferW  = window->GetWidth();
-            state.FramebufferH  = window->GetHeight();
-            state.RenderOverlay = g_engine_ctx->App->EnableRenderOverlay;
+            state.SceneGeneration = g_engine_ctx->ScenePublication.Generation();
+            state.FramebufferW    = window->GetWidth();
+            state.FramebufferH    = window->GetHeight();
+            state.RenderOverlay   = g_engine_ctx->App->EnableRenderOverlay;
             // Transient mailbox pressure is expected; the consumer retains its valid frame.
             pipeline->PublishFrameState(state, g_engine_ctx->App->CurrentScene);
+            ZENGINE_PROFILE_VALUE("SceneLoad.Main.FrameWorkMs", (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - main_work_start).count()));
 
             //  Frame rate cap — applied unconditionally.
             //  Vsync throttles the GPU present in the render thread; the main loop
@@ -550,6 +569,7 @@ namespace ZEngine
         Applications::RenderFrameState retained_frame_state    = {};
         bool                           has_frame_state         = false;
         uint64_t                       applied_resize_sequence = 0;
+        auto                           previous_render_end     = std::chrono::steady_clock::now();
 
         while (true)
         {
@@ -581,25 +601,32 @@ namespace ZEngine
             }
 
             ZENGINE_PROFILE_SCOPE("ThumbnailProfile.RenderFrame");
-            uint32_t                              next_overlay_slot = 0;
-            Applications::OverlayPayload*         next_overlay      = nullptr;
-            const bool                            has_next_overlay  = pipeline->BeginOverlayRead(next_overlay, next_overlay_slot);
-            const Applications::RenderFrameState& state             = retained_frame_state;
+            const auto                     render_work_start = std::chrono::steady_clock::now();
+            uint32_t                       next_overlay_slot = 0;
+            Applications::OverlayPayload*  next_overlay      = nullptr;
+            const bool                     has_next_overlay  = pipeline->BeginOverlayRead(next_overlay, next_overlay_slot);
+            Applications::RenderFrameState state             = retained_frame_state;
+            // Do not overwrite the retained latest mailbox view. Once the first
+            // prepared frame records, its newer resize sequence must still apply.
+            pipeline->ResolvePreparedSceneView(state);
 
-            if (state.ResizeSequence != applied_resize_sequence && state.RenderTargetW > 0 && state.RenderTargetH > 0)
-            {
-                pipeline->ResizeRenderTarget(state.RenderTargetW, state.RenderTargetH);
-                applied_resize_sequence = state.ResizeSequence;
-            }
+            const auto target_ready = [&]() {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Render.ResizePreparation");
+                return pipeline->ApplyRenderTargetResize(state, applied_resize_sequence);
+            }();
 
             pipeline->Device->SwapchainPtr->UpdateFramebufferExtent(state.FramebufferW, state.FramebufferH);
             const bool frame_valid = pipeline->BeginFrame();
-            if (frame_valid && state.Scene.HasScene)
+            if (frame_valid && target_ready && state.Scene.HasScene)
             {
                 const auto* overlay = state.RenderOverlay ? (has_next_overlay ? &next_overlay->ZUIOverlay : (retained_overlay ? &retained_overlay->ZUIOverlay : nullptr)) : nullptr;
                 pipeline->RenderScene(state, overlay);
             }
             pipeline->EndFrame();
+            const auto render_end = std::chrono::steady_clock::now();
+            ZENGINE_PROFILE_VALUE("SceneLoad.Render.FrameWorkMs", (std::chrono::duration<double, std::milli>(render_end - render_work_start).count()));
+            ZENGINE_PROFILE_VALUE("SceneLoad.Render.FrameIntervalMs", (std::chrono::duration<double, std::milli>(render_end - previous_render_end).count()));
+            previous_render_end = render_end;
             if (!frame_valid)
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
 

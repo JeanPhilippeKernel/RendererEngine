@@ -24,8 +24,9 @@ namespace ZEngine::Core::Memory
             EndTempArena(temporary);
             return false;
         }
-        Backing = backing;
-        Pool    = pool;
+        Backing      = backing;
+        Pool         = pool;
+        m_statistics = {.BackingBytes = bytes, .ControlBytes = overhead};
         return true;
     }
 
@@ -39,6 +40,7 @@ namespace ZEngine::Core::Memory
 
         Pool = tlsf_create_with_pool(Backing, bytes);
         ZENGINE_VALIDATE_ASSERT(Pool != nullptr, "TLSFSlab::Init: tlsf_create_with_pool failed")
+        m_statistics = {.BackingBytes = bytes, .ControlBytes = tlsf_size() + tlsf_pool_overhead()};
     }
 
     void* TLSFSlab::Alloc(size_t n)
@@ -47,6 +49,10 @@ namespace ZEngine::Core::Memory
 
         AcquireLock();
         void* p = tlsf_malloc(Pool, n);
+        if (p)
+        {
+            RecordAllocationChange(0, tlsf_block_size(p) + tlsf_alloc_overhead());
+        }
         ReleaseLock();
 
         ZENGINE_VALIDATE_ASSERT(p != nullptr, "TLSFSlab::Alloc: slab exhausted — increase slab capacity at Init")
@@ -63,7 +69,12 @@ namespace ZEngine::Core::Memory
         }
 
         AcquireLock();
-        void* p = tlsf_realloc(Pool, ptr, n);
+        const auto old_bytes = tlsf_block_size(ptr) + tlsf_alloc_overhead();
+        void*      p         = tlsf_realloc(Pool, ptr, n);
+        if (p)
+        {
+            RecordAllocationChange(old_bytes, tlsf_block_size(p) + tlsf_alloc_overhead());
+        }
         ReleaseLock();
 
         ZENGINE_VALIDATE_ASSERT(p != nullptr, "TLSFSlab::Realloc: slab exhausted — increase slab capacity at Init")
@@ -79,7 +90,12 @@ namespace ZEngine::Core::Memory
             return nullptr;
         }
         AcquireLock();
-        void* result = ptr ? tlsf_realloc(Pool, ptr, n) : tlsf_malloc(Pool, n);
+        const auto old_bytes = ptr ? tlsf_block_size(ptr) + tlsf_alloc_overhead() : 0;
+        void*      result    = ptr ? tlsf_realloc(Pool, ptr, n) : tlsf_malloc(Pool, n);
+        if (result)
+        {
+            RecordAllocationChange(old_bytes, tlsf_block_size(result) + tlsf_alloc_overhead());
+        }
         ReleaseLock();
         return result;
     }
@@ -110,6 +126,10 @@ namespace ZEngine::Core::Memory
         }
         AcquireLock();
         void* result = tlsf_memalign(Pool, alignment, n);
+        if (result)
+        {
+            RecordAllocationChange(0, tlsf_block_size(result) + tlsf_alloc_overhead());
+        }
         ReleaseLock();
         return result;
     }
@@ -121,7 +141,9 @@ namespace ZEngine::Core::Memory
             return;
         }
         AcquireLock();
+        const auto bytes = tlsf_block_size(ptr) + tlsf_alloc_overhead();
         tlsf_free(Pool, ptr);
+        RecordAllocationChange(bytes, 0);
         ReleaseLock();
     }
 
@@ -133,12 +155,42 @@ namespace ZEngine::Core::Memory
             Pool = nullptr;
         }
         // Backing is owned by the parent arena — do not free it here.
-        Backing = nullptr;
+        Backing      = nullptr;
+        m_statistics = {};
+    }
+
+    TLSFSlab::Statistics TLSFSlab::GetStatistics() const
+    {
+        AcquireLock();
+        const auto result = m_statistics;
+        ReleaseLock();
+        return result;
+    }
+
+    void TLSFSlab::RecordAllocationChange(size_t old_bytes, size_t new_bytes)
+    {
+        ZENGINE_VALIDATE_ASSERT(old_bytes <= m_statistics.LiveBytes, "Invalid TLSF live allocation accounting")
+        m_statistics.LiveBytes -= old_bytes;
+        m_statistics.LiveBytes += new_bytes;
+        if (old_bytes)
+        {
+            --m_statistics.LiveBlocks;
+        }
+        if (new_bytes)
+        {
+            ++m_statistics.LiveBlocks;
+        }
+        m_statistics.HighWaterLiveBytes = std::max(m_statistics.HighWaterLiveBytes, m_statistics.LiveBytes);
     }
 
     size_t TLSFSlab::Overhead() const
     {
         return Pool ? tlsf_size() : 0;
+    }
+
+    size_t TLSFSlab::TotalOverhead() const
+    {
+        return Pool ? tlsf_size() + tlsf_pool_overhead() : 0;
     }
 
 } // namespace ZEngine::Core::Memory

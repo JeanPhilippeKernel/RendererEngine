@@ -41,7 +41,7 @@ namespace Tetragrama
 
     bool EditorHistory::CanStore(size_t payload_bytes) const
     {
-        return m_entries && payload_bytes > 0 && payload_bytes <= m_byte_capacity;
+        return m_entries && !m_retiring && payload_bytes > 0 && payload_bytes <= m_byte_capacity;
     }
 
     bool EditorHistory::ValidOperation(const EditorOperation& operation)
@@ -162,7 +162,7 @@ namespace Tetragrama
 
     bool EditorHistory::Undo(void* context)
     {
-        if (!m_cursor)
+        if (m_retiring || !m_cursor)
         {
             return false;
         }
@@ -180,7 +180,7 @@ namespace Tetragrama
 
     bool EditorHistory::Redo(void* context)
     {
-        if (m_cursor == m_count)
+        if (m_retiring || m_cursor == m_count)
         {
             return false;
         }
@@ -208,10 +208,51 @@ namespace Tetragrama
 
     void EditorHistory::Reset(bool saved)
     {
+        if (m_retiring)
+        {
+            return;
+        }
         ClearEntries();
         m_current_state    = m_next_state++;
         m_saved_state      = m_current_state;
         m_checkpoint_valid = saved;
+    }
+
+    bool EditorHistory::CanResetDeferred() const
+    {
+        return m_entries && !m_retiring && m_next_state != std::numeric_limits<uint64_t>::max();
+    }
+
+    void EditorHistory::ResetDeferred(bool saved) noexcept
+    {
+        ZENGINE_VALIDATE_ASSERT(CanResetDeferred(), "Unprepared deferred history reset")
+        m_retiring      = true;
+        m_retired_first = m_first;
+        m_retired_count = m_count;
+        m_first = m_count = m_cursor = 0;
+        m_bytes_used = m_tail = 0;
+        m_current_state       = m_next_state++;
+        m_saved_state         = m_current_state;
+        m_checkpoint_valid    = saved;
+    }
+
+    void EditorHistory::DrainRetired()
+    {
+        if (!m_retiring || m_draining)
+        {
+            return;
+        }
+        m_draining = true;
+        // Only the replacement owner calls this after leaving guarded commit.
+        // Destroy callbacks cannot reuse the still-borrowed ring storage.
+        while (m_retired_count)
+        {
+            const auto index = (m_retired_first + --m_retired_count) % m_entry_capacity;
+            Destroy(m_entries[index]);
+        }
+        m_retired_first = 0;
+        m_retiring      = false;
+        m_draining      = false;
     }
 
     void EditorHistory::Invalidate()
@@ -221,6 +262,10 @@ namespace Tetragrama
 
     void EditorHistory::MarkSaved()
     {
+        if (m_retiring)
+        {
+            return;
+        }
         m_saved_state      = m_current_state;
         m_checkpoint_valid = true;
     }

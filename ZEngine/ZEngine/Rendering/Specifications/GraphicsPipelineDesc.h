@@ -36,4 +36,43 @@ namespace ZEngine::Rendering::Specifications
         Core::Containers::Array<VertexInputBindingSpecification>   VertexInputBindingSpecifications   = {};
         Core::Containers::Array<VertexInputAttributeSpecification> VertexInputAttributeSpecifications = {};
     };
+    /// Clone exact admitted state without callback execution or asserting array
+    /// growth. Failure preserves the output and exclusive arena transaction.
+    [[nodiscard]] inline bool TryCloneGraphicsPipelineDesc(const GraphicsPipelineDesc& source, Core::Memory::ArenaAllocator* arena, GraphicsPipelineDesc* out)
+    {
+        if (!arena || !out)
+        {
+            return false;
+        }
+        Core::Memory::ArenaCheckpoint checkpoint(arena);
+        GraphicsPipelineDesc          copy = {
+            .EnableBlending           = source.EnableBlending,
+            .EnableDepthTest          = source.EnableDepthTest,
+            .EnableDepthWrite         = source.EnableDepthWrite,
+            .EnableStencilTest        = source.EnableStencilTest,
+            .DebugName                = source.DebugName,
+            .DepthCompareOp           = source.DepthCompareOp,
+            .CullMode                 = source.CullMode,
+            .ShaderSpecificationValue = source.ShaderSpecificationValue,
+        };
+        const auto clone = [&](auto& destination, const auto& input) {
+            destination.m_allocator = arena;
+            if (!destination.try_reserve(input.size()))
+            {
+                return false;
+            }
+            for (const auto& element : input)
+            {
+                destination.push(element);
+            }
+            return true;
+        };
+        if (!clone(copy.VertexInputBindingSpecifications, source.VertexInputBindingSpecifications) || !clone(copy.VertexInputAttributeSpecifications, source.VertexInputAttributeSpecifications))
+        {
+            return false;
+        }
+        *out = std::move(copy);
+        checkpoint.Commit();
+        return true;
+    }
 } // namespace ZEngine::Rendering::Specifications

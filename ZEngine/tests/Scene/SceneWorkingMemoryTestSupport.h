@@ -10,17 +10,18 @@ namespace ZEngine::Tests
     // refusal can prove that libyaml has not allocated its first parser block.
     struct SceneTestAllocationRoute final : ZEngine::Core::Memory::IAllocationRoute, ZEngine::Core::Memory::IWorkingMemoryBudget
     {
-        size_t                                       Limit         = 0;
-        size_t                                       Required      = 0;
-        size_t                                       Live          = 0;
-        size_t                                       Peak          = 0;
-        size_t                                       Attempts      = 0;
-        size_t                                       Blocks        = 0;
-        size_t                                       RefuseBytes   = 0;
-        size_t                                       Refusals      = 0;
-        size_t                                       WatchBytes    = 0;
-        size_t                                       WatchCalls    = 0;
-        size_t                                       WatchReleases = 0;
+        size_t                                       Limit                   = 0;
+        size_t                                       Required                = 0;
+        size_t                                       Live                    = 0;
+        size_t                                       Peak                    = 0;
+        size_t                                       Attempts                = 0;
+        size_t                                       RefuseAllocationAttempt = 0;
+        size_t                                       Blocks                  = 0;
+        size_t                                       RefuseBytes             = 0;
+        size_t                                       Refusals                = 0;
+        size_t                                       WatchBytes              = 0;
+        size_t                                       WatchCalls              = 0;
+        size_t                                       WatchReleases           = 0;
 
         ZEngine::Core::Memory::IWorkingMemoryBudget* WorkingMemoryBudget() noexcept override
         {
@@ -58,6 +59,10 @@ namespace ZEngine::Tests
         void* Allocate(size_t bytes) noexcept override
         {
             ++Attempts;
+            if (Attempts == RefuseAllocationAttempt)
+            {
+                return nullptr;
+            }
             void* block = std::malloc(bytes);
             if (block)
             {
@@ -72,6 +77,10 @@ namespace ZEngine::Tests
                 return Allocate(bytes);
             }
             ++Attempts;
+            if (Attempts == RefuseAllocationAttempt)
+            {
+                return nullptr;
+            }
             return std::realloc(pointer, bytes);
         }
         void Free(void* pointer) noexcept override

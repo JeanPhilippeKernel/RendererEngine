@@ -92,10 +92,22 @@ namespace ZEngine::Applications
             ++m_render_target_resize_sequence;
         }
 
-        state.Camera         = CameraController->GetCamera()->CaptureFrameData();
+        const bool captured = CaptureRenderView(state);
+        ZENGINE_VALIDATE_ASSERT(captured, "Render view requires a camera")
+    }
+
+    bool GameApplication::CaptureRenderView(RenderFrameState& state) const
+    {
+        auto* camera = CameraController ? CameraController->GetCamera() : nullptr;
+        if (!camera)
+        {
+            return false;
+        }
+        state.Camera         = camera->CaptureFrameData();
         state.RenderTargetW  = m_render_target_width;
         state.RenderTargetH  = m_render_target_height;
         state.ResizeSequence = m_render_target_resize_sequence;
+        return true;
     }
 
     void GameApplication::Shutdown()

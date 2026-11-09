@@ -9,6 +9,11 @@
 #include <mutex>
 #include <unordered_map>
 
+namespace ZEngine::Core::VFS
+{
+    struct IVFSContext;
+}
+
 namespace ZEngine::Rendering::Shaders
 {
 
@@ -23,6 +28,8 @@ namespace ZEngine::Rendering::Shaders
 
         /// @brief Reads a SPIR-V file into the supplied arena.
         static Core::Containers::Array<uint32_t> ReadAsBinary(Core::Memory::ArenaAllocator* arena, cstring filename);
+        /// Bounded exact read. Failure preserves output and the exclusive scratch cursor.
+        static bool                              TryReadAsBinary(Core::VFS::IVFSContext& vfs, Core::Memory::ArenaAllocator* arena, cstring filename, size_t max_bytes, Core::Containers::Array<uint32_t>* out);
 
         /**
          * Read asynchronously content of shader file

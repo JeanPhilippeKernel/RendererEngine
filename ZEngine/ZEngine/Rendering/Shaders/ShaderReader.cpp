@@ -21,52 +21,83 @@ namespace ZEngine::Rendering::Shaders
 
     Core::Containers::Array<uint32_t> ShaderReader::ReadAsBinary(Core::Memory::ArenaAllocator* arena, cstring filename)
     {
-        ZENGINE_VALIDATE_ASSERT(arena, "ShaderReader::ReadAsBinary requires an arena")
-        auto* vfs      = Engine::GetContext()->VFS;
-        auto  path_res = Core::VFS::VFSPath::Parse(filename);
+        Core::Containers::Array<uint32_t> buffer  = {};
+        auto*                             context = Engine::GetContext();
+        ZENGINE_VALIDATE_ASSERT(context && context->VFS && TryReadAsBinary(*context->VFS, arena, filename, arena ? arena->m_total_size : 0, &buffer), "Failed to read shader binary")
+        return buffer;
+    }
+
+    bool ShaderReader::TryReadAsBinary(Core::VFS::IVFSContext& vfs, Core::Memory::ArenaAllocator* arena, cstring filename, size_t max_bytes, Core::Containers::Array<uint32_t>* out)
+    {
+        if (!arena || !out || !filename || !max_bytes)
+        {
+            return false;
+        }
+        auto path_res = Core::VFS::VFSPath::Parse(filename);
         if (path_res.Failed())
         {
-            ZENGINE_CORE_ERROR("====== Shader file : {} — invalid VFS path ======", filename)
-            ZENGINE_EXIT_FAILURE();
+            return false;
         }
 
-        auto file_res = vfs->Open(path_res.Value(), Core::VFS::VFSOpenFlags::Read);
+        auto file_res = vfs.Open(path_res.Value(), Core::VFS::VFSOpenFlags::Read);
         if (file_res.Failed())
         {
-            ZENGINE_CORE_ERROR("====== Shader file : {} cannot be opened ======", filename)
-            ZENGINE_EXIT_FAILURE();
+            return false;
         }
 
         auto* file     = file_res.Value();
         auto  size_res = file->Size();
         if (size_res.Failed())
         {
-            vfs->Close(file);
-            ZENGINE_CORE_ERROR("====== Shader file : {} cannot get size ======", filename)
-            ZENGINE_EXIT_FAILURE();
+            vfs.Close(file);
+            return false;
         }
 
         const uint64_t byte_size = size_res.Value();
-        ZENGINE_VALIDATE_ASSERT(byte_size > 0 && byte_size % sizeof(uint32_t) == 0, "Shader binary must contain a non-empty number of 32-bit words")
-
-        Core::Containers::Array<uint32_t> buffer;
-        buffer.init(arena, static_cast<size_t>(byte_size / sizeof(uint32_t)), static_cast<size_t>(byte_size / sizeof(uint32_t)));
+        if (byte_size < 5 * sizeof(uint32_t) || byte_size > max_bytes || byte_size % sizeof(uint32_t))
+        {
+            vfs.Close(file);
+            return false;
+        }
+        Core::Memory::ArenaCheckpoint     checkpoint(arena);
+        Core::Containers::Array<uint32_t> buffer = {};
+        buffer.m_allocator                       = arena;
+        if (!buffer.try_reserve(static_cast<size_t>(byte_size / sizeof(uint32_t))))
+        {
+            vfs.Close(file);
+            return false;
+        }
+        buffer.m_size = byte_size / sizeof(uint32_t);
         Core::Containers::ArrayView<uint8_t> view{reinterpret_cast<uint8_t*>(buffer.data()), byte_size};
-        file->ReadAll(view);
-        vfs->Close(file);
-        return buffer;
+        const auto                           read = file->ReadAll(view);
+        vfs.Close(file);
+        if (read.Failed() || read.Value() != byte_size || buffer[0] != 0x07230203u || buffer[4] != 0)
+        {
+            return false;
+        }
+        *out = std::move(buffer);
+        checkpoint.Commit();
+        return true;
     }
 
     ShaderType ShaderReader::GetShaderType(const std::filesystem::path& path)
     {
         if (path.extension() == ".vert")
+        {
             return ShaderType::VERTEX;
+        }
         if (path.extension() == ".frag")
+        {
             return ShaderType::FRAGMENT;
+        }
         if (path.extension() == ".geom")
+        {
             return ShaderType::GEOMETRY;
+        }
         if (path.extension() == ".comp")
+        {
             return ShaderType::COMPUTE;
+        }
         return ShaderType::UNKNOWN;
     }
 

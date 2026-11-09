@@ -11,13 +11,22 @@ namespace
         ZEngine::Rendering::Textures::TextureHandle Atlas  = {};
         float                                       Depth  = 1.f;
 
-        Specs::GraphicsPipelineDesc                 BuildGraphicsPipelineDescription(ArenaAllocator* arena) const override
+        bool                                        TryBuildGraphicsPipelineDescription(ArenaAllocator* arena, Specs::GraphicsPipelineDesc* out) const override
         {
-            auto description            = Labels->BuildGraphicsPipelineDescription(arena);
+            if (!out)
+            {
+                return false;
+            }
+            Specs::GraphicsPipelineDesc description = {};
+            if (!Labels->TryBuildGraphicsPipelineDescription(arena, &description))
+            {
+                return false;
+            }
             // This clear-only subpass owns a depth attachment. A depth/stencil
             // state is required even though it issues no geometry or depth writes.
             description.EnableDepthTest = true;
-            return description;
+            *out                        = std::move(description);
+            return true;
         }
 
         bool Register(ZEngine::Hardwares::VulkanDevice*, cstring, const Renderers::RenderGraphFrameContext& context, Renderers::RenderGraphResourceBuilder* builder, Renderers::RenderGraphResourceInspector*) override
@@ -68,14 +77,14 @@ namespace
 
     struct GridLabelGraphRecordingProbe final : Renderers::IRenderGraphCallbackPass
     {
-        Renderers::GridLabelPass    Labels          = {};
-        uint32_t                    PrimaryCalls    = 0;
-        uint32_t                    BodyCalls       = 0;
-        std::thread::id             RecordingThread = {};
+        Renderers::GridLabelPass Labels          = {};
+        uint32_t                 PrimaryCalls    = 0;
+        uint32_t                 BodyCalls       = 0;
+        std::thread::id          RecordingThread = {};
 
-        Specs::GraphicsPipelineDesc BuildGraphicsPipelineDescription(ArenaAllocator* arena) const override
+        bool                     TryBuildGraphicsPipelineDescription(ArenaAllocator* arena, Specs::GraphicsPipelineDesc* out) const override
         {
-            return Labels.BuildGraphicsPipelineDescription(arena);
+            return Labels.TryBuildGraphicsPipelineDescription(arena, out);
         }
         bool Register(ZEngine::Hardwares::VulkanDevice* device, cstring name, const Renderers::RenderGraphFrameContext& context, Renderers::RenderGraphResourceBuilder* builder, Renderers::RenderGraphResourceInspector* inspector) override
         {

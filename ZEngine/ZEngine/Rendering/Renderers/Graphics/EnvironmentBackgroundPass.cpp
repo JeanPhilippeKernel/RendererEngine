@@ -56,8 +56,12 @@ namespace ZEngine::Rendering::Renderers
         return true;
     }
 
-    Specifications::GraphicsPipelineDesc EnvironmentBackgroundPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
+    bool EnvironmentBackgroundPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         Specifications::GraphicsPipelineDesc desc = {};
         desc.DebugName                            = "Environment-Background-Pipeline";
         desc.EnableDepthTest                      = true;
@@ -67,7 +71,8 @@ namespace ZEngine::Rendering::Renderers
         desc.CullMode                             = 0;
         desc.ShaderSpecificationValue.Name        = "environment_background";
 
-        return desc;
+        *out                                      = std::move(desc);
+        return true;
     }
 
     void EnvironmentBackgroundPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)

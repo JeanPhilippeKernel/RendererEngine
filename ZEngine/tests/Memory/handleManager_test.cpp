@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 #include <thread>
 
+using Handle = ZEngine::Helpers::Handle<int*>;
+
 class HandleManagerTest : public ::testing::Test
 {
 protected:
@@ -22,6 +24,23 @@ protected:
     MemoryManager                         manager{};
     ZEngine::Helpers::HandleManager<int*> handle_manager;
 };
+
+TEST(HandleIdentityTest, EqualityUsesBothSlotAndGenerationRatherThanValidity)
+{
+    const Handle first      = {.Index = 3, .Generation = 1};
+    const Handle copy       = first;
+    const Handle other_slot = {.Index = 4, .Generation = 1};
+    const Handle recycled   = {.Index = 3, .Generation = 2};
+    const Handle invalid    = {};
+    EXPECT_TRUE(first == copy);
+    EXPECT_FALSE(first != copy);
+    EXPECT_FALSE(first == other_slot);
+    EXPECT_TRUE(first != other_slot);
+    EXPECT_FALSE(first == recycled);
+    EXPECT_TRUE(first != recycled);
+    EXPECT_FALSE(first == invalid);
+    EXPECT_TRUE(invalid == Handle{});
+}
 
 TEST_F(HandleManagerTest, CreateHandle)
 {

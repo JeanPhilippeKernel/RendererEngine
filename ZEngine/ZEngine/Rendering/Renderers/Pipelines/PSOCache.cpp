@@ -5,6 +5,7 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
 #include <ZEngine/Rendering/Shaders/Shader.h>
@@ -16,6 +17,25 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 {
     namespace
     {
+        template <typename Entry>
+        PSOPreparationResult ObservePreparation(Entry* entry, uint64_t frame)
+        {
+            if (!entry)
+            {
+                return {PSOPreparationState::Backpressure};
+            }
+            entry->LastUsedFrame = frame;
+            if (entry->State == PSOPipelineState::Ready && entry->Handle != VK_NULL_HANDLE)
+            {
+                return {PSOPreparationState::Ready, entry->Handle};
+            }
+            if (entry->State == PSOPipelineState::Compiling)
+            {
+                return {PSOPreparationState::Pending};
+            }
+            return {PSOPreparationState::Failed, VK_NULL_HANDLE, entry->Failure};
+        }
+
         constexpr uint32_t           kSupportedDescriptorBindingFlags   = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
         constexpr uint32_t           kSupportedDescriptorSetLayoutFlags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
         constexpr VkShaderStageFlags kSupportedShaderStages             = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
@@ -28,7 +48,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         constexpr cstring            kPersistentCacheTempFile           = "/cache/pso/vulkan-pipeline-cache.tmp";
         constexpr uint32_t           kPersistentCacheEngineVersion      = ZENGINE_PIPELINE_CACHE_ENGINE_VERSION;
         constexpr uint32_t           kWarmupRecipeMagic                 = 0x5257505A; // ZPWR
-        constexpr uint32_t           kWarmupRecipeVersion               = 3;
+        constexpr uint32_t           kWarmupRecipeVersion               = 4;
         constexpr uint32_t           kWarmupRecipeHeaderBytes           = 64;
         constexpr cstring            kWarmupRecipeFile                  = "/cache/pso/vulkan-pipeline-warmup.bin";
         constexpr cstring            kWarmupRecipeTempFile              = "/cache/pso/vulkan-pipeline-warmup.tmp";
@@ -290,6 +310,21 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             return written.Succeeded() && written.Value() == size;
         }
 
+        bool EnsureCacheDirectory(Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path)
+        {
+            const auto created = vfs.CreateDir(path);
+            if (created.Succeeded())
+            {
+                return true;
+            }
+            if (created.Error() != Core::VFS::VFSError::AlreadyExists)
+            {
+                return false;
+            }
+            const auto existing = vfs.Stat(path);
+            return existing.Succeeded() && existing.Value().IsDirectory;
+        }
+
         size_t GetWarmupShaderNameLength(const char (&shader_name)[kMaxPSOWarmupShaderNameBytes])
         {
             for (size_t index = 0; index < sizeof(shader_name); ++index)
@@ -303,6 +338,39 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         bool IsVulkanBool(VkBool32 value)
         {
             return value == VK_FALSE || value == VK_TRUE;
+        }
+
+        bool IsCompatibilityRenderPassKeyValid(const PSOCompatibilityRenderPassKey& key)
+        {
+            if (key.AttachmentCount > kMaxPSOCompatibilityAttachments || key.ColorAttachmentCount > kMaxPSOColorBlendAttachments || key.ViewMask || (key.DepthAttachmentIndex != VK_ATTACHMENT_UNUSED && key.DepthAttachmentIndex >= key.AttachmentCount))
+            {
+                return false;
+            }
+            const uint32_t depth_count = key.DepthAttachmentIndex == VK_ATTACHMENT_UNUSED ? 0 : 1;
+            if (key.ColorAttachmentCount + depth_count != key.AttachmentCount)
+            {
+                return false;
+            }
+            for (uint32_t i = 0; i < key.AttachmentCount; ++i)
+            {
+                const auto& attachment = key.Attachments[i];
+                // This engine exposes core attachment formats, not arbitrary
+                // extension-format recipes from an untrusted warmup file.
+                if (attachment.Format == VK_FORMAT_UNDEFINED || attachment.Format > VK_FORMAT_ASTC_12x12_SRGB_BLOCK || attachment.Samples != VK_SAMPLE_COUNT_1_BIT)
+                {
+                    return false;
+                }
+                const bool depth = i == key.DepthAttachmentIndex;
+                if (depth != Specifications::IsDepthOrStencilFormat(static_cast<VkFormat>(attachment.Format)))
+                {
+                    return false;
+                }
+                if (attachment.ReferenceLayout != VK_IMAGE_LAYOUT_GENERAL && attachment.ReferenceLayout != (depth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) && !(depth && attachment.ReferenceLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         bool IsWarmupRecipeValid(const PSOWarmupRecipe& recipe)
@@ -338,7 +406,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             }
             else
             {
-                if (compatibility.AttachmentCount == 0 || compatibility.AttachmentCount > kMaxPSOCompatibilityAttachments || compatibility.ColorAttachmentCount > compatibility.AttachmentCount || graphics.ColorBlendAttachmentCount != compatibility.ColorAttachmentCount)
+                if (!IsCompatibilityRenderPassKeyValid(compatibility) || graphics.ColorBlendAttachmentCount != compatibility.ColorAttachmentCount)
                     return false;
                 if (compatibility.DepthAttachmentIndex != VK_ATTACHMENT_UNUSED && compatibility.DepthAttachmentIndex >= compatibility.AttachmentCount)
                     return false;
@@ -564,43 +632,10 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             }
         }
 
-        VkFormat ResolveAttachmentFormat(Hardwares::VulkanDevice* device, Specifications::ImageFormat format)
-        {
-            if (format == Specifications::ImageFormat::FORMAT_FROM_DEVICE)
-                return device->SurfaceFormat.format;
-            if (format == Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE)
-                return device->FindDepthFormat();
-
-            constexpr uint32_t format_count = sizeof(Specifications::ImageFormatMap) / sizeof(Specifications::ImageFormatMap[0]);
-            const uint32_t     format_index = static_cast<uint32_t>(format);
-            ZENGINE_VALIDATE_ASSERT(format_index < format_count, "Unsupported image format in PSO compatibility render pass key")
-            return Specifications::ImageFormatMap[format_index];
-        }
-
-        VkImageLayout ResolveReferenceLayout(Specifications::ImageLayout layout)
-        {
-            constexpr uint32_t layout_count = sizeof(Specifications::ImageLayoutMap) / sizeof(Specifications::ImageLayoutMap[0]);
-            const uint32_t     layout_index = static_cast<uint32_t>(layout);
-            ZENGINE_VALIDATE_ASSERT(layout_index < layout_count, "Unsupported image layout in PSO compatibility render pass key")
-            return Specifications::ImageLayoutMap[layout_index];
-        }
-
         void ValidateShaderStages(VkShaderStageFlags stages)
         {
             ZENGINE_VALIDATE_ASSERT(stages != 0, "PSO cache key requires at least one shader stage")
             ZENGINE_VALIDATE_ASSERT((stages & ~kSupportedShaderStages) == 0, "Unsupported Vulkan shader stage in PSO cache key")
-        }
-
-        const VkDescriptorSetLayoutBindingFlagsCreateInfo* GetBindingFlagsCreateInfo(const VkDescriptorSetLayoutCreateInfo& create_info)
-        {
-            if (create_info.pNext == nullptr)
-                return nullptr;
-
-            const auto* binding_flags = static_cast<const VkDescriptorSetLayoutBindingFlagsCreateInfo*>(create_info.pNext);
-            ZENGINE_VALIDATE_ASSERT(binding_flags->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, "Unsupported descriptor-set layout pNext in PSO cache")
-            ZENGINE_VALIDATE_ASSERT(binding_flags->pNext == nullptr, "Descriptor-set layout pNext chains are not supported by PSO cache")
-            ZENGINE_VALIDATE_ASSERT(binding_flags->bindingCount == create_info.bindingCount, "Descriptor binding flag count must match binding count")
-            return binding_flags;
         }
 
         void SortDescriptorBindings(PSODescriptorSetLayoutKey& key)
@@ -901,42 +936,54 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         PSOCache* cache = static_cast<PSOCache*>(context);
         if (entry.Handle != VK_NULL_HANDLE)
-            vkDestroyPipeline(cache->m_device->LogicalDevice, entry.Handle, nullptr);
+        {
+            cache->m_device->PendingFree.DestroyNative(Rendering::DeviceResourceType::PIPELINE, entry.Handle, [&] { vkDestroyPipeline(cache->m_device->LogicalDevice, entry.Handle, nullptr); });
+        }
     }
 
     void PSOCache::DestroyComputePipeline(void* context, ComputePipelineEntry& entry)
     {
         PSOCache* cache = static_cast<PSOCache*>(context);
         if (entry.Handle != VK_NULL_HANDLE)
-            vkDestroyPipeline(cache->m_device->LogicalDevice, entry.Handle, nullptr);
+        {
+            cache->m_device->PendingFree.DestroyNative(Rendering::DeviceResourceType::PIPELINE, entry.Handle, [&] { vkDestroyPipeline(cache->m_device->LogicalDevice, entry.Handle, nullptr); });
+        }
     }
 
     void PSOCache::DestroyCompatibilityRenderPass(void* context, CompatibilityRenderPassEntry& entry)
     {
         PSOCache* cache = static_cast<PSOCache*>(context);
         if (entry.Handle != VK_NULL_HANDLE)
-            vkDestroyRenderPass(cache->m_device->LogicalDevice, entry.Handle, nullptr);
+        {
+            cache->m_device->PendingFree.DestroyNative(Rendering::DeviceResourceType::RENDERPASS, entry.Handle, [&] { vkDestroyRenderPass(cache->m_device->LogicalDevice, entry.Handle, nullptr); });
+        }
     }
 
     void PSOCache::DestroyPipelineLayout(void* context, PipelineLayoutEntry& entry)
     {
         PSOCache* cache = static_cast<PSOCache*>(context);
         if (entry.Handle != VK_NULL_HANDLE)
-            vkDestroyPipelineLayout(cache->m_device->LogicalDevice, entry.Handle, nullptr);
+        {
+            cache->m_device->PendingFree.DestroyNative(Rendering::DeviceResourceType::PIPELINE_LAYOUT, entry.Handle, [&] { vkDestroyPipelineLayout(cache->m_device->LogicalDevice, entry.Handle, nullptr); });
+        }
     }
 
     void PSOCache::DestroyDescriptorSetLayout(void* context, DescriptorSetLayoutEntry& entry)
     {
         PSOCache* cache = static_cast<PSOCache*>(context);
         if (entry.Handle != VK_NULL_HANDLE)
-            vkDestroyDescriptorSetLayout(cache->m_device->LogicalDevice, entry.Handle, nullptr);
+        {
+            cache->m_device->PendingFree.DestroyNative(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, entry.Handle, [&] { vkDestroyDescriptorSetLayout(cache->m_device->LogicalDevice, entry.Handle, nullptr); });
+        }
     }
 
     void PSOCache::DestroySampler(void* context, SamplerEntry& entry)
     {
         PSOCache* cache = static_cast<PSOCache*>(context);
         if (entry.Handle != VK_NULL_HANDLE)
-            vkDestroySampler(cache->m_device->LogicalDevice, entry.Handle, nullptr);
+        {
+            cache->m_device->PendingFree.DestroyNative(Rendering::DeviceResourceType::SAMPLER, entry.Handle, [&] { vkDestroySampler(cache->m_device->LogicalDevice, entry.Handle, nullptr); });
+        }
     }
 
     bool PSOCache::RemoveInvalidatedComputePipeline(void* context, const PSOComputePipelineKey& key, ComputePipelineEntry& entry)
@@ -1062,7 +1109,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         (void) key;
         PipelineEvictionContext& eviction = *static_cast<PipelineEvictionContext*>(context);
-        if (entry.State != PSOPipelineState::Ready || entry.PinCount != 0 || eviction.CurrentFrame < entry.LastUsedFrame || eviction.CurrentFrame - entry.LastUsedFrame < kPSOPipelineEvictionAge)
+        if ((entry.State != PSOPipelineState::Ready && entry.State != PSOPipelineState::Failed) || entry.PinCount != 0 || eviction.CurrentFrame < entry.LastUsedFrame || eviction.CurrentFrame - entry.LastUsedFrame < kPSOPipelineEvictionAge)
             return false;
 
         eviction.Cache->RetirePipeline(entry.Handle);
@@ -1074,7 +1121,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     {
         (void) key;
         PipelineEvictionContext& eviction = *static_cast<PipelineEvictionContext*>(context);
-        if (entry.State != PSOPipelineState::Ready || entry.PinCount != 0 || eviction.CurrentFrame < entry.LastUsedFrame || eviction.CurrentFrame - entry.LastUsedFrame < kPSOPipelineEvictionAge)
+        if ((entry.State != PSOPipelineState::Ready && entry.State != PSOPipelineState::Failed) || entry.PinCount != 0 || eviction.CurrentFrame < entry.LastUsedFrame || eviction.CurrentFrame - entry.LastUsedFrame < kPSOPipelineEvictionAge)
             return false;
 
         eviction.Cache->RetirePipeline(entry.Handle);
@@ -1149,15 +1196,63 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     VkDescriptorSetLayout PSOCache::GetOrCreateDescriptorSetLayout(const VkDescriptorSetLayoutCreateInfo& create_info)
     {
-        ZENGINE_VALIDATE_ASSERT(m_device != nullptr, "PSOCache is not initialized")
-        const PSODescriptorSetLayoutKey key  = MakeDescriptorSetLayoutKey(create_info);
-        const uint64_t                  hash = HashDescriptorSetLayoutKey(key);
-        bool                            created{};
-        auto*                           entry = m_descriptor_set_layouts.FindOrInsert(hash, key, &created);
-        ZENGINE_VALIDATE_ASSERT(entry != nullptr, "PSO descriptor-set layout collision bucket capacity exceeded")
+        VkResult   status = VK_SUCCESS;
+        const auto handle = TryGetOrCreateDescriptorSetLayout(create_info, &status);
+        ZENGINE_VALIDATE_ASSERT(status == VK_SUCCESS, "Failed to create cached descriptor set layout")
+        return handle;
+    }
+
+    VkDescriptorSetLayout PSOCache::TryGetOrCreateDescriptorSetLayout(const VkDescriptorSetLayoutCreateInfo& create_info, VkResult* status, PFN_vkCreateDescriptorSetLayout dispatch)
+    {
+        const auto finish = [&](VkResult result) {
+            if (status)
+            {
+                *status = result;
+            }
+            if (m_device)
+            {
+                m_device->CheckDeviceLost(result, "Cached descriptor layout allocation");
+            }
+        };
+        finish(VK_ERROR_INITIALIZATION_FAILED);
+        if (!m_device)
+        {
+            return VK_NULL_HANDLE;
+        }
+        if (m_device->IsDeviceLost.load(std::memory_order_acquire))
+        {
+            finish(VK_ERROR_DEVICE_LOST);
+            return VK_NULL_HANDLE;
+        }
+        ImmutableSamplerAdmission admission(this);
+        PSODescriptorSetLayoutKey key = {};
+        if (!TryMakeDescriptorSetLayoutKey(create_info, &key, status, admission))
+        {
+            return VK_NULL_HANDLE;
+        }
+        for (uint32_t i = 0; i < key.BindingCount; ++i)
+        {
+            const auto& binding      = key.Bindings[i];
+            const bool  sampled_type = binding.DescriptorKind == PSODescriptorKind::Sampler || binding.DescriptorKind == PSODescriptorKind::CombinedImageSampler || binding.DescriptorKind == PSODescriptorKind::SampledImage;
+            if ((binding.BindingFlags & VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT) || ((binding.BindingFlags & VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT) && !m_device->PhysicalDeviceSupportSampledImageBindless && !m_device->PhysicalDeviceSupportStorageBufferBindless) || ((binding.BindingFlags & VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT) && !m_device->PhysicalDeviceSupportSampledImageBindless) || ((binding.BindingFlags & VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT) && (!sampled_type || !m_device->PhysicalDeviceSupportSampledImageBindless)))
+            {
+                finish(VK_ERROR_FEATURE_NOT_PRESENT);
+                return VK_NULL_HANDLE;
+            }
+        }
+        const uint64_t hash = HashDescriptorSetLayoutKey(key);
+        bool           created{};
+        auto*          entry = m_descriptor_set_layouts.FindOrInsert(hash, key, &created);
+        if (!entry)
+        {
+            finish(VK_ERROR_TOO_MANY_OBJECTS);
+            return VK_NULL_HANDLE;
+        }
         if (!created)
         {
             ++m_telemetry.DescriptorSetLayoutHits;
+            admission.Committed = true;
+            finish(VK_SUCCESS);
             return entry->Handle;
         }
         ++m_telemetry.DescriptorSetLayoutMisses;
@@ -1169,7 +1264,12 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         {
             const auto&                      source             = key.Bindings[i];
             const ImmutableSamplerListEntry* immutable_samplers = source.ImmutableSamplerListIdentity == 0 ? nullptr : FindImmutableSamplerList(source.ImmutableSamplerListIdentity);
-            ZENGINE_VALIDATE_ASSERT(source.ImmutableSamplerListIdentity == 0 || immutable_samplers != nullptr, "PSO immutable sampler list identity is invalid")
+            if (source.ImmutableSamplerListIdentity && !immutable_samplers)
+            {
+                m_descriptor_set_layouts.Erase(hash, key);
+                finish(VK_ERROR_INITIALIZATION_FAILED);
+                return VK_NULL_HANDLE;
+            }
             bindings[i].binding             = source.Binding;
             bindings[i].descriptorCount     = source.DescriptorCount;
             bindings[i].descriptorType      = ToVulkanDescriptorType(source.DescriptorKind);
@@ -1190,8 +1290,26 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         canonical_create_info.flags                                    = key.CreateFlags;
         canonical_create_info.bindingCount                             = key.BindingCount;
         canonical_create_info.pBindings                                = bindings;
-        ZENGINE_VALIDATE_ASSERT(vkCreateDescriptorSetLayout(m_device->LogicalDevice, &canonical_create_info, nullptr, &entry->Handle) == VK_SUCCESS, "Failed to create cached descriptor set layout")
-        entry->Identity = m_next_layout_identity++;
+        if (m_device->PhysicalDevice && m_device->LogicalDevice)
+        {
+            VkDescriptorSetLayoutSupport support = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT};
+            vkGetDescriptorSetLayoutSupport(m_device->LogicalDevice, &canonical_create_info, &support);
+            if (!support.supported)
+            {
+                m_descriptor_set_layouts.Erase(hash, key);
+                finish(VK_ERROR_TOO_MANY_OBJECTS);
+                return VK_NULL_HANDLE;
+            }
+        }
+        const auto result = m_device->PendingFree.CreateNative(Rendering::DeviceResourceType::DESCRIPTORSETLAYOUT, &entry->Handle, [&](VkDescriptorSetLayout* out) { return dispatch && m_device->LogicalDevice ? dispatch(m_device->LogicalDevice, &canonical_create_info, nullptr, out) : VK_ERROR_INITIALIZATION_FAILED; });
+        finish(result);
+        if (result != VK_SUCCESS)
+        {
+            m_descriptor_set_layouts.Erase(hash, key);
+            return VK_NULL_HANDLE;
+        }
+        entry->Identity     = m_next_layout_identity++;
+        admission.Committed = true;
         return entry->Handle;
     }
 
@@ -1210,29 +1328,93 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         }
         ++m_telemetry.SamplerMisses;
 
-        ZENGINE_VALIDATE_ASSERT(vkCreateSampler(m_device->LogicalDevice, &create_info, nullptr, &entry->Handle) == VK_SUCCESS, "Failed to create cached sampler")
+        const auto result = m_device->PendingFree.CreateNative(Rendering::DeviceResourceType::SAMPLER, &entry->Handle, [&](VkSampler* out) { return vkCreateSampler(m_device->LogicalDevice, &create_info, nullptr, out); });
+        ZENGINE_VALIDATE_ASSERT(result == VK_SUCCESS, "Failed to create cached sampler")
         return entry->Handle;
     }
 
     VkPipelineLayout PSOCache::GetOrCreatePipelineLayout(const VkPipelineLayoutCreateInfo& create_info)
     {
-        ZENGINE_VALIDATE_ASSERT(m_device != nullptr, "PSOCache is not initialized")
-        const PSOPipelineLayoutKey key  = MakePipelineLayoutKey(create_info);
-        const uint64_t             hash = HashPipelineLayoutKey(key);
-        bool                       created{};
-        auto*                      entry = m_pipeline_layouts.FindOrInsert(hash, key, &created);
-        ZENGINE_VALIDATE_ASSERT(entry != nullptr, "PSO pipeline-layout collision bucket capacity exceeded")
+        VkResult   status = VK_SUCCESS;
+        const auto layout = TryGetOrCreatePipelineLayout(create_info, &status);
+        ZENGINE_VALIDATE_ASSERT(status == VK_SUCCESS, "Failed to create cached pipeline layout")
+        return layout;
+    }
+
+    VkPipelineLayout PSOCache::TryGetOrCreatePipelineLayout(const VkPipelineLayoutCreateInfo& create_info, VkResult* status, PFN_vkCreatePipelineLayout dispatch)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (!m_device)
+        {
+            return VK_NULL_HANDLE;
+        }
+        if (m_device->IsDeviceLost.load(std::memory_order_acquire))
+        {
+            if (status)
+            {
+                *status = VK_ERROR_DEVICE_LOST;
+            }
+            return VK_NULL_HANDLE;
+        }
+        PSOPipelineLayoutKey key = {};
+        if (!TryMakePipelineLayoutKey(create_info, &key))
+        {
+            return VK_NULL_HANDLE;
+        }
+        const uint32_t set_limit = m_device->PhysicalDeviceProperties.properties.limits.maxBoundDescriptorSets;
+        if (set_limit && create_info.setLayoutCount > set_limit)
+        {
+            return VK_NULL_HANDLE;
+        }
+        const uint32_t push_limit = m_device->PhysicalDeviceProperties.properties.limits.maxPushConstantsSize ? m_device->PhysicalDeviceProperties.properties.limits.maxPushConstantsSize : 128u;
+        for (uint32_t i = 0; i < create_info.pushConstantRangeCount; ++i)
+        {
+            const auto& range = create_info.pPushConstantRanges[i];
+            if (range.offset > push_limit || range.size > push_limit - range.offset)
+            {
+                return VK_NULL_HANDLE;
+            }
+        }
+        const uint64_t hash = HashPipelineLayoutKey(key);
+        bool           created{};
+        auto*          entry = m_pipeline_layouts.FindOrInsert(hash, key, &created);
+        if (!entry)
+        {
+            if (status)
+            {
+                *status = VK_ERROR_TOO_MANY_OBJECTS;
+            }
+            return VK_NULL_HANDLE;
+        }
         if (!created)
         {
             ++m_telemetry.PipelineLayoutHits;
+            if (status)
+            {
+                *status = VK_SUCCESS;
+            }
             return entry->Handle;
         }
         ++m_telemetry.PipelineLayoutMisses;
 
-        ZENGINE_VALIDATE_ASSERT(create_info.sType == VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, "Invalid pipeline-layout create info")
-        ZENGINE_VALIDATE_ASSERT(create_info.pNext == nullptr, "Pipeline-layout pNext chains are not supported by PSO cache")
-        ZENGINE_VALIDATE_ASSERT(create_info.flags == 0, "Unsupported pipeline-layout create flags in PSO cache")
-        ZENGINE_VALIDATE_ASSERT(vkCreatePipelineLayout(m_device->LogicalDevice, &create_info, nullptr, &entry->Handle) == VK_SUCCESS, "Failed to create cached pipeline layout")
+        VkResult result = VK_ERROR_INITIALIZATION_FAILED;
+        if (dispatch && m_device->LogicalDevice)
+        {
+            result = m_device->PendingFree.CreateNative(Rendering::DeviceResourceType::PIPELINE_LAYOUT, &entry->Handle, [&](VkPipelineLayout* out) { return dispatch(m_device->LogicalDevice, &create_info, nullptr, out); });
+        }
+        if (status)
+        {
+            *status = result;
+        }
+        if (result != VK_SUCCESS)
+        {
+            m_pipeline_layouts.Erase(hash, key);
+            m_device->CheckDeviceLost(result, "Cached pipeline layout allocation");
+            return VK_NULL_HANDLE;
+        }
         entry->Identity = m_next_pipeline_layout_identity++;
         return entry->Handle;
     }
@@ -1245,17 +1427,74 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     VkRenderPass PSOCache::GetOrCreateCompatibilityRenderPass(const PSOCompatibilityRenderPassKey& key)
     {
-        ZENGINE_VALIDATE_ASSERT(m_device != nullptr, "PSOCache is not initialized")
+        VkResult   status = VK_SUCCESS;
+        const auto handle = TryGetOrCreateCompatibilityRenderPass(key, &status);
+        ZENGINE_VALIDATE_ASSERT(status == VK_SUCCESS, "Failed to create PSO compatibility render pass")
+        return handle;
+    }
+
+    VkRenderPass PSOCache::TryGetOrCreateCompatibilityRenderPass(const PSOCompatibilityRenderPassKey& key, VkResult* status, PFN_vkCreateRenderPass dispatch)
+    {
+        const auto finish = [&](VkResult result) {
+            if (status)
+            {
+                *status = result;
+            }
+            if (m_device)
+            {
+                m_device->CheckDeviceLost(result, "PSO compatibility render pass allocation");
+            }
+        };
+        finish(VK_ERROR_INITIALIZATION_FAILED);
+        if (!m_device)
+        {
+            return VK_NULL_HANDLE;
+        }
+        if (m_device->IsDeviceLost.load(std::memory_order_acquire))
+        {
+            finish(VK_ERROR_DEVICE_LOST);
+            return VK_NULL_HANDLE;
+        }
+        if (!IsCompatibilityRenderPassKeyValid(key))
+        {
+            return VK_NULL_HANDLE;
+        }
+        const auto& limits = m_device->PhysicalDeviceProperties.properties.limits;
+        if (limits.maxColorAttachments && key.ColorAttachmentCount > limits.maxColorAttachments)
+        {
+            return VK_NULL_HANDLE;
+        }
         const uint64_t hash = HashCompatibilityRenderPassKey(key);
         bool           created{};
         auto*          entry = m_compatibility_render_passes.FindOrInsert(hash, key, &created);
-        ZENGINE_VALIDATE_ASSERT(entry != nullptr, "PSO compatibility render-pass collision bucket capacity exceeded")
+        if (!entry)
+        {
+            finish(VK_ERROR_TOO_MANY_OBJECTS);
+            return VK_NULL_HANDLE;
+        }
         if (!created)
         {
             ++m_telemetry.CompatibilityRenderPassHits;
+            finish(VK_SUCCESS);
             return entry->Handle;
         }
         ++m_telemetry.CompatibilityRenderPassMisses;
+
+        if (m_device->PhysicalDevice)
+        {
+            for (uint32_t i = 0; i < key.AttachmentCount; ++i)
+            {
+                VkFormatProperties properties = {};
+                vkGetPhysicalDeviceFormatProperties(m_device->PhysicalDevice, static_cast<VkFormat>(key.Attachments[i].Format), &properties);
+                const auto feature = i == key.DepthAttachmentIndex ? VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+                if (!(properties.optimalTilingFeatures & feature))
+                {
+                    m_compatibility_render_passes.Erase(hash, key);
+                    finish(VK_ERROR_FORMAT_NOT_SUPPORTED);
+                    return VK_NULL_HANDLE;
+                }
+            }
+        }
 
         VkAttachmentDescription attachments[kMaxPSOCompatibilityAttachments] = {};
         VkAttachmentReference   colors[kMaxPSOCompatibilityAttachments]      = {};
@@ -1283,7 +1522,6 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             else
                 colors[color_index++] = reference;
         }
-        ZENGINE_VALIDATE_ASSERT(color_index == key.ColorAttachmentCount, "Invalid PSO compatibility render-pass color attachment count")
 
         VkSubpassDescription subpass       = {};
         subpass.pipelineBindPoint          = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -1297,7 +1535,13 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         create_info.pAttachments           = attachments;
         create_info.subpassCount           = 1;
         create_info.pSubpasses             = &subpass;
-        ZENGINE_VALIDATE_ASSERT(vkCreateRenderPass(m_device->LogicalDevice, &create_info, nullptr, &entry->Handle) == VK_SUCCESS, "Failed to create PSO compatibility render pass")
+        const auto result                  = m_device->PendingFree.CreateNative(Rendering::DeviceResourceType::RENDERPASS, &entry->Handle, [&](VkRenderPass* out) { return dispatch && m_device->LogicalDevice ? dispatch(m_device->LogicalDevice, &create_info, nullptr, out) : VK_ERROR_INITIALIZATION_FAILED; });
+        finish(result);
+        if (result != VK_SUCCESS)
+        {
+            m_compatibility_render_passes.Erase(hash, key);
+            return VK_NULL_HANDLE;
+        }
         entry->Identity = m_next_compatibility_render_pass_identity++;
         return entry->Handle;
     }
@@ -1323,7 +1567,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         entry->State         = PSOPipelineState::Compiling;
         entry->Generation    = shader_generation;
         entry->AsyncJobIndex = UINT32_MAX;
-        ZENGINE_VALIDATE_ASSERT(vkCreateComputePipelines(m_device->LogicalDevice, m_driver_pipeline_cache, 1, &create_info, nullptr, &entry->Handle) == VK_SUCCESS, "Failed to create cached compute pipeline")
+        const auto result    = m_device->PendingFree.CreateNative(Rendering::DeviceResourceType::PIPELINE, &entry->Handle, [&](VkPipeline* out) { return vkCreateComputePipelines(m_device->LogicalDevice, m_driver_pipeline_cache, 1, &create_info, nullptr, out); }, true);
+        ZENGINE_VALIDATE_ASSERT(result == VK_SUCCESS, "Failed to create cached compute pipeline")
         entry->State         = PSOPipelineState::Ready;
         entry->LastUsedFrame = GetCurrentFrameMarker();
         QueuePipelineWaiters(*entry, entry->Handle);
@@ -1352,7 +1597,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         entry->State         = PSOPipelineState::Compiling;
         entry->Generation    = shader_generation;
         entry->AsyncJobIndex = UINT32_MAX;
-        ZENGINE_VALIDATE_ASSERT(vkCreateGraphicsPipelines(m_device->LogicalDevice, m_driver_pipeline_cache, 1, &create_info, nullptr, &entry->Handle) == VK_SUCCESS, "Failed to create cached graphics pipeline")
+        const auto result    = m_device->PendingFree.CreateNative(Rendering::DeviceResourceType::PIPELINE, &entry->Handle, [&](VkPipeline* out) { return vkCreateGraphicsPipelines(m_device->LogicalDevice, m_driver_pipeline_cache, 1, &create_info, nullptr, out); }, true);
+        ZENGINE_VALIDATE_ASSERT(result == VK_SUCCESS, "Failed to create cached graphics pipeline")
         entry->State         = PSOPipelineState::Ready;
         entry->LastUsedFrame = GetCurrentFrameMarker();
         QueuePipelineWaiters(*entry, entry->Handle);
@@ -1377,8 +1623,19 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         const uint64_t              hash = HashComputePipelineKey(key);
         bool                        created{};
         auto*                       entry = m_compute_pipelines.FindOrInsert(hash, key, &created);
-        ZENGINE_VALIDATE_ASSERT(entry != nullptr, "PSO compute pipeline collision bucket capacity exceeded")
-
+        if (!entry)
+        {
+            ++m_telemetry.AsyncPipelineBucketOverflows;
+            if (critical)
+            {
+                return GetOrCreateComputePipeline(create_info, shader_generation);
+            }
+            if (callback)
+            {
+                callback(callback_context, VK_NULL_HANDLE);
+            }
+            return VK_NULL_HANDLE;
+        }
         const PSOPipelineWaiter waiter = {.Context = callback_context, .Callback = callback};
         if (!created && entry->State == PSOPipelineState::Ready)
         {
@@ -1391,6 +1648,14 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
         if (!created)
         {
+            if (entry->State == PSOPipelineState::Failed)
+            {
+                if (callback)
+                {
+                    callback(callback_context, VK_NULL_HANDLE);
+                }
+                return VK_NULL_HANDLE;
+            }
             if (AppendWaiter(*entry, waiter))
                 return VK_NULL_HANDLE;
             ++m_telemetry.AsyncPipelineWaiterOverflows;
@@ -1449,8 +1714,19 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         const uint64_t               hash = HashGraphicsPipelineKey(key);
         bool                         created{};
         auto*                        entry = m_graphics_pipelines.FindOrInsert(hash, key, &created);
-        ZENGINE_VALIDATE_ASSERT(entry != nullptr, "PSO graphics pipeline collision bucket capacity exceeded")
-
+        if (!entry)
+        {
+            ++m_telemetry.AsyncPipelineBucketOverflows;
+            if (critical)
+            {
+                return GetOrCreateGraphicsPipeline(create_info, shader_generation);
+            }
+            if (callback)
+            {
+                callback(callback_context, VK_NULL_HANDLE);
+            }
+            return VK_NULL_HANDLE;
+        }
         const PSOPipelineWaiter waiter = {.Context = callback_context, .Callback = callback};
         if (!created && entry->State == PSOPipelineState::Ready)
         {
@@ -1463,6 +1739,14 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
         if (!created)
         {
+            if (entry->State == PSOPipelineState::Failed)
+            {
+                if (callback)
+                {
+                    callback(callback_context, VK_NULL_HANDLE);
+                }
+                return VK_NULL_HANDLE;
+            }
             if (AppendWaiter(*entry, waiter))
                 return VK_NULL_HANDLE;
             ++m_telemetry.AsyncPipelineWaiterOverflows;
@@ -1503,6 +1787,46 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         ++m_telemetry.AsyncPipelineJobs;
         DispatchQueuedAsyncPipelineJobs();
         return VK_NULL_HANDLE;
+    }
+
+    PSOPreparationResult PSOCache::PrepareComputePipelineAsync(const VkComputePipelineCreateInfo& create_info, uint32_t shader_generation)
+    {
+        if (!m_device)
+        {
+            return {};
+        }
+        const auto key  = MakeComputePipelineKey(create_info, shader_generation);
+        const auto hash = HashComputePipelineKey(key);
+        if (auto* entry = m_compute_pipelines.Find(hash, key))
+        {
+            return ObservePreparation(entry, GetCurrentFrameMarker());
+        }
+        if (!m_accept_async_jobs || m_worker_pipeline_cache_count == 0)
+        {
+            return {};
+        }
+        (void) RequestComputePipelineAsync(create_info, shader_generation, nullptr, nullptr, false);
+        return ObservePreparation(m_compute_pipelines.Find(hash, key), GetCurrentFrameMarker());
+    }
+
+    PSOPreparationResult PSOCache::PrepareGraphicsPipelineAsync(const VkGraphicsPipelineCreateInfo& create_info, uint32_t shader_generation)
+    {
+        if (!m_device)
+        {
+            return {};
+        }
+        const auto key  = MakeGraphicsPipelineKey(create_info, shader_generation);
+        const auto hash = HashGraphicsPipelineKey(key);
+        if (auto* entry = m_graphics_pipelines.Find(hash, key))
+        {
+            return ObservePreparation(entry, GetCurrentFrameMarker());
+        }
+        if (!m_accept_async_jobs || m_worker_pipeline_cache_count == 0)
+        {
+            return {};
+        }
+        (void) RequestGraphicsPipelineAsync(create_info, shader_generation, nullptr, nullptr, false);
+        return ObservePreparation(m_graphics_pipelines.Find(hash, key), GetCurrentFrameMarker());
     }
 
     void PSOCache::FlushAsyncPipelineJobs()
@@ -1790,6 +2114,12 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         ZENGINE_VALIDATE_ASSERT(vkMergePipelineCaches(m_device->LogicalDevice, m_driver_pipeline_cache, 1, &m_worker_pipeline_caches[completion.WorkerCacheIndex]) == VK_SUCCESS, "Failed to merge asynchronous worker pipeline cache")
         ReturnWorkerPipelineCache(completion.WorkerCacheIndex);
 
+        ResolveAsyncPipelineResult(job, completion);
+    }
+
+    void PSOCache::ResolveAsyncPipelineResult(AsyncPipelineJob& job, const AsyncPipelineCompletion& completion)
+    {
+        bool failed = false;
         if (job.Kind == AsyncPipelineKind::Compute)
         {
             ComputePipelineEntry* entry   = m_compute_pipelines.Find(job.Hash, job.ComputeKey);
@@ -1808,10 +2138,25 @@ namespace ZEngine::Rendering::Renderers::Pipelines
                 if (entry && entry->State == PSOPipelineState::Compiling && entry->AsyncJobIndex == job.Index)
                 {
                     QueuePipelineWaiters(*entry, VK_NULL_HANDLE);
-                    m_compute_pipelines.Erase(job.Hash, job.ComputeKey);
+                    if (job.State == AsyncPipelineJobState::Running && entry->Generation == job.Generation)
+                    {
+                        // Preserve terminal failure for callback-free preparation polls.
+                        entry->State         = PSOPipelineState::Failed;
+                        entry->Failure       = completion.Result == VK_SUCCESS ? VK_ERROR_INITIALIZATION_FAILED : completion.Result;
+                        entry->AsyncJobIndex = UINT32_MAX;
+                        entry->LastUsedFrame = GetCurrentFrameMarker();
+                        failed               = true;
+                    }
+                    else
+                    {
+                        m_compute_pipelines.Erase(job.Hash, job.ComputeKey);
+                    }
                 }
                 RetirePipeline(completion.Pipeline);
-                ++m_telemetry.AsyncPipelineStaleCompletions;
+                if (!failed)
+                {
+                    ++m_telemetry.AsyncPipelineStaleCompletions;
+                }
             }
         }
         else
@@ -1832,11 +2177,29 @@ namespace ZEngine::Rendering::Renderers::Pipelines
                 if (entry && entry->State == PSOPipelineState::Compiling && entry->AsyncJobIndex == job.Index)
                 {
                     QueuePipelineWaiters(*entry, VK_NULL_HANDLE);
-                    m_graphics_pipelines.Erase(job.Hash, job.GraphicsKey);
+                    if (job.State == AsyncPipelineJobState::Running && entry->Generation == job.Generation)
+                    {
+                        entry->State         = PSOPipelineState::Failed;
+                        entry->Failure       = completion.Result == VK_SUCCESS ? VK_ERROR_INITIALIZATION_FAILED : completion.Result;
+                        entry->AsyncJobIndex = UINT32_MAX;
+                        entry->LastUsedFrame = GetCurrentFrameMarker();
+                        failed               = true;
+                    }
+                    else
+                    {
+                        m_graphics_pipelines.Erase(job.Hash, job.GraphicsKey);
+                    }
                 }
                 RetirePipeline(completion.Pipeline);
-                ++m_telemetry.AsyncPipelineStaleCompletions;
+                if (!failed)
+                {
+                    ++m_telemetry.AsyncPipelineStaleCompletions;
+                }
             }
+        }
+        if (failed)
+        {
+            ++m_telemetry.AsyncPipelineFailures;
         }
         job = {};
     }
@@ -1882,7 +2245,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         create_info.stage.pSpecializationInfo   = job.ComputeKey.Shader.Specialization.EntryCount == 0 ? nullptr : &specialization_info;
         create_info.layout                      = job.PipelineLayout;
         create_info.basePipelineIndex           = -1;
-        return vkCreateComputePipelines(device, worker_cache, 1, &create_info, nullptr, pipeline);
+        return job.Cache->m_device->PendingFree.CreateNative(Rendering::DeviceResourceType::PIPELINE, pipeline, [&](VkPipeline* out) { return vkCreateComputePipelines(device, worker_cache, 1, &create_info, nullptr, out); }, true);
     }
 
     VkResult PSOCache::CompileAsyncGraphicsPipeline(const AsyncPipelineJob& job, VkDevice device, VkPipelineCache worker_cache, VkPipeline* pipeline)
@@ -2042,7 +2405,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         create_info.renderPass                   = key.UsesDynamicRendering == VK_TRUE ? VK_NULL_HANDLE : job.RenderPass;
         create_info.subpass                      = key.UsesDynamicRendering == VK_TRUE ? 0 : key.Subpass;
         create_info.basePipelineIndex            = -1;
-        return vkCreateGraphicsPipelines(device, worker_cache, 1, &create_info, nullptr, pipeline);
+        return job.Cache->m_device->PendingFree.CreateNative(Rendering::DeviceResourceType::PIPELINE, pipeline, [&](VkPipeline* out) { return vkCreateGraphicsPipelines(device, worker_cache, 1, &create_info, nullptr, out); }, true);
     }
 
     void PSOCache::PinPipeline(VkPipeline pipeline)
@@ -2174,7 +2537,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         const auto cache_directory = Core::VFS::VFSPath::Parse(kPersistentCacheDirectory);
         const auto cache_path      = Core::VFS::VFSPath::Parse(kPersistentCacheFile);
         const auto temp_path       = Core::VFS::VFSPath::Parse(kPersistentCacheTempFile);
-        if (cache_directory.Failed() || cache_path.Failed() || temp_path.Failed() || vfs.CreateDir(cache_directory.Value()).Failed())
+        if (cache_directory.Failed() || cache_path.Failed() || temp_path.Failed() || !EnsureCacheDirectory(vfs, cache_directory.Value()))
         {
             ZReleaseScratch(scratch);
             return false;
@@ -2294,6 +2657,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             return false;
 
         m_warmup_recipe_count = 0;
+        m_compute_pipelines.ForEach(nullptr, [](void*, ComputePipelineEntry& entry) { entry.WarmupRecorded = false; });
+        m_graphics_pipelines.ForEach(nullptr, [](void*, GraphicsPipelineEntry& entry) { entry.WarmupRecorded = false; });
         for (uint32_t index = 0; index < recipe_count; ++index)
         {
             const PSOWarmupRecipe& recipe = recipes[index];
@@ -2342,7 +2707,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         const auto cache_directory = Core::VFS::VFSPath::Parse(kPersistentCacheDirectory);
         const auto recipe_path     = Core::VFS::VFSPath::Parse(kWarmupRecipeFile);
         const auto temp_path       = Core::VFS::VFSPath::Parse(kWarmupRecipeTempFile);
-        if (cache_directory.Failed() || recipe_path.Failed() || temp_path.Failed() || vfs.CreateDir(cache_directory.Value()).Failed())
+        if (cache_directory.Failed() || recipe_path.Failed() || temp_path.Failed() || !EnsureCacheDirectory(vfs, cache_directory.Value()))
             return false;
 
         // A temporary recipe file is never authoritative and can be discarded safely.
@@ -2379,6 +2744,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     uint64_t PSOCache::ComputeShaderContentHash(Core::VFS::IVFSContext& vfs, cstring shader_name, VkShaderStageFlags stages) const
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.WarmupShaderHash");
         if (!shader_name)
             return 0;
 
@@ -2448,6 +2814,16 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         if (!m_warmup_vfs)
             return;
 
+        // Cache entries identify the exact modules, shader generation and
+        // variant. Re-polling a ready borrow must not synchronously reopen and
+        // hash SPIR-V on the render thread. Eviction/reload creates a new entry,
+        // so a changed shader still gets a fresh persistent recipe.
+        auto* entry = m_compute_pipelines.Find(HashComputePipelineKey(key), key);
+        if (entry && entry->WarmupRecorded)
+        {
+            return;
+        }
+
         PSOWarmupRecipe recipe               = {};
         recipe.RecipeKind                    = PSOWarmupRecipe::Kind::Compute;
         recipe.Compute                       = key;
@@ -2460,12 +2836,22 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         if (recipe.ShaderContentHash == 0)
             return;
         RecordWarmupRecipe(recipe);
+        if (entry)
+        {
+            entry->WarmupRecorded = true;
+        }
     }
 
     void PSOCache::RecordGraphicsWarmup(cstring shader_name, const PSOGraphicsPipelineKey& key, const PSOCompatibilityRenderPassKey& compatibility)
     {
         if (!m_warmup_vfs)
             return;
+
+        auto* entry = m_graphics_pipelines.Find(HashGraphicsPipelineKey(key), key);
+        if (entry && entry->WarmupRecorded)
+        {
+            return;
+        }
 
         PSOWarmupRecipe recipe     = {};
         recipe.RecipeKind          = PSOWarmupRecipe::Kind::Graphics;
@@ -2486,6 +2872,10 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         if (recipe.ShaderContentHash == 0)
             return;
         RecordWarmupRecipe(recipe);
+        if (entry)
+        {
+            entry->WarmupRecorded = true;
+        }
     }
 
     void PSOCache::RecordWarmupRecipe(const PSOWarmupRecipe& recipe)
@@ -2748,21 +3138,82 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     PSODescriptorSetLayoutKey PSOCache::MakeDescriptorSetLayoutKey(const VkDescriptorSetLayoutCreateInfo& create_info)
     {
-        ZENGINE_VALIDATE_ASSERT(create_info.sType == VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, "Invalid descriptor-set layout create info")
-        ZENGINE_VALIDATE_ASSERT((create_info.flags & ~kSupportedDescriptorSetLayoutFlags) == 0, "Unsupported descriptor-set layout create flags in PSO cache")
-        ZENGINE_VALIDATE_ASSERT(create_info.bindingCount <= kMaxPSOLayoutBindings, "PSO descriptor-set layout binding capacity exceeded")
-        ZENGINE_VALIDATE_ASSERT(create_info.bindingCount == 0 || create_info.pBindings != nullptr, "Descriptor-set layout bindings are null")
+        PSODescriptorSetLayoutKey key   = {};
+        const bool                valid = TryMakeDescriptorSetLayoutKey(create_info, &key);
+        ZENGINE_VALIDATE_ASSERT(valid, "Invalid descriptor-set layout create info")
+        return key;
+    }
 
-        const auto* binding_flags_info = GetBindingFlagsCreateInfo(create_info);
-        ZENGINE_VALIDATE_ASSERT(binding_flags_info == nullptr || binding_flags_info->pBindingFlags != nullptr || create_info.bindingCount == 0, "Descriptor binding flags are null")
+    bool PSOCache::TryMakeDescriptorSetLayoutKey(const VkDescriptorSetLayoutCreateInfo& create_info, PSODescriptorSetLayoutKey* out, VkResult* status)
+    {
+        ImmutableSamplerAdmission admission(this);
+        if (!TryMakeDescriptorSetLayoutKey(create_info, out, status, admission))
+        {
+            return false;
+        }
+        admission.Committed = true;
+        return true;
+    }
+
+    bool PSOCache::TryMakeDescriptorSetLayoutKey(const VkDescriptorSetLayoutCreateInfo& create_info, PSODescriptorSetLayoutKey* out, VkResult* status, ImmutableSamplerAdmission& admission)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (!out || create_info.sType != VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO || (create_info.flags & ~kSupportedDescriptorSetLayoutFlags) || create_info.bindingCount > kMaxPSOLayoutBindings || (create_info.bindingCount && !create_info.pBindings))
+        {
+            return false;
+        }
+        const auto* binding_flags_info = static_cast<const VkDescriptorSetLayoutBindingFlagsCreateInfo*>(create_info.pNext);
+        if (binding_flags_info && (binding_flags_info->sType != VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO || binding_flags_info->pNext || binding_flags_info->bindingCount != create_info.bindingCount || (create_info.bindingCount && !binding_flags_info->pBindingFlags)))
+        {
+            return false;
+        }
+        uint32_t highest_binding = 0;
+        for (uint32_t i = 0; i < create_info.bindingCount; ++i)
+        {
+            highest_binding = std::max(highest_binding, create_info.pBindings[i].binding);
+        }
+        // Validate the whole recipe before reserving immutable-sampler metadata.
+        for (uint32_t i = 0; i < create_info.bindingCount; ++i)
+        {
+            const auto& binding = create_info.pBindings[i];
+            const auto  flags   = binding_flags_info ? binding_flags_info->pBindingFlags[i] : 0;
+            const bool  dynamic = binding.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC || binding.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+            if (!binding.descriptorCount || !binding.stageFlags || (binding.stageFlags & ~kSupportedShaderStages) || binding.descriptorType < VK_DESCRIPTOR_TYPE_SAMPLER || binding.descriptorType > VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT || (flags & ~kSupportedDescriptorBindingFlags) || (dynamic && (create_info.flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT)) || ((flags & VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT) && !(create_info.flags & VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT)) ||
+                ((flags & VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT) && (binding.binding != highest_binding || dynamic)))
+            {
+                return false;
+            }
+            for (uint32_t previous = 0; previous < i; ++previous)
+            {
+                if (create_info.pBindings[previous].binding == binding.binding)
+                {
+                    return false;
+                }
+            }
+            if (binding.pImmutableSamplers)
+            {
+                if ((binding.descriptorType != VK_DESCRIPTOR_TYPE_SAMPLER && binding.descriptorType != VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) || binding.descriptorCount > kMaxPSOImmutableSamplers)
+                {
+                    return false;
+                }
+                for (uint32_t sampler = 0; sampler < binding.descriptorCount; ++sampler)
+                {
+                    if (!binding.pImmutableSamplers[sampler])
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
         PSODescriptorSetLayoutKey key = {};
         key.CreateFlags               = create_info.flags;
         key.BindingCount              = create_info.bindingCount;
         for (uint32_t i = 0; i < create_info.bindingCount; ++i)
         {
-            const auto& binding = create_info.pBindings[i];
-            ZENGINE_VALIDATE_ASSERT(binding.descriptorCount != 0, "Descriptor-set layout binding count must be non-zero")
-            ValidateShaderStages(binding.stageFlags);
+            const auto&                       binding     = create_info.pBindings[i];
 
             PSODescriptorSetLayoutBindingKey& destination = key.Bindings[i];
             destination.Binding                           = binding.binding;
@@ -2771,14 +3222,25 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             destination.BindingFlags                      = binding_flags_info ? binding_flags_info->pBindingFlags[i] : 0;
             if (binding.pImmutableSamplers)
             {
-                ZENGINE_VALIDATE_ASSERT(binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER || binding.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, "Immutable samplers require sampler descriptor types")
-                destination.ImmutableSamplerListIdentity = GetOrCreateImmutableSamplerList(binding.pImmutableSamplers, binding.descriptorCount);
+                destination.ImmutableSamplerListIdentity = TryGetOrCreateImmutableSamplerList(binding.pImmutableSamplers, binding.descriptorCount, admission);
+                if (!destination.ImmutableSamplerListIdentity)
+                {
+                    if (status)
+                    {
+                        *status = VK_ERROR_TOO_MANY_OBJECTS;
+                    }
+                    return false;
+                }
             }
             destination.DescriptorKind = ToPSODescriptorKind(binding.descriptorType);
-            ZENGINE_VALIDATE_ASSERT((destination.BindingFlags & ~kSupportedDescriptorBindingFlags) == 0, "Unsupported descriptor binding flags in PSO cache")
         }
         SortDescriptorBindings(key);
-        return key;
+        *out = key;
+        if (status)
+        {
+            *status = VK_SUCCESS;
+        }
+        return true;
     }
 
     PSOSamplerKey PSOCache::MakeSamplerKey(const VkSamplerCreateInfo& create_info)
@@ -2812,52 +3274,82 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     PSOPipelineLayoutKey PSOCache::MakePipelineLayoutKey(const VkPipelineLayoutCreateInfo& create_info) const
     {
-        ZENGINE_VALIDATE_ASSERT(create_info.sType == VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, "Invalid pipeline-layout create info")
-        ZENGINE_VALIDATE_ASSERT(create_info.pNext == nullptr, "Pipeline-layout pNext chains are not supported by PSO cache")
-        ZENGINE_VALIDATE_ASSERT(create_info.flags == 0, "Unsupported pipeline-layout create flags in PSO cache")
-        ZENGINE_VALIDATE_ASSERT(create_info.setLayoutCount <= kMaxPSOSetLayouts, "PSO pipeline-layout set-layout capacity exceeded")
-        ZENGINE_VALIDATE_ASSERT(create_info.pushConstantRangeCount <= kMaxPSOPushConstantRanges, "PSO pipeline-layout push-constant capacity exceeded")
-        ZENGINE_VALIDATE_ASSERT(create_info.setLayoutCount == 0 || create_info.pSetLayouts != nullptr, "Pipeline-layout set layouts are null")
-        ZENGINE_VALIDATE_ASSERT(create_info.pushConstantRangeCount == 0 || create_info.pPushConstantRanges != nullptr, "Pipeline-layout push constants are null")
+        PSOPipelineLayoutKey key   = {};
+        const bool           valid = TryMakePipelineLayoutKey(create_info, &key);
+        ZENGINE_VALIDATE_ASSERT(valid, "Invalid pipeline-layout create info")
+        return key;
+    }
 
+    bool PSOCache::TryMakePipelineLayoutKey(const VkPipelineLayoutCreateInfo& create_info, PSOPipelineLayoutKey* out) const
+    {
+        if (!out || create_info.sType != VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO || create_info.pNext || create_info.flags || create_info.setLayoutCount > kMaxPSOSetLayouts || create_info.pushConstantRangeCount > kMaxPSOPushConstantRanges || (create_info.setLayoutCount && !create_info.pSetLayouts) || (create_info.pushConstantRangeCount && !create_info.pPushConstantRanges))
+        {
+            return false;
+        }
         PSOPipelineLayoutKey key = {};
         key.SetLayoutCount       = create_info.setLayoutCount;
         key.PushConstantCount    = create_info.pushConstantRangeCount;
         for (uint32_t i = 0; i < key.SetLayoutCount; ++i)
         {
+            if (!create_info.pSetLayouts[i])
+            {
+                return false;
+            }
             const uint64_t cached_identity   = GetSetLayoutIdentity(create_info.pSetLayouts[i]);
             key.SetLayouts[i].CachedIdentity = cached_identity;
             if (cached_identity == 0)
                 key.SetLayouts[i].ExternalHandle = create_info.pSetLayouts[i];
         }
+        VkShaderStageFlags used_stages = 0;
         for (uint32_t i = 0; i < key.PushConstantCount; ++i)
         {
             const auto& range = create_info.pPushConstantRanges[i];
-            ValidateShaderStages(range.stageFlags);
-            ZENGINE_VALIDATE_ASSERT(range.size != 0, "Pipeline-layout push-constant size must be non-zero")
-            key.PushConstants[i] = {.Offset = range.offset, .Size = range.size, .ShaderStages = range.stageFlags};
+            if (!range.stageFlags || (range.stageFlags & ~kSupportedShaderStages) || (range.stageFlags & used_stages) || !range.size || range.offset % 4 || range.size % 4 || range.size > UINT32_MAX - range.offset)
+            {
+                return false;
+            }
+            used_stages          |= range.stageFlags;
+            key.PushConstants[i]  = {.Offset = range.offset, .Size = range.size, .ShaderStages = range.stageFlags};
         }
         SortPushConstantRanges(key);
-        return key;
+        *out = key;
+        return true;
     }
 
     PSOCompatibilityRenderPassKey PSOCache::MakeCompatibilityRenderPassKey(const RenderPasses::Attachment& attachment) const
     {
-        const auto& specification = attachment.GetSpecification();
-        ZENGINE_VALIDATE_ASSERT(specification.ColorsMap.size() <= kMaxPSOCompatibilityAttachments, "PSO compatibility render-pass attachment capacity exceeded")
+        PSOCompatibilityRenderPassKey key   = {};
+        const bool                    valid = TryMakeCompatibilityRenderPassKey(attachment, &key);
+        ZENGINE_VALIDATE_ASSERT(valid, "Invalid PSO compatibility render pass recipe")
+        return key;
+    }
 
+    bool PSOCache::TryMakeCompatibilityRenderPassKey(const RenderPasses::Attachment& attachment, PSOCompatibilityRenderPassKey* out) const
+    {
+        const auto& specification = attachment.GetSpecification();
+        if (!out || specification.BindPoint != Specifications::PipelineBindPoint::GRAPHIC || specification.ColorsMap.size() > kMaxPSOCompatibilityAttachments)
+        {
+            return false;
+        }
         PSOCompatibilityRenderPassKey key = {};
         key.AttachmentCount               = static_cast<uint32_t>(specification.ColorsMap.size());
         for (uint32_t i = 0; i < key.AttachmentCount; ++i)
         {
-            const auto& source          = specification.ColorsMap.at(i);
-            auto&       destination     = key.Attachments[i];
-            destination.Format          = ResolveAttachmentFormat(m_device, source.Format);
-            destination.Samples         = VK_SAMPLE_COUNT_1_BIT;
-            destination.ReferenceLayout = ResolveReferenceLayout(source.ReferenceLayout);
-            if (destination.ReferenceLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            const auto* source = specification.ColorsMap.find(i);
+            if (!source || static_cast<uint32_t>(source->ReferenceLayout) >= std::size(Specifications::ImageLayoutMap))
             {
-                ZENGINE_VALIDATE_ASSERT(key.DepthAttachmentIndex == VK_ATTACHMENT_UNUSED, "PSO compatibility render passes support one depth attachment")
+                return false;
+            }
+            auto& destination           = key.Attachments[i];
+            destination.Format          = attachment.GetResolvedFormat(i);
+            destination.Samples         = VK_SAMPLE_COUNT_1_BIT;
+            destination.ReferenceLayout = Specifications::ImageLayoutMap[static_cast<uint32_t>(source->ReferenceLayout)];
+            if (Specifications::IsDepthOrStencilFormat(static_cast<VkFormat>(destination.Format)))
+            {
+                if (key.DepthAttachmentIndex != VK_ATTACHMENT_UNUSED)
+                {
+                    return false;
+                }
                 key.DepthAttachmentIndex = i;
             }
             else
@@ -2865,7 +3357,12 @@ namespace ZEngine::Rendering::Renderers::Pipelines
                 ++key.ColorAttachmentCount;
             }
         }
-        return key;
+        if (!IsCompatibilityRenderPassKeyValid(key))
+        {
+            return false;
+        }
+        *out = key;
+        return true;
     }
 
     PSOComputePipelineKey PSOCache::MakeComputePipelineKey(const VkComputePipelineCreateInfo& create_info, uint32_t shader_generation) const
@@ -3272,26 +3769,42 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         return lookup.Identity;
     }
 
-    uint64_t PSOCache::GetOrCreateImmutableSamplerList(const VkSampler* samplers, uint32_t sampler_count)
+    PSOCache::ImmutableSamplerAdmission::~ImmutableSamplerAdmission()
     {
-        ZENGINE_VALIDATE_ASSERT(samplers != nullptr && sampler_count != 0 && sampler_count <= kMaxPSOImmutableSamplers, "PSO immutable sampler capacity exceeded")
+        if (!Committed && Cache)
+        {
+            for (uint32_t i = 0; i < Count; ++i)
+            {
+                Cache->m_immutable_sampler_lists.Erase(Cache->HashImmutableSamplerListKey(Keys[i]), Keys[i]);
+            }
+        }
+    }
+
+    uint64_t PSOCache::TryGetOrCreateImmutableSamplerList(const VkSampler* samplers, uint32_t sampler_count, ImmutableSamplerAdmission& admission)
+    {
 
         PSOImmutableSamplerListKey key = {};
         key.SamplerCount               = sampler_count;
         for (uint32_t sampler_index = 0; sampler_index < sampler_count; ++sampler_index)
         {
-            ZENGINE_VALIDATE_ASSERT(samplers[sampler_index] != VK_NULL_HANDLE, "PSO immutable sampler is null")
             key.Samplers[sampler_index] = samplers[sampler_index];
         }
 
         const uint64_t             hash = HashImmutableSamplerListKey(key);
         bool                       created{};
         ImmutableSamplerListEntry* entry = m_immutable_sampler_lists.FindOrInsert(hash, key, &created);
-        ZENGINE_VALIDATE_ASSERT(entry != nullptr, "PSO immutable sampler collision bucket capacity exceeded")
+        if (!entry)
+        {
+            return 0;
+        }
         if (!created)
+        {
             return entry->Identity;
+        }
 
-        entry->Identity = m_next_immutable_sampler_list_identity++;
+        admission.Keys[admission.Count++] = key;
+
+        entry->Identity                   = m_next_immutable_sampler_list_identity++;
         for (uint32_t sampler_index = 0; sampler_index < sampler_count; ++sampler_index)
             entry->Samplers[sampler_index] = samplers[sampler_index];
         return entry->Identity;

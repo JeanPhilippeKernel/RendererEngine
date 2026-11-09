@@ -68,7 +68,9 @@ namespace ZEngine::Rendering::Scenes
                 }
             }
             if (!still_used)
+            {
                 rrm->ReleaseMeshGeometry(freed_uuid);
+            }
         }
 
         MarkInstancesDirty();
@@ -106,6 +108,20 @@ namespace ZEngine::Rendering::Scenes
             MarkInstancesDirty();
             return;
         }
+    }
+
+    bool RenderScene::SetInstanceStateAtIndex(uint32_t index, const Core::Maths::Mat4f& transform, ECS::EntityID entity)
+    {
+        if (index >= Instances.size())
+        {
+            return false;
+        }
+        SeqBeginWrite();
+        Instances[index].Transform = transform;
+        Instances[index].Entity    = entity;
+        SeqEndWrite();
+        MarkInstancesDirty();
+        return true;
     }
 
     bool RenderScene::TryGetInstanceEntity(uint32_t id, ECS::EntityID& out_entity) const

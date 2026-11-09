@@ -73,6 +73,11 @@ namespace ZEngine::Core::Containers
             m_map.init(allocator, initial_capacity);
         }
 
+        [[nodiscard]] bool try_init(Memory::ArenaAllocator* allocator, size_type initial_capacity = 16)
+        {
+            return m_map.try_init(allocator, initial_capacity);
+        }
+
         // Inserts a key into the set.
         // New keys are appended to the end of the insertion-order sequence.
         // Resizes the set if the load factor would be exceeded.

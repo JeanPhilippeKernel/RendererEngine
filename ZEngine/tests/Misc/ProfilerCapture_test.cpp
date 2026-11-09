@@ -35,6 +35,24 @@ TEST(ProfilerCaptureTest, CapturesAcrossFramesFiltersNamesAndExportsOnlyAfterSto
     EXPECT_TRUE(std::filesystem::remove(file));
 }
 
+TEST(ProfilerCaptureTest, ByteCountsAboveFloatPrecisionRoundTripExactlyInCapture)
+{
+    const auto file = std::filesystem::temp_directory_path() / ("profiler-byte-count-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".csv");
+    ProfilerBuffer::StopCapture();
+    ASSERT_TRUE(ProfilerBuffer::StartCapture("Test.Memory."));
+    ProfilerBuffer::RecordValue("Test.Memory.PeakBytes", 134217729.0);
+    ProfilerBuffer::StopCapture();
+    ASSERT_TRUE(ProfilerBuffer::WriteCaptureCsv(file.string().c_str()));
+    {
+        std::ifstream input(file);
+        ASSERT_TRUE(input.is_open());
+        const std::string csv(std::istreambuf_iterator<char>{input}, {});
+        EXPECT_NE(csv.find(",134217729\n"), std::string::npos);
+        EXPECT_EQ(csv.find(",134217728\n"), std::string::npos);
+    }
+    EXPECT_TRUE(std::filesystem::remove(file));
+}
+
 TEST(ProfilerCaptureTest, ConcurrentWritersUseFixedStorageAndReportSaturationWithoutOverflow)
 {
     ProfilerBuffer::StopCapture();

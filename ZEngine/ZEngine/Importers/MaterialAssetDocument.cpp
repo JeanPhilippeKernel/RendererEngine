@@ -94,7 +94,7 @@ namespace ZEngine::Importers::AssetCodec
             return reader.String(scratch.first(37), &text) && Helpers::ParseCanonicalUUID(text.data(), text.size(), uuid, allow_nil);
         }
 
-        bool ReadVector(Serialization::JSONReader& reader, Core::Containers::FixedArray<float, 4>& vector)
+        bool ReadVector(Serialization::JSONReader& reader, Core::Containers::FixedArray<float, 4>& vector, bool source_compatible)
         {
             if (!reader.BeginArray())
             {
@@ -103,15 +103,17 @@ namespace ZEngine::Importers::AssetCodec
             size_t count = 0;
             while (reader.Element())
             {
-                if (count == vector.size() || !reader.Float32(&vector[count++]))
+                float ignored = 0.f;
+                if ((!source_compatible && count == vector.size()) || !reader.Float32(count < vector.size() ? &vector[count] : &ignored))
                 {
                     return false;
                 }
+                ++count;
             }
-            return count == vector.size() && reader.Error() == VFS::VFSError::OK;
+            return (source_compatible || count == vector.size()) && reader.Error() == VFS::VFSError::OK;
         }
 
-        bool ReadTexture(Serialization::JSONReader& reader, MaterialTextureReference& texture, Core::Containers::ArrayView<char> scratch)
+        bool ReadTexture(Serialization::JSONReader& reader, MaterialTextureReference& texture, Core::Containers::ArrayView<char> scratch, bool source_compatible)
         {
             if (!reader.BeginObject())
             {
@@ -120,9 +122,17 @@ namespace ZEngine::Importers::AssetCodec
             constexpr cstring            names[] = {"uuid", "path"};
             Core::Containers::StringView key     = {};
             uint32_t                     fields  = 0;
-            while (reader.Member(scratch.first(16), &key))
+            while (reader.Member(scratch, &key))
             {
                 const uint32_t index = FieldIndex(key, names);
+                if (source_compatible && index == 2)
+                {
+                    if (!reader.SkipValue(scratch))
+                    {
+                        return false;
+                    }
+                    continue;
+                }
                 if (index == 2 || (fields & (1u << index)))
                 {
                     return false;
@@ -133,14 +143,14 @@ namespace ZEngine::Importers::AssetCodec
                     return false;
                 }
             }
-            if (reader.Error() != VFS::VFSError::OK || fields != 3)
+            if (reader.Error() != VFS::VFSError::OK || (!source_compatible && fields != 3))
             {
                 return false;
             }
             return ValidTexture(texture);
         }
 
-        bool ReadTextures(Serialization::JSONReader& reader, MaterialAssetDocument& document, Core::Containers::ArrayView<char> scratch)
+        bool ReadTextures(Serialization::JSONReader& reader, MaterialAssetDocument& document, Core::Containers::ArrayView<char> scratch, bool source_compatible)
         {
             if (!reader.BeginObject())
             {
@@ -148,20 +158,28 @@ namespace ZEngine::Importers::AssetCodec
             }
             Core::Containers::StringView key    = {};
             uint32_t                     fields = 0;
-            while (reader.Member(scratch.first(16), &key))
+            while (reader.Member(scratch, &key))
             {
                 const uint32_t index = FieldIndex(key, TextureSlots);
+                if (source_compatible && index == static_cast<uint32_t>(MaterialTextureSlot::Count))
+                {
+                    if (!reader.SkipValue(scratch))
+                    {
+                        return false;
+                    }
+                    continue;
+                }
                 if (index == static_cast<uint32_t>(MaterialTextureSlot::Count) || (fields & (1u << index)))
                 {
                     return false;
                 }
                 fields |= 1u << index;
-                if (!ReadTexture(reader, document.Textures[index], scratch))
+                if (!ReadTexture(reader, document.Textures[index], scratch, source_compatible))
                 {
                     return false;
                 }
             }
-            return reader.Error() == VFS::VFSError::OK && fields == (1u << static_cast<uint32_t>(MaterialTextureSlot::Count)) - 1;
+            return reader.Error() == VFS::VFSError::OK && (source_compatible || fields == (1u << static_cast<uint32_t>(MaterialTextureSlot::Count)) - 1);
         }
 
         bool ReadProvenance(Serialization::JSONReader& reader, MaterialSourceProvenance& provenance, Core::Containers::ArrayView<char> scratch)
@@ -275,7 +293,7 @@ namespace ZEngine::Importers::AssetCodec
         return index < static_cast<size_t>(MaterialTextureSlot::Count) ? TextureSlots[index] : nullptr;
     }
 
-    VFS::VFSResult<const MaterialAssetDocument*> MaterialAssetReader::Read(Core::Containers::ArrayView<const uint8_t> bytes, const uuids::uuid& expected_uuid, uint64_t maximum_file_bytes)
+    VFS::VFSResult<const MaterialAssetDocument*> MaterialAssetReader::Read(Core::Containers::ArrayView<const uint8_t> bytes, const uuids::uuid& expected_uuid, uint64_t maximum_file_bytes, MaterialReadPolicy policy)
     {
         if (bytes.size() && !bytes.data())
         {
@@ -308,15 +326,24 @@ namespace ZEngine::Importers::AssetCodec
         {
             new (&m_document) MaterialAssetDocument{};
         }
-        m_document_used                        = true;
-        auto&                        candidate = m_document;
-        constexpr cstring            names[]   = {"material_version", "uuid", "name", "textures", "ambient_color", "albedo_color", "emissive_color", "roughness_color", "specular_color", "factors", "alpha_mode", "alpha_cutoff", "source_material"};
-        Core::Containers::StringView key       = {};
-        uint32_t                     fields    = 0;
-        float                        cutoff    = 0.f;
-        while (reader.Member(Core::Containers::ArrayView<char>(m_text).first(32), &key))
+        m_document_used                                = true;
+        auto&                        candidate         = m_document;
+        constexpr cstring            names[]           = {"material_version", "uuid", "name", "textures", "ambient_color", "albedo_color", "emissive_color", "roughness_color", "specular_color", "factors", "alpha_mode", "alpha_cutoff", "source_material"};
+        Core::Containers::StringView key               = {};
+        uint32_t                     fields            = 0;
+        float                        cutoff            = 0.f;
+        const bool                   source_compatible = policy == MaterialReadPolicy::SourceCompatible;
+        while (reader.Member(m_key, &key))
         {
             const uint32_t index = FieldIndex(key, names);
+            if (source_compatible && (index == 13 || index == 12))
+            {
+                if (!reader.SkipValue(m_key))
+                {
+                    return VFS::VFSResult<const MaterialAssetDocument*>::Fail(ReaderError(reader));
+                }
+                continue;
+            }
             if (index == 13 || (fields & (1u << index)))
             {
                 return VFS::VFSResult<const MaterialAssetDocument*>::Fail(VFS::VFSError::Corrupted);
@@ -325,7 +352,7 @@ namespace ZEngine::Importers::AssetCodec
             bool valid  = false;
             if (index >= 4 && index <= 9)
             {
-                valid = ReadVector(reader, candidate.*VectorFields[index - 4].Member);
+                valid = ReadVector(reader, candidate.*VectorFields[index - 4].Member, source_compatible);
             }
             else
             {
@@ -352,7 +379,7 @@ namespace ZEngine::Importers::AssetCodec
                         valid = ReadText(reader, candidate.Name);
                         break;
                     case 3:
-                        valid = ReadTextures(reader, candidate, m_text);
+                        valid = ReadTextures(reader, candidate, m_key, source_compatible);
                         break;
                     case 10:
                     {
@@ -385,9 +412,13 @@ namespace ZEngine::Importers::AssetCodec
         {
             return VFS::VFSResult<const MaterialAssetDocument*>::Fail(reader.Error());
         }
-        if ((fields & required) != required || cutoff != candidate.Factors[2] || (!m_expected_uuid.is_nil() && candidate.UUID != m_expected_uuid))
+        if ((!source_compatible && ((fields & required) != required || cutoff != candidate.Factors[2] || candidate.UUID.is_nil())) || (!m_expected_uuid.is_nil() && candidate.UUID != m_expected_uuid))
         {
             return VFS::VFSResult<const MaterialAssetDocument*>::Fail(VFS::VFSError::Corrupted);
+        }
+        if (source_compatible && (fields & (1u << 11)))
+        {
+            candidate.Factors[2] = cutoff;
         }
         return VFS::VFSResult<const MaterialAssetDocument*>::Ok(&m_document);
     }

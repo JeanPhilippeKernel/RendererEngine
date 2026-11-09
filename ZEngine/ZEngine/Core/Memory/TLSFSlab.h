@@ -25,6 +25,18 @@ namespace ZEngine::Core::Memory
     /// can replace the spinlock in a future pass to keep Alloc fully lock-free.
     struct TLSFSlab
     {
+        struct Statistics
+        {
+            size_t BackingBytes       = 0;
+            size_t ControlBytes       = 0;
+            size_t LiveBytes          = 0;
+            size_t LiveBlocks         = 0;
+            // Observed after each operation. Internal realloc overlap is bounded
+            // by BackingBytes, not represented as a sampled operation boundary.
+            size_t HighWaterLiveBytes = 0;
+        };
+
+        [[nodiscard]] Statistics    GetStatistics() const;
         /// @brief Carve `bytes` from `arena` and initialise the TLSF pool over it.
         /// @param arena Parent arena that provides the backing memory.
         /// @param bytes Total slab size in bytes. Must be > tlsf_size() (~3 KB overhead).
@@ -63,6 +75,8 @@ namespace ZEngine::Core::Memory
         /// @brief Bytes consumed by TLSF metadata (~3 KB per slab). Diagnostic use only.
         /// @returns Overhead in bytes.
         size_t                      Overhead() const;
+        /// Control structure plus pool boundary metadata, excluding live blocks.
+        size_t                      TotalOverhead() const;
 
         void*                       Backing = nullptr; ///< Raw backing buffer carved from the parent arena.
         tlsf_t                      Pool    = nullptr; ///< TLSF pool handle (opaque pointer).
@@ -70,7 +84,9 @@ namespace ZEngine::Core::Memory
     private:
         // Atomic spinlock — protects concurrent Alloc/Free across threads.
         // std::atomic_flag is guaranteed lock-free on all platforms.
-        mutable std::atomic_flag m_lock = ATOMIC_FLAG_INIT;
+        mutable std::atomic_flag m_lock       = ATOMIC_FLAG_INIT;
+        Statistics               m_statistics = {};
+        void                     RecordAllocationChange(size_t old_bytes, size_t new_bytes);
 
         void                     AcquireLock() const
         {

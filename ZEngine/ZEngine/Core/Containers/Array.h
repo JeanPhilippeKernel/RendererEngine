@@ -24,7 +24,7 @@ namespace ZEngine::Core::Containers
         using iterator        = T*;
         using const_iterator  = const T*;
 
-        Array() : m_allocator(nullptr), m_slab(nullptr), m_size(0), m_capacity(0), m_data(nullptr) {}
+        Array() noexcept : m_allocator(nullptr), m_slab(nullptr), m_size(0), m_capacity(0), m_data(nullptr) {}
 
         Array(const Array&)            = delete;
         Array& operator=(const Array&) = delete;

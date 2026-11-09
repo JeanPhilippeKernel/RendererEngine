@@ -35,5 +35,6 @@ namespace ZEngine::Rendering::Primitives
     private:
         FenceState m_fence_state{FenceState::Idle};
         VkFence    m_handle{VK_NULL_HANDLE};
+        uint64_t   m_retirement_reservation = 0;
     };
 } // namespace ZEngine::Rendering::Primitives

@@ -130,6 +130,50 @@ namespace ZEngine::Importers::AssetCodec
         EXPECT_TRUE(reader.Read(MaterialBytes(MaterialFixture)).Succeeded());
     }
 
+    TEST(MaterialAssetDocumentTest, SourceCompatibilityKeepsLegacyDefaultsAndSkipsBoundedMetadataWithoutWeakeningStrictReads)
+    {
+        constexpr cstring   legacy = R"({"uuid":"00000000-0000-0000-0000-000000000001","name":"legacy","textures":{"future":{"data":[null,true,1,{"nested":"value"}]},"albedo":{"uuid":"00000000-0000-0000-0000-000000000002","path":"/Assets/tex.png","metadata":{"a":[false]}}},"albedo_color":[0.25,0.5],"factors":[0,0,0.1,0],"alpha_cutoff":0.75,"source_material":{"arbitrary":"legacy provenance"},"metadata":[{},[],null,false,"text",12.3]})";
+        MaterialAssetReader reader = {};
+        EXPECT_TRUE(reader.Read(MaterialBytes(legacy)).Failed());
+        const auto parsed = reader.Read(MaterialBytes(legacy), {}, ZMega(1), MaterialReadPolicy::SourceCompatible);
+        ASSERT_TRUE(parsed.Succeeded());
+        EXPECT_STREQ(parsed.Value()->Name, "legacy");
+        EXPECT_EQ(parsed.Value()->AlphaMode, Rendering::Materials::AlphaMode::Legacy);
+        EXPECT_FLOAT_EQ(parsed.Value()->AlbedoColor[0], 0.25f);
+        EXPECT_FLOAT_EQ(parsed.Value()->AlbedoColor[1], 0.5f);
+        EXPECT_FLOAT_EQ(parsed.Value()->AlbedoColor[2], 0.f);
+        EXPECT_FLOAT_EQ(parsed.Value()->Factors[2], 0.75f);
+        EXPECT_TRUE(parsed.Value()->Textures[1].UUID.is_nil());
+        EXPECT_STREQ(parsed.Value()->Textures[0].Path, "/Assets/tex.png");
+        EXPECT_FALSE(parsed.Value()->HasSource);
+        EXPECT_TRUE(reader.Read(MaterialBytes(legacy)).Failed());
+        EXPECT_TRUE(reader.Read(MaterialBytes(MaterialFixture)).Succeeded());
+    }
+
+    TEST(MaterialAssetDocumentTest, SourceCompatibilityStillRejectsUnsafeIdentityValuesPathsDuplicatesAndMalformedMetadata)
+    {
+        MaterialAssetReader reader = {};
+        for (const auto& input : {
+             std::string(R"({"uuid":"00000000-0000-0000-0000-000000000000"})"),
+             ChangedMaterial("/Assets/tex.png", "/Assets/../tex.png"),
+             ChangedMaterial("\"name\":\"Material\"", "\"name\":\"Material\",\"name\":\"duplicate\""),
+             ChangedMaterial("\"name\":\"Material\"", "\"name\":\"Material\",\"future\":[true,,false]"),
+             ChangedMaterial("\"name\":\"Material\"", "\"name\":\"Material\",\"future\":\"\\ud800\""),
+             ChangedMaterial("[1,1,1,1]", "[1,1e999,1,1]"),
+             ChangedMaterial("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000000"),
+             })
+        {
+            EXPECT_TRUE(reader.Read(MaterialBytes(input), {}, ZMega(1), MaterialReadPolicy::SourceCompatible).Failed()) << input;
+        }
+        const auto nested = ChangedMaterial("\"name\":\"Material\"", "\"name\":\"Material\",\"future\":" + std::string(20, '[') + "0" + std::string(20, ']'));
+        EXPECT_EQ(reader.Read(MaterialBytes(nested), {}, ZMega(1), MaterialReadPolicy::SourceCompatible).Error(), VFS::VFSError::SizeLimitExceeded);
+        // Legacy utility reads may have no identity. A scene-bound read always
+        // supplies its registry UUID and must never accept the same bytes.
+        const auto expected = uuids::uuid::from_string("00000000-0000-0000-0000-000000000001").value();
+        EXPECT_TRUE(reader.Read(MaterialBytes("{}"), {}, ZMega(1), MaterialReadPolicy::SourceCompatible).Succeeded());
+        EXPECT_EQ(reader.Read(MaterialBytes("{}"), expected, ZMega(1), MaterialReadPolicy::SourceCompatible).Error(), VFS::VFSError::Corrupted);
+    }
+
     TEST(MaterialAssetDocumentTest, ReadsCompleteCurrentMaterialIntoOwnedInlineValues)
     {
         MaterialAssetDocument output   = {};

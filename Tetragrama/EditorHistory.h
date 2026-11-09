@@ -36,6 +36,12 @@ namespace Tetragrama
         [[nodiscard]] bool Redo(void* context);
 
         void               Reset(bool saved = true);
+        /// Split replacement reset: detach ring metadata without invoking Destroy.
+        /// Storage remains exclusively retained until DrainRetired returns; all
+        /// history mutations are rejected during that interval, including reentry.
+        [[nodiscard]] bool CanResetDeferred() const;
+        void               ResetDeferred(bool saved = true) noexcept;
+        void               DrainRetired();
         void               Invalidate();
         void               MarkSaved();
 
@@ -96,5 +102,9 @@ namespace Tetragrama
         uint64_t                   m_saved_state      = 0;
         uint64_t                   m_next_state       = 1;
         bool                       m_checkpoint_valid = true;
+        uint32_t                   m_retired_first    = 0;
+        uint32_t                   m_retired_count    = 0;
+        bool                       m_retiring         = false;
+        bool                       m_draining         = false;
     };
 } // namespace Tetragrama

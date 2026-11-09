@@ -6,6 +6,7 @@
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
+#include <ZEngine/ECS/Components/LightComponent.h>
 #include <ZEngine/ECS/Components/MaterialComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/RigidBodyComponent.h>
@@ -15,6 +16,8 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
+#include <ZEngine/UI/ZUIFont.h>
 #include <ZEngine/UI/ZUIInput.h>
 #include <ZEngine/Windows/Events/KeyEvent.h>
 #include <ZEngine/Windows/Inputs/KeyCodeDefinition.h>
@@ -26,11 +29,56 @@
 #include <memory>
 #include <thread>
 #include <utility>
+#include "../../ZEngine/tests/Rendering/ScenePipelinePreparationTestHost.h"
 
 using namespace Tetragrama;
 using namespace ZEngine::Core::VFS;
 using namespace ZEngine::ECS;
 using namespace ZEngine::ECS::Components;
+
+struct RRMTestHelper
+{
+    static void InitializeSky(ZEngine::Rendering::Renderers::GraphicRenderer& renderer, ZEngine::Hardwares::VulkanDevice* device, ZEngine::Tests::ScenePipelinePreparationTestHost& pipelines, ZEngine::Core::Memory::ArenaAllocator& arena)
+    {
+        renderer.Device                       = device;
+        renderer.m_scene_pipeline_preparation = &pipelines;
+        // CPU host: model real, independently owned image registrations so the
+        // same exact-version retention gate runs without allocating Vulkan data.
+        device->MaxGlobalTexture              = 4;
+        device->GlobalTextures.Initialize(&arena, 4);
+        device->ImageBufferManager.Initialize(&arena, 4);
+        std::array<ZEngine::Rendering::Textures::TextureHandle, 4> handles = {};
+        for (auto& handle : handles)
+        {
+            handle                                                                               = device->GlobalTextures.Create();
+            auto* texture                                                                        = device->GlobalTextures.Access(handle);
+            texture->BufferHandle                                                                = device->ImageBufferManager.Create();
+            device->ImageBufferManager.Access(texture->BufferHandle)->GetBuffer().OwnsAllocation = true;
+        }
+        static_cast<ZEngine::Rendering::RenderResourceManager*>(device->RRM)->m_device = device;
+        renderer.m_sky_environment.Initialize(handles[0], {handles[1], handles[2], handles[3]});
+    }
+    static void ReleaseSky(ZEngine::Rendering::Renderers::GraphicRenderer& renderer)
+    {
+        renderer.m_sky_environment.Shutdown();
+        renderer.ReleaseSceneEnvironmentPreparation();
+        renderer.Device = nullptr;
+    }
+    static void Tick(ZEngine::Rendering::RenderResourceManager& resources, bool failed = false)
+    {
+        resources.TickSceneResourcePreparations(0, failed);
+    }
+    static void Drain(ZEngine::Rendering::RenderResourceManager& resources)
+    {
+        resources.ReleaseSceneResourcePreparationsAfterIdle();
+        resources.ReleaseFrameResourcesAfterIdle();
+        resources.m_device = nullptr;
+    }
+    static uint32_t TextureReferences(const ZEngine::Rendering::RenderResourceManager& resources)
+    {
+        return resources.m_texture_version_pin_count;
+    }
+};
 
 namespace
 {
@@ -259,12 +307,13 @@ protected:
         App->WorkingSpacePath = Workspace.c_str();
         Configuration.WorkingSpacePath.init(&Memory.MainArena, Workspace.c_str());
         Configuration.ScenePath.init(&Memory.MainArena, "Scenes");
-        App->Configuration   = &Configuration;
-        App->CurrentWindow   = &Picker;
-        Engine               = std::make_unique<ZEngine::EngineContext>();
-        Engine->Scene        = &ECS;
-        Engine->VFS          = &VFS;
-        Engine->SceneSchemas = &Schemas;
+        App->Configuration                = &Configuration;
+        App->CurrentWindow                = &Picker;
+        Engine                            = std::make_unique<ZEngine::EngineContext>();
+        Engine->SceneDocumentWorkingBytes = ZMega(8);
+        Engine->Scene                     = &ECS;
+        Engine->VFS                       = &VFS;
+        Engine->SceneSchemas              = &Schemas;
         ASSERT_TRUE(App->Session.BeginMutationPhase());
         ASSERT_TRUE(Owner.AttachSession(App->Session, *Engine));
         App->Session.EndMutationPhase();
@@ -465,7 +514,7 @@ protected:
         ECS.AddComponent<MeshComponent>(Entity, {uuid, 12345});
     }
 
-    bool StartBlockedOpen()
+    bool StartBlockedOpen(SceneRequestId* request = nullptr)
     {
         ReadGate.Initialize(&Memory.MainArena);
         if (ReadGate.Mount(&Backend, VFSPath::Root(), 0).Failed())
@@ -473,7 +522,7 @@ protected:
             return false;
         }
         Engine->VFS = &ReadGate;
-        if (!App->RequestSceneOpen(Path, App->Session.SceneEpoch()) || !ProcessOpen())
+        if (!App->RequestSceneOpen(Path, App->Session.SceneEpoch(), request) || !ProcessOpen())
         {
             return false;
         }
@@ -599,7 +648,7 @@ protected:
         EXPECT_FLOAT_EQ(ECS.GetComponent<TransformComponent>(Entity)->Position.x, 8.f);
         EXPECT_EQ(App->Session.SceneEpoch(), epoch);
         EXPECT_EQ(App->Session.History().UndoCount(), 1u);
-        EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+        EXPECT_EQ(Engine->EditorSceneLoadArenaAInUse.value.load(), !completed);
         EXPECT_FALSE(Engine->EditorSceneLoadArenaBInUse.value.load());
         Engine->VFS             = &ReadGate;
         Engine->SceneSchemas    = &Schemas;
@@ -672,6 +721,14 @@ protected:
 class EditorSceneFileInputTest : public EditorSceneIOTest
 {
 protected:
+    struct FrameCamera : ZEngine::Controllers::FlyCameraController
+    {
+        mutable ZEngine::Rendering::Cameras::FlyCamera Camera{4.f / 3.f, {}};
+        ZEngine::Rendering::Cameras::CameraPtr         GetCamera() const override
+        {
+            return &Camera;
+        }
+    } ViewCamera                                                       = {};
     ZEngine::UI::ZUIContext                                   Context  = {};
     std::unique_ptr<ZEngine::Applications::AppRenderPipeline> Pipeline = {};
     Tetragrama::Layers::ZUILayer                              Layer    = {};
@@ -680,11 +737,13 @@ protected:
     {
         EditorSceneIOTest::SetUp();
         ASSERT_FALSE(HasFatalFailure());
-        Pipeline         = std::make_unique<ZEngine::Applications::AppRenderPipeline>();
+        Pipeline = std::make_unique<ZEngine::Applications::AppRenderPipeline>();
+        Pipeline->InitializeFrameStorage(&Memory.MainArena, 8);
         Pipeline->ZUICtx = &Context;
         Pipeline->OverlayBuildAvailable.value.store(false);
-        App->RenderPipeline = Pipeline.get();
-        App->CurrentWindow  = nullptr; // The mock picker is not a GLFW window.
+        App->RenderPipeline   = Pipeline.get();
+        App->CameraController = &ViewCamera;
+        App->CurrentWindow    = nullptr; // The mock picker is not a GLFW window.
         Layer.Initialize(&Memory.MainArena, App.get());
         App->CurrentWindow = &Picker;
         App->ZUIUILayer    = &Layer;
@@ -694,8 +753,9 @@ protected:
     {
         if (App)
         {
-            App->ZUIUILayer     = nullptr;
-            App->RenderPipeline = nullptr;
+            App->ZUIUILayer       = nullptr;
+            App->RenderPipeline   = nullptr;
+            App->CameraController = nullptr;
         }
         Layer.LocalArena.Shutdown();
         EditorSceneIOTest::TearDown();
@@ -789,6 +849,303 @@ protected:
         EXPECT_EQ(App->Session.History().UndoCount(), 1u);
     }
 };
+
+class EditorSceneResourceOpenTest : public EditorSceneFileInputTest
+{
+protected:
+    using RRM                                                                      = ZEngine::Rendering::RenderResourceManager;
+    std::unique_ptr<RRM>                                            Resources      = {};
+    std::unique_ptr<ZEngine::Hardwares::VulkanDevice>               ResourceDevice = {};
+    std::unique_ptr<ZEngine::Rendering::Renderers::GraphicRenderer> Renderer       = {};
+    ZEngine::Tests::ScenePipelinePreparationTestHost                PipelineHost   = {};
+    ZEngine::Applications::ApplicationState                         ViewState      = {};
+
+    void                                                            SetUp() override
+    {
+        EditorSceneFileInputTest::SetUp();
+        ASSERT_FALSE(HasFatalFailure());
+        Resources           = std::make_unique<RRM>();
+        ResourceDevice      = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+        ResourceDevice->RRM = Resources.get();
+        Renderer            = std::make_unique<ZEngine::Rendering::Renderers::GraphicRenderer>();
+        RRMTestHelper::InitializeSky(*Renderer, ResourceDevice.get(), PipelineHost, Memory.MainArena);
+        Pipeline->Device              = ResourceDevice.get();
+        Pipeline->SceneRenderer       = Renderer.get();
+        Engine->RenderResourceManager = Resources.get();
+        App->State                    = &ViewState;
+        SetViewport(640, 480);
+        // This fixture has no selected sun or HDRI asset. Use the schema-defined
+        // presentation-only sky, not an invalid atmosphere hidden by a fallback.
+        Owner.Sky.Mode = ZEngine::Rendering::Scenes::SkyMode::SkySphere;
+        LoadSlots();
+    }
+
+    void SetViewport(uint32_t width, uint32_t height)
+    {
+        ASSERT_TRUE(ViewState.RenderTargetResizeRequests.push({width, height}));
+        ZEngine::Applications::RenderFrameState frame = {};
+        App->ZEngine::Applications::GameApplication::PrepareScene(frame);
+    }
+
+    void TickResources(bool failed = false)
+    {
+        RRMTestHelper::Tick(*Resources, failed);
+        Renderer->PollSceneEnvironmentPreparations();
+    }
+
+    void TearDown() override
+    {
+        if (Resources)
+        {
+            App->OnClosing();
+            ZEngine::Helpers::ThreadPoolHelper::Shutdown();
+            App->OnWorldShutdown(*Engine);
+            Pipeline->ReleaseSceneResourceFramesAfterReadersJoined();
+            RRMTestHelper::ReleaseSky(*Renderer);
+            Pipeline->SceneRenderer = nullptr;
+            Renderer.reset();
+            RRMTestHelper::Drain(*Resources);
+            Engine->RenderResourceManager = nullptr;
+            Pipeline->Device              = nullptr;
+            App->State                    = nullptr;
+            ZEngine::Helpers::ThreadPoolHelper::Initialize();
+        }
+        EditorSceneFileInputTest::TearDown();
+    }
+};
+
+TEST_F(EditorSceneResourceOpenTest, MissingDrawableViewportDefersAdmissionAndCanResume)
+{
+    ASSERT_TRUE(Save(Path));
+    SetViewport(0, 0);
+    SceneRequestId request    = {};
+    const auto     generation = Engine->ScenePublication.Generation();
+    ASSERT_TRUE(StartBlockedOpen(&request));
+    ASSERT_TRUE(CompleteBlockedRead());
+    ASSERT_TRUE(ProcessOpen());
+    TickResources();
+    ASSERT_TRUE(ProcessOpen());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_TRUE(App->SceneOpenPending());
+    ZEngine::Applications::RenderFrameState frame = {};
+    EXPECT_FALSE(Pipeline->TryReadFrameState(frame));
+    SetViewport(800, 600);
+    ASSERT_TRUE(ProcessOpen());
+    TickResources();
+    ASSERT_TRUE(ProcessOpen());
+    ASSERT_FALSE(App->SceneOpenPending());
+    ASSERT_TRUE(Pipeline->TryReadFrameState(frame));
+    ZEngine::Rendering::Scenes::PreparedSceneFrame initial = {};
+    ASSERT_TRUE(Resources->GetPreparedSceneFrame(frame.SceneResources, &initial));
+    EXPECT_TRUE(initial.View.Captured);
+    EXPECT_EQ(initial.View.Width, 800u);
+    EXPECT_EQ(initial.View.Height, 600u);
+    EXPECT_EQ(initial.View.ResizeSequence, frame.ResizeSequence);
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+    Pipeline->ReleaseFrameState();
+}
+
+TEST_F(EditorSceneResourceOpenTest, UnfocusedUpdateContinuesPreparedResourcePublication)
+{
+    ASSERT_TRUE(Save(Path));
+    SceneRequestId request    = {};
+    const auto     generation = Engine->ScenePublication.Generation();
+    ASSERT_TRUE(StartBlockedOpen(&request));
+    ASSERT_TRUE(CompleteBlockedRead());
+    Update(false);
+    EXPECT_TRUE(App->SceneOpenPending());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    TickResources();
+    Update(false);
+    ASSERT_FALSE(App->SceneOpenPending());
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation + 1);
+    ZEngine::Applications::RenderFrameState frame = {};
+    ASSERT_TRUE(Pipeline->TryReadFrameState(frame));
+    EXPECT_TRUE(static_cast<bool>(frame.SceneResources));
+    Pipeline->ReleaseFrameState();
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+}
+
+TEST_F(EditorSceneResourceOpenTest, OutgoingSceneSurvivesResourcePreparationAndPublicationCarriesTheBundle)
+{
+    ZEngine::UI::ZUIGlyph glyphs[2] = {};
+    glyphs[0]                       = {.U0 = .1f, .V0 = .2f, .U1 = .15f, .V1 = .3f, .Width = 14.f, .Height = 22.f};
+    glyphs[1]                       = {.U0 = .4f, .V0 = .5f, .U1 = .45f, .V1 = .6f, .Width = 16.f, .Height = 20.f};
+    ZEngine::UI::ZUIFont      font  = {.Glyphs = glyphs, .GlyphCount = 2, .FirstCodepoint = 'U', .FontScale = .5f};
+    ZEngine::UI::ZUIFontAtlas atlas = {
+        .Body = &font, .Handle = {71, 9}
+    };
+    struct AtlasReset
+    {
+        ZEngine::UI::ZUIContext* Context = nullptr;
+        ~AtlasReset()
+        {
+            Context->Atlas = nullptr;
+        }
+    } reset                         = {&Context};
+    Context.Atlas                   = &atlas;
+    App->GizmoLogicalViewportHeight = 480.f;
+    Owner.AuthoredGrid.Labels       = ZEngine::ECS::SceneGridLabels::None;
+    ASSERT_TRUE(Save(Path));
+    SceneRequestId request    = {};
+    const auto     generation = Engine->ScenePublication.Generation();
+    ASSERT_TRUE(StartBlockedOpen(&request));
+    ASSERT_TRUE(CompleteBlockedRead());
+    ASSERT_TRUE(ProcessOpen()); // CPU candidate is now retained, awaiting the render owner.
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_TRUE(App->SceneOpenPending());
+    ZEngine::Applications::RenderFrameState frame = {};
+    EXPECT_FALSE(Pipeline->TryReadFrameState(frame));
+    // Later producer view changes must not rewrite admitted target identity.
+    glyphs[0].Width                 = 99.f;
+    atlas.Handle                    = {72, 10};
+    App->GizmoLogicalViewportHeight = 720.f;
+    SetViewport(1280, 720);
+    RRMTestHelper::Tick(*Resources);
+    ASSERT_TRUE(ProcessOpen()); // Geometry alone cannot publish an unprepared sky.
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_TRUE(App->SceneOpenPending());
+    Renderer->PollSceneEnvironmentPreparations();
+    ASSERT_TRUE(ProcessOpen());
+    EXPECT_NE(Engine->Scene, &ECS);
+    EXPECT_FALSE(App->SceneOpenPending());
+    ASSERT_TRUE(Pipeline->TryReadFrameState(frame));
+    EXPECT_EQ(frame.SceneGeneration, generation + 1);
+    ASSERT_TRUE(frame.SceneResources);
+    ZEngine::Rendering::Scenes::PreparedSceneFrame initial = {};
+    ASSERT_TRUE(Resources->GetPreparedSceneFrame(frame.SceneResources, &initial));
+    EXPECT_TRUE(initial.View.Captured);
+    EXPECT_EQ(initial.View.Width, 640u);
+    EXPECT_EQ(initial.View.Height, 480u);
+    EXPECT_EQ(initial.View.GridLabelFont.Atlas.Index, 71u);
+    EXPECT_EQ(initial.View.GridLabelFont.Atlas.Generation, 9u);
+    EXPECT_FLOAT_EQ(initial.View.GridLabelFont.LogicalViewportHeight, 480.f);
+    EXPECT_FLOAT_EQ(initial.View.GridLabelFont.Glyphs[0].Size.x, 7.f);
+    EXPECT_LT(initial.View.ResizeSequence, frame.ResizeSequence);
+    EXPECT_EQ(frame.SceneResources.Request, request);
+    RRM::SceneResourcePreparationResult resource_result = {};
+    ASSERT_TRUE(Resources->PollSceneResourcePreparation(frame.SceneResources, &resource_result));
+    EXPECT_EQ(resource_result.State, RRM::SceneResourcePreparationState::ResourcesRetained);
+    EXPECT_TRUE(resource_result.InitialDrawsPrepared);
+    EXPECT_EQ(resource_result.Environment, RRM::SceneEnvironmentPreparationState::Ready);
+    ASSERT_TRUE(Renderer->ApplySkyConfig(frame.Sky, frame.CelestialLight, frame.SkyRevision, frame.SceneGeneration, frame.SceneResources));
+    ASSERT_TRUE(Resources->PollSceneResourcePreparation(frame.SceneResources, &resource_result));
+    EXPECT_EQ(resource_result.Environment, RRM::SceneEnvironmentPreparationState::Activated);
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+    Pipeline->ReleaseFrameState();
+    EXPECT_EQ(RRMTestHelper::TextureReferences(*Resources), 4u);
+    // Joined-reader shutdown must release renderer-owned preparation leases
+    // before the resource manager asserts that its explicit owners are drained.
+    Pipeline->ReleaseSceneResourceFramesAfterReadersJoined();
+    EXPECT_EQ(RRMTestHelper::TextureReferences(*Resources), 0u);
+    EXPECT_FALSE(PipelineHost.Active);
+    Pipeline->ReleaseSceneResourceFramesAfterReadersJoined();
+    EXPECT_EQ(RRMTestHelper::TextureReferences(*Resources), 0u);
+}
+
+TEST_F(EditorSceneResourceOpenTest, RequiredPipelinesDelayPublicationAndFailurePreservesTheOutgoingWorld)
+{
+    ASSERT_TRUE(Save(Path));
+    PipelineHost.State        = ZEngine::Rendering::Renderers::RGScenePipelinePreparationState::Preparing;
+    SceneRequestId request    = {};
+    const auto     generation = Engine->ScenePublication.Generation();
+    ASSERT_TRUE(StartBlockedOpen(&request));
+    ASSERT_TRUE(CompleteBlockedRead());
+    ASSERT_TRUE(ProcessOpen());
+    TickResources();
+    ASSERT_TRUE(ProcessOpen());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_TRUE(App->SceneOpenPending());
+    ZEngine::Applications::RenderFrameState frame = {};
+    EXPECT_FALSE(Pipeline->TryReadFrameState(frame));
+    PipelineHost.State = ZEngine::Rendering::Renderers::RGScenePipelinePreparationState::Failed;
+    TickResources();
+    EXPECT_FALSE(ProcessOpen());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    EXPECT_FALSE(PipelineHost.Active);
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Failed);
+    EXPECT_EQ(result.Error, SceneLoadError::Resources);
+}
+
+TEST_F(EditorSceneResourceOpenTest, ResourceFailurePreservesTheOutgoingWorldAndAValidRetryCanCommit)
+{
+    ASSERT_TRUE(Save(Path));
+    SceneRequestId request    = {};
+    const auto     generation = Engine->ScenePublication.Generation();
+    ASSERT_TRUE(StartBlockedOpen(&request));
+    ASSERT_TRUE(CompleteBlockedRead());
+    ASSERT_TRUE(ProcessOpen());
+    TickResources(true);
+    EXPECT_FALSE(ProcessOpen());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Failed);
+    EXPECT_EQ(result.Error, SceneLoadError::Resources);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+    TickResources();
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (App->SceneOpenPending() && std::chrono::steady_clock::now() < deadline)
+    {
+        EXPECT_TRUE(ProcessOpen());
+        TickResources();
+        std::this_thread::yield();
+    }
+    EXPECT_FALSE(App->SceneOpenPending());
+    EXPECT_NE(Engine->Scene, &ECS);
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+}
+
+TEST_F(EditorSceneResourceOpenTest, SupersedingAnUnpublishedResourceCandidateCannotActivateIt)
+{
+    ASSERT_TRUE(Save(Path));
+    SceneRequestId first = {}, second = {};
+    ASSERT_TRUE(StartBlockedOpen(&first));
+    ASSERT_TRUE(CompleteBlockedRead());
+    ASSERT_TRUE(ProcessOpen());
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &second));
+    ASSERT_TRUE(ProcessOpen());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    TickResources();
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(first, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Superseded);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(first));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (App->SceneOpenPending() && std::chrono::steady_clock::now() < deadline)
+    {
+        EXPECT_TRUE(ProcessOpen());
+        TickResources();
+        std::this_thread::yield();
+    }
+    ASSERT_TRUE(Engine->SceneLoads.Poll(second, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(second));
+}
 
 class EditorSceneDragFileInputTest : public EditorSceneFileInputTest
 {
@@ -1377,6 +1734,90 @@ TEST_F(EditorSceneFileInputTest, OwnershipAcquiredAfterTheEventRetiresRatherThan
     Key(ZENGINE_KEY_S);
     Update();
     EXPECT_EQ(Picker.Requests, 1u);
+}
+
+TEST_F(EditorSceneFileInputTest, UnfocusedUpdateDispatchesAndPublishesAnAlreadyAdmittedOpenExactlyOnce)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    const auto     generation = Engine->ScenePublication.Generation();
+    SceneRequestId request    = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    Update(false);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (App->SceneOpenPending() && std::chrono::steady_clock::now() < deadline)
+    {
+        Update(false);
+        std::this_thread::yield();
+    }
+    ASSERT_FALSE(App->SceneOpenPending());
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation + 1);
+    Update(false);
+    Update();
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation + 1);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+    EXPECT_FALSE(Engine->SceneLoads.Acknowledge(request));
+}
+
+TEST_F(EditorSceneFileInputTest, UnfocusedUpdateRetiresCancelledWorkerOnlyAfterItReturns)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    const auto     generation = Engine->ScenePublication.Generation();
+    SceneRequestId request    = {};
+    ASSERT_TRUE(StartBlockedOpen(&request));
+    EXPECT_EQ(Engine->SceneLoads.Cancel(request), SceneCancelResult::Cancelled);
+    Update(false);
+    EXPECT_TRUE(App->SceneOpenPending());
+    EXPECT_TRUE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_FALSE(Engine->SceneLoads.Drained());
+    ASSERT_TRUE(CompleteBlockedRead());
+    Update(false);
+    EXPECT_FALSE(App->SceneOpenPending());
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaBInUse.value.load());
+    EXPECT_TRUE(Engine->SceneLoads.Drained());
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Cancelled);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+    Update();
+    EXPECT_FALSE(App->SceneOpenPending());
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+}
+
+TEST_F(EditorSceneFileInputTest, UnfocusedOpenNeverGrantsDirtySceneConsent)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    Edit(3.f);
+    const auto     generation = Engine->ScenePublication.Generation();
+    SceneRequestId request    = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    Update(false);
+    const auto prompt = App->SceneChangePromptState();
+    ASSERT_TRUE(prompt.Visible());
+    Update(false);
+    EXPECT_EQ(App->SceneChangePromptState().Serial, prompt.Serial);
+    EXPECT_TRUE(Owner.IsDirty());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_TRUE(App->SceneOpenPending());
+    ASSERT_TRUE(App->ChooseSceneChange(SceneChangeChoice::Cancel, prompt.Serial));
+    Update(false);
+    EXPECT_FALSE(App->SceneOpenPending());
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Cancelled);
+    EXPECT_TRUE(Owner.IsDirty());
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
 }
 
 TEST_F(EditorSceneFileInputTest, TransientFocusLossAndMinimizationRetireOldAndNewShortcutEdges)
@@ -2738,6 +3179,115 @@ TEST_F(EditorSceneIOTest, CandidatePublicationRequiresTheOriginalEpochAndExclusi
     EXPECT_EQ(Owner.Session, nullptr);
 }
 
+TEST_F(EditorSceneFileInputTest, CandidateCommitPublishesAnIndependentGenerationCoherentInitialFrame)
+{
+    LoadSlots();
+    ECS.AddComponent<LightComponent>(Entity, {});
+    auto* light = ECS.GetComponent<LightComponent>(Entity);
+    ASSERT_NE(light, nullptr);
+    light->LightType                                         = LightComponent::Type::Point;
+    light->Intensity                                         = 23.f;
+    ECS.GetComponent<TransformComponent>(Entity)->Position.x = 7.f;
+    std::unique_ptr<EditorSceneCandidate> candidate          = {};
+    ASSERT_TRUE(Prepare(&candidate));
+    candidate->Render().Grid.Origin.y                  = 19.f;
+    candidate->Render().Sky.EnvironmentIntensity       = 3.f;
+    const auto                              generation = Engine->ScenePublication.Generation();
+    ZEngine::Applications::RenderFrameState frame      = {};
+    EXPECT_FALSE(Pipeline->TryReadFrameState(frame));
+    ASSERT_TRUE(Publish(candidate, App->Session.SceneEpoch()));
+    ASSERT_EQ(candidate, nullptr);
+    ASSERT_TRUE(Pipeline->TryReadFrameState(frame));
+    EXPECT_EQ(frame.SceneGeneration, generation + 1);
+    EXPECT_EQ(frame.SceneGeneration, Engine->ScenePublication.Generation());
+    EXPECT_TRUE(frame.Scene.HasScene);
+    ASSERT_EQ(frame.Scene.Lights.PointCount, 1u);
+    EXPECT_FLOAT_EQ(frame.Scene.Lights.PointLights[0].Position.x, 7.f);
+    EXPECT_FLOAT_EQ(frame.Scene.Lights.PointLights[0].Intensity, 23.f);
+    EXPECT_FLOAT_EQ(frame.Scene.Grid.Origin.y, 19.f);
+    EXPECT_FLOAT_EQ(frame.Sky.EnvironmentIntensity, 3.f);
+    EXPECT_FALSE(frame.ObjectPick.Valid());
+    EXPECT_FALSE(frame.HoverPick.Valid());
+    EXPECT_FALSE(frame.SelectionOutline.Enabled());
+    auto& active                    = static_cast<EditorScene*>(App->CurrentScene)->PendingLights;
+    active.PointLights[0].Intensity = 99.f;
+    EXPECT_FLOAT_EQ(frame.Scene.Lights.PointLights[0].Intensity, 23.f);
+    EXPECT_EQ(ECS.AliveCount(), 0u);
+    Pipeline->ReleaseFrameState();
+}
+
+TEST_F(EditorSceneFileInputTest, InitialFrameCapacityFailurePreservesSceneAndCanBeRetried)
+{
+    LoadSlots();
+    std::unique_ptr<EditorSceneCandidate> candidate = {};
+    ASSERT_TRUE(Prepare(&candidate));
+    const auto                                                   generation      = Engine->ScenePublication.Generation();
+    const auto                                                   epoch           = App->Session.SceneEpoch();
+    ZEngine::Applications::AppRenderPipeline::PreparedFrameState reservations[3] = {};
+    for (auto& reservation : reservations)
+    {
+        ASSERT_TRUE(Pipeline->PrepareFrameState({}, nullptr, &reservation));
+    }
+    EXPECT_FALSE(Publish(candidate, epoch));
+    EXPECT_NE(candidate, nullptr);
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(App->CurrentScene, &Owner);
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    EXPECT_EQ(App->Session.SceneEpoch(), epoch);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_TRUE(Engine->ScenePublication.Idle());
+    reservations[0].Reset();
+    ASSERT_TRUE(Publish(candidate, epoch));
+    ZEngine::Applications::RenderFrameState frame = {};
+    ASSERT_TRUE(Pipeline->TryReadFrameState(frame));
+    EXPECT_EQ(frame.SceneGeneration, generation + 1);
+    Pipeline->ReleaseFrameState();
+}
+
+TEST_F(EditorSceneFileInputTest, MissingInitialViewCannotPublishOrRetireTheActiveScene)
+{
+    LoadSlots();
+    std::unique_ptr<EditorSceneCandidate> candidate = {};
+    ASSERT_TRUE(Prepare(&candidate));
+    App->CameraController = nullptr;
+    const auto generation = Engine->ScenePublication.Generation();
+    EXPECT_FALSE(Publish(candidate, App->Session.SceneEpoch()));
+    EXPECT_NE(candidate, nullptr);
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    ZEngine::Applications::RenderFrameState frame = {};
+    EXPECT_FALSE(Pipeline->TryReadFrameState(frame));
+}
+
+TEST_F(EditorSceneFileInputTest, RejectedCommitReleasesThePreparedInitialFrameWithoutPublishingIt)
+{
+    LoadSlots();
+    std::unique_ptr<EditorSceneCandidate> candidate = {};
+    ASSERT_TRUE(Prepare(&candidate));
+    const auto generation = Engine->ScenePublication.Generation();
+    ASSERT_TRUE(App->Session.BeginMutationPhase());
+    // Fail after reservation and publication-guard entry: the request does not
+    // own a preparing ledger record and cannot enter the guarded commit.
+    EXPECT_FALSE(App->PublishSceneCandidate(*Engine, candidate, App->Session.SceneEpoch(), generation, {1, 1}));
+    App->Session.EndMutationPhase();
+    EXPECT_NE(candidate, nullptr);
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_TRUE(Engine->ScenePublication.Idle());
+    ZEngine::Applications::RenderFrameState frame = {};
+    EXPECT_FALSE(Pipeline->TryReadFrameState(frame));
+    for (const auto& slot : Pipeline->FrameStateSlots)
+    {
+        EXPECT_EQ(slot.value.load(), static_cast<uint32_t>(ZEngine::Applications::PayloadSlotState::Free));
+    }
+    ASSERT_TRUE(Publish(candidate, App->Session.SceneEpoch()));
+    ASSERT_TRUE(Pipeline->TryReadFrameState(frame));
+    EXPECT_EQ(frame.SceneGeneration, generation + 1);
+    Pipeline->ReleaseFrameState();
+}
+
 TEST_F(EditorSceneIOTest, DirtyPublicationCancelsPreviewButKeepsCommittedSceneAndCandidate)
 {
     LoadSlots();
@@ -2760,6 +3310,115 @@ TEST_F(EditorSceneIOTest, DirtyPublicationCancelsPreviewButKeepsCommittedSceneAn
     EXPECT_EQ(App->Session.SceneEpoch(), epoch);
     EXPECT_EQ(Engine->Scene, &ECS);
     ASSERT_NE(candidate, nullptr);
+}
+
+TEST_F(EditorSceneIOTest, StaleActivationAndUnpreparedSimulationStateCannotRetireTheActiveScene)
+{
+    LoadSlots();
+    std::unique_ptr<EditorSceneCandidate> candidate = {};
+    ASSERT_TRUE(Prepare(&candidate));
+    const auto epoch      = App->Session.SceneEpoch();
+    const auto generation = Engine->ScenePublication.Generation();
+    ASSERT_TRUE(App->Session.BeginMutationPhase());
+    EXPECT_FALSE(App->PublishSceneCandidate(*Engine, candidate, epoch, generation + 1));
+    candidate->Commands().SpawnEntity();
+    EXPECT_FALSE(App->PublishSceneCandidate(*Engine, candidate, epoch, generation));
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    EXPECT_EQ(App->CurrentScene, &Owner);
+    EXPECT_EQ(Owner.Session, &App->Session);
+    EXPECT_EQ(App->Session.SceneEpoch(), epoch);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    candidate->Commands().Clear();
+    Engine->CloseRequested.value.store(true);
+    EXPECT_FALSE(App->PublishSceneCandidate(*Engine, candidate, epoch, generation));
+    Engine->CloseRequested.value.store(false);
+    ASSERT_NE(candidate, nullptr);
+    auto* next_commands = &candidate->Commands();
+    EXPECT_TRUE(App->PublishSceneCandidate(*Engine, candidate, epoch, generation));
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation + 1);
+    EXPECT_EQ(Engine->WorldCommands, next_commands);
+    App->Session.EndMutationPhase();
+}
+
+TEST_F(EditorSceneIOTest, RetiredActorsObserveOutgoingBindingsAfterCommitAndCannotReenterPublication)
+{
+    struct ObserveRetirement final : Actor
+    {
+        Editor*                                App        = nullptr;
+        ZEngine::EngineContext*                Engine     = nullptr;
+        Scene*                                 Outgoing   = nullptr;
+        EditorScene*                           Render     = nullptr;
+        std::unique_ptr<EditorSceneCandidate>* Reentry    = nullptr;
+        uint64_t                               Generation = 0;
+        bool*                                  Observed   = nullptr;
+
+        void                                   OnDestroy() override
+        {
+            EXPECT_EQ(Engine->ScenePublication.Generation(), Generation + 1);
+            EXPECT_FALSE(Engine->ScenePublication.Idle());
+            EXPECT_EQ(Engine->Scene, Outgoing);
+            EXPECT_EQ(App->CurrentScene, Render);
+            EXPECT_NE(App->Session.Scene(), Outgoing);
+            EXPECT_FALSE(App->Session.Editable());
+            EXPECT_FALSE(App->Session.Request(EditorCommand::ClearSelection));
+            EXPECT_FALSE(App->Session.BindScene(Outgoing));
+            EXPECT_FALSE(App->PublishSceneCandidate(*Engine, *Reentry, App->Session.SceneEpoch()));
+            EXPECT_FALSE(App->ProcessSceneOpen(*Engine));
+            EXPECT_FALSE(App->RequestNewScene());
+            App->OnClosing();
+            App->OnWorldShutdown(*Engine);
+            EXPECT_TRUE(App->Session.Ready());
+            Engine->WorldCommands->SpawnEntity();
+            *Observed = true;
+        }
+    };
+    LoadSlots();
+    ActorManager actors = {};
+    actors.Initialize(&Memory.MainArena, ECS);
+    WorldCommands commands = {};
+    commands.Initialize(&Memory.MainArena);
+    WorldTick tick = {};
+    tick.Initialize(&Memory.MainArena);
+    Engine->ActorManager                            = &actors;
+    Engine->WorldCommands                           = &commands;
+    Engine->WorldTick                               = &tick;
+    std::unique_ptr<EditorSceneCandidate> candidate = {};
+    std::unique_ptr<EditorSceneCandidate> reentry   = {};
+    ASSERT_TRUE(Prepare(&candidate));
+    ASSERT_TRUE(Prepare(&reentry));
+    auto*      next_commands = &candidate->Commands();
+    auto*      next_tick     = &candidate->Tick();
+    const auto handle        = actors.Create<ObserveRetirement>();
+    auto*      actor         = static_cast<ObserveRetirement*>(actors.Access(handle));
+    bool       observed      = false;
+    actor->App               = App.get();
+    actor->Engine            = Engine.get();
+    actor->Outgoing          = &ECS;
+    actor->Render            = &Owner;
+    actor->Reentry           = &reentry;
+    actor->Generation        = Engine->ScenePublication.Generation();
+    actor->Observed          = &observed;
+    ASSERT_TRUE(Publish(candidate, App->Session.SceneEpoch()));
+    EXPECT_TRUE(observed);
+    EXPECT_TRUE(Engine->ScenePublication.Idle());
+    EXPECT_EQ(Engine->WorldCommands, next_commands);
+    EXPECT_EQ(Engine->WorldTick, next_tick);
+    EXPECT_TRUE(next_commands->IsEmpty());
+    EXPECT_TRUE(commands.IsEmpty());
+    EXPECT_TRUE(App->Session.Editable());
+    EXPECT_EQ(App->Session.Scene(), Engine->Scene);
+    EXPECT_EQ(App->Session.PendingRequestCount(), 0u);
+    ASSERT_NE(reentry, nullptr);
+    reentry.reset();
+    App->OnClosing();
+    App->OnWorldShutdown(*Engine);
+    EXPECT_EQ(Engine->WorldCommands, &commands);
+    EXPECT_EQ(Engine->WorldTick, &tick);
+    actors.Shutdown();
+    Engine->ActorManager  = nullptr;
+    Engine->WorldCommands = nullptr;
+    Engine->WorldTick     = nullptr;
 }
 
 TEST_F(EditorSceneIOTest, PublicationRestoresOriginalWorldBeforeActorDestructionAndRetiresCommands)
@@ -2825,7 +3484,8 @@ TEST_F(EditorSceneIOTest, RepeatedPublicationReclaimsBothSlotsWithoutGrowingPers
 {
     LoadSlots();
     const auto baseline = Memory.MainArena.m_current_offset;
-    for (uint32_t i = 0; i < 100; ++i)
+    // 100 warm-up publications followed by 1,000 steady-state replacements.
+    for (uint32_t i = 0; i < 1100; ++i)
     {
         std::unique_ptr<EditorSceneCandidate> candidate = {};
         ASSERT_TRUE(Prepare(&candidate));
@@ -2948,7 +3608,7 @@ TEST_F(EditorSceneIOTest, MissingOpenSourceAndDirtyCurrentScenePreserveTheActive
     Tetragrama::Components::Recent() = {};
     const auto epoch                 = App->Session.SceneEpoch();
     ASSERT_TRUE(App->RequestSceneOpen(Path, epoch));
-    EXPECT_FALSE(App->RequestSceneOpen(Path, epoch));
+    EXPECT_TRUE(App->RequestSceneOpen(Path, epoch)); // Latest admitted request supersedes the waiting one.
     FinishOpen();
     EXPECT_EQ(Engine->Scene, &ECS);
     EXPECT_EQ(App->Session.SceneEpoch(), epoch);
@@ -3032,6 +3692,7 @@ TEST_F(EditorSceneIOTest, ClosingRetiresDelayedPickerAndRejectsNewLifecycleReque
 
 TEST_F(EditorSceneIOTest, ShutdownWaitsForOpenWorkBeforeReleasingItsContextOrVFS)
 {
+    LoadSlots();
     struct BlockingReadVFS : VFSContext
     {
         std::atomic<bool>    Started = false;
@@ -3049,8 +3710,9 @@ TEST_F(EditorSceneIOTest, ShutdownWaitsForOpenWorkBeforeReleasingItsContextOrVFS
     ASSERT_TRUE(Save(Path));
     blocked.Initialize(&Memory.MainArena);
     ASSERT_TRUE(blocked.Mount(&Backend, VFSPath::Root(), 0).Succeeded());
-    Engine->VFS = &blocked;
-    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch()));
+    Engine->VFS            = &blocked;
+    SceneRequestId request = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
     ASSERT_TRUE(ProcessOpen());
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!blocked.Started.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
@@ -3059,11 +3721,21 @@ TEST_F(EditorSceneIOTest, ShutdownWaitsForOpenWorkBeforeReleasingItsContextOrVFS
     }
     EXPECT_TRUE(blocked.Started.load(std::memory_order_acquire));
     App->OnClosing();
+    SceneLoadResult result = {};
+    EXPECT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Cancelled);
+    EXPECT_TRUE(result.CleanupPending);
+    EXPECT_FALSE(Engine->SceneLoads.Drained());
     EXPECT_EQ(Engine->Scene, &ECS);
     EXPECT_TRUE(ECS.IsAlive(Entity));
     blocked.Release.store(true, std::memory_order_release);
     ZEngine::Helpers::ThreadPoolHelper::Shutdown();
     App->OnWorldShutdown(*Engine);
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Cancelled);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_TRUE(Engine->SceneLoads.Drained());
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
     EXPECT_FALSE(App->SceneOpenPending());
     EXPECT_EQ(Engine->Scene, &ECS);
     EXPECT_EQ(App->CurrentScene, &Owner);
@@ -3073,16 +3745,90 @@ TEST_F(EditorSceneIOTest, ShutdownWaitsForOpenWorkBeforeReleasingItsContextOrVFS
     ZEngine::Helpers::ThreadPoolHelper::Initialize();
 }
 
-TEST_F(EditorSceneIOTest, OpenWithoutAWorkerDoesNotFallbackToBlockingMainThreadIO)
+TEST_F(EditorSceneIOTest, ShutdownRetainsAnUnstartedSceneJobUntilTheWorkerQueueHasJoined)
 {
+    LoadSlots();
     ASSERT_TRUE(Save(Path));
     ZEngine::Helpers::ThreadPoolHelper::Shutdown();
-    EXPECT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch()));
-    EXPECT_FALSE(ProcessOpen());
+    ZEngine::Helpers::ThreadPoolHelper::Pool = std::make_unique<ZEngine::Helpers::ThreadPool>(2); // One background worker.
+    struct WorkerGate
+    {
+        Editor&                 App;
+        ZEngine::EngineContext& Engine;
+        std::atomic<bool>       Started = false;
+        std::atomic<bool>       Release = false;
+        bool                    Joined  = false;
+
+        ~WorkerGate()
+        {
+            Join();
+        }
+        void Join()
+        {
+            if (!Joined)
+            {
+                App.OnClosing();
+                Release.store(true, std::memory_order_release);
+                ZEngine::Helpers::ThreadPoolHelper::Shutdown();
+                App.OnWorldShutdown(Engine);
+                ZEngine::Helpers::ThreadPoolHelper::Initialize();
+                Joined = true;
+            }
+        }
+    } gate{*App, *Engine};
+    ASSERT_TRUE(ZEngine::Helpers::ThreadPoolHelper::Pool->SubmitToWorker(0, &gate, [](void* context) {
+        auto& gate = *static_cast<WorkerGate*>(context);
+        gate.Started.store(true, std::memory_order_release);
+        while (!gate.Release.load(std::memory_order_acquire))
+        {
+            std::this_thread::yield();
+        }
+    }));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!gate.Started.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::yield();
+    }
+    ASSERT_TRUE(gate.Started.load(std::memory_order_acquire));
+    SceneRequestId request = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    ASSERT_TRUE(ProcessOpen());
+    App->OnClosing();
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Cancelled);
+    EXPECT_TRUE(result.CleanupPending);
+    EXPECT_FALSE(Engine->SceneLoads.Drained());
+    gate.Join();
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Cancelled);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_TRUE(Engine->SceneLoads.Drained());
     EXPECT_FALSE(App->SceneOpenPending());
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+}
+
+TEST_F(EditorSceneIOTest, OpenWithoutAWorkerDoesNotFallbackToBlockingMainThreadIO)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    ZEngine::Helpers::ThreadPoolHelper::Shutdown();
+    SceneRequestId request = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    EXPECT_TRUE(ProcessOpen());
+    EXPECT_TRUE(App->SceneOpenPending());
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Pending);
+    EXPECT_FALSE(result.CleanupPending);
     EXPECT_EQ(Engine->Scene, &ECS);
     EXPECT_TRUE(ECS.IsAlive(Entity));
     ZEngine::Helpers::ThreadPoolHelper::Initialize();
+    FinishOpen();
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
 }
 
 class EditorSceneOpenOwnerTest : public EditorSceneIOTest, public testing::WithParamInterface<SceneOpenOwnerChange>
@@ -3143,6 +3889,47 @@ TEST_F(EditorSceneIOTest, OpenComparesTheOwnedWorkspaceValueRatherThanItsCString
     EXPECT_GT(App->Session.SceneEpoch(), epoch);
     EXPECT_EQ(App->Session.Scene(), Engine->Scene);
     EXPECT_EQ(Tetragrama::Components::Recent().Count, 1);
+}
+
+TEST_F(EditorSceneIOTest, DelayedReadCannotPublishAcrossAnActivationWithUnchangedWorldPointers)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    ASSERT_TRUE(StartBlockedOpen());
+    const auto epoch = App->Session.SceneEpoch();
+    {
+        ZEngine::ECS::ScenePublication::Transition activation = {};
+        ASSERT_TRUE(Engine->ScenePublication.TryBegin(Engine->ScenePublication.Generation(), &activation));
+        activation.Publish();
+    }
+    const auto generation = Engine->ScenePublication.Generation();
+    ReadGate.Release.store(true, std::memory_order_release);
+    FinishOpen();
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(App->CurrentScene, &Owner);
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    EXPECT_EQ(App->Session.SceneEpoch(), epoch);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaBInUse.value.load());
+}
+
+TEST_F(EditorSceneIOTest, DelayedReadCannotPublishThroughReplacedSimulationBindings)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    ASSERT_TRUE(StartBlockedOpen());
+    const auto    epoch    = App->Session.SceneEpoch();
+    WorldCommands commands = {};
+    commands.Initialize(&Memory.MainArena);
+    Engine->WorldCommands = &commands;
+    ReadGate.Release.store(true, std::memory_order_release);
+    FinishOpen();
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(Engine->WorldCommands, &commands);
+    EXPECT_EQ(App->Session.SceneEpoch(), epoch);
+    EXPECT_EQ(App->CurrentScene, &Owner);
+    Engine->WorldCommands = nullptr;
 }
 
 TEST_F(EditorSceneIOTest, SceneOpenIntentFromANonOwnerThreadIsRejectedWithoutAccessingMutableState)
@@ -4046,6 +4833,471 @@ TEST_F(EditorSceneIOTest, EarlierSettingsDirtyACleanSceneBeforeOpenEvaluatesCons
     ASSERT_TRUE(ProcessOpen());
     EXPECT_FALSE(App->SceneOpenPending());
     EXPECT_TRUE(ECS.IsAlive(Entity));
+}
+
+class EditorSceneIOWorkerPopulationTest : public EditorSceneIOTest, public ::testing::WithParamInterface<bool>
+{
+};
+
+TEST_P(EditorSceneIOWorkerPopulationTest, ECSReconstructionIsExclusiveUntilPublicationOrCancelledCleanup)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    struct PopulationProbe
+    {
+        SceneComponentSchemaRegistry* Registry    = nullptr;
+        SceneComponentCodecFns        Original    = {};
+        SceneDiagnostics*             Diagnostics = nullptr;
+        const std::thread::id         MainThread  = std::this_thread::get_id();
+        std::atomic<bool>             Started{false}, Release{false}, OnWorker{false};
+    } probe;
+    SceneComponentSchemaRegistry worker_schemas = {};
+    worker_schemas.Initialize(&Memory.MainArena);
+    probe.Registry    = &worker_schemas;
+    probe.Diagnostics = &Diagnostics;
+    Schemas.ForEachCanonical(
+        [](void* context, const SceneComponentSchema& schema) {
+            auto&                    probe = *static_cast<PopulationProbe*>(context);
+            SceneComponentSchemaDesc desc  = {};
+            desc.Key                       = schema.Key;
+            desc.Version                   = schema.Version;
+            desc.RuntimeType               = schema.RuntimeType;
+            desc.Fields                    = schema.Fields;
+            desc.FieldCount                = schema.FieldCount;
+            desc.Codecs                    = schema.Codecs;
+            desc.References                = schema.References;
+            desc.PureCandidateLocal        = schema.PureCandidateLocal;
+            if (schema.RuntimeType == ComponentTypeOf<TransformComponent>())
+            {
+                probe.Original                = schema.Codecs;
+                desc.Codecs.Context           = &probe;
+                desc.Codecs.PopulateCandidate = [](void* context, EntityID entity, Scene& candidate, const SceneValue& payload, SceneDiagnostics* diagnostics) {
+                    auto& probe = *static_cast<PopulationProbe*>(context);
+                    probe.OnWorker.store(std::this_thread::get_id() != probe.MainThread, std::memory_order_relaxed);
+                    probe.Started.store(true, std::memory_order_release);
+                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                    while (!probe.Release.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+                    {
+                        std::this_thread::yield();
+                    }
+                    if (!probe.Release.load(std::memory_order_acquire))
+                    {
+                        return false;
+                    }
+                    return probe.Original.PopulateCandidate(probe.Original.Context, entity, candidate, payload, diagnostics);
+                };
+            }
+            EXPECT_TRUE(probe.Registry->Register(desc, probe.Diagnostics));
+        },
+        &probe);
+    Engine->SceneSchemas    = &worker_schemas;
+    SceneRequestId request  = {};
+    const bool     admitted = App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request);
+    EXPECT_TRUE(admitted);
+    EXPECT_TRUE(ProcessOpen());
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!probe.Started.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::yield();
+    }
+    // No fatal assertion while the worker retains stack-owned probe/context data.
+    EXPECT_TRUE(probe.Started.load(std::memory_order_acquire));
+    EXPECT_TRUE(probe.OnWorker.load(std::memory_order_relaxed));
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_EQ(App->Session.Scene(), &ECS);
+    EXPECT_TRUE(App->Session.Editable());
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    EXPECT_TRUE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_TRUE(worker_schemas.Frozen());
+    if (GetParam())
+    {
+        EXPECT_EQ(Engine->SceneLoads.Cancel(request), SceneCancelResult::Cancelled);
+        EXPECT_TRUE(ProcessOpen());
+        EXPECT_TRUE(Engine->EditorSceneLoadArenaAInUse.value.load());
+        EXPECT_FALSE(Engine->SceneLoads.Drained());
+        EXPECT_EQ(Engine->Scene, &ECS);
+    }
+    probe.Release.store(true, std::memory_order_release);
+    FinishOpen();
+    Engine->SceneSchemas   = &Schemas;
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, GetParam() ? SceneLoadOutcome::Cancelled : SceneLoadOutcome::Committed);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+    if (GetParam())
+    {
+        EXPECT_EQ(Engine->Scene, &ECS);
+        EXPECT_TRUE(ECS.IsAlive(Entity));
+        EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+        return;
+    }
+    EXPECT_NE(Engine->Scene, &ECS);
+    ASSERT_NE(Engine->ActorManager, nullptr);
+    EXPECT_EQ(Engine->ActorManager->Count(), 0u);
+    EXPECT_EQ(static_cast<EditorScene*>(App->CurrentScene)->SourcePath, Path);
+}
+
+INSTANTIATE_TEST_SUITE_P(CommitAndCancel, EditorSceneIOWorkerPopulationTest, ::testing::Bool());
+
+TEST_F(EditorSceneIOTest, BusySceneSlotsWaitWithoutStartingSourceIOAndResumeWhenStorageReturns)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    ReadGate.Initialize(&Memory.MainArena);
+    ASSERT_TRUE(ReadGate.Mount(&Backend, VFSPath::Root(), 0).Succeeded());
+    Engine->VFS             = &ReadGate;
+    SceneStorageLease first = {}, second = {};
+    ASSERT_TRUE(Engine->TryAcquireSceneStorage(&first));
+    ASSERT_TRUE(Engine->TryAcquireSceneStorage(&second));
+    SceneRequestId request = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    EXPECT_TRUE(ProcessOpen());
+    EXPECT_FALSE(ReadGate.Started.load(std::memory_order_acquire));
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Pending);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_EQ(Engine->Scene, &ECS);
+    first.Reset();
+    ReadGate.Release.store(true, std::memory_order_release);
+    FinishOpen();
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_TRUE(ReadGate.Started.load(std::memory_order_acquire));
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+}
+
+TEST_F(EditorSceneIOTest, CancelledReadKeepsItsReservedSceneSlotUntilTheWorkerReturns)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    SceneRequestId request = {};
+    ASSERT_TRUE(StartBlockedOpen(&request));
+    EXPECT_TRUE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_EQ(Engine->SceneLoads.Cancel(request), SceneCancelResult::Cancelled);
+    EXPECT_TRUE(ProcessOpen());
+    EXPECT_TRUE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_FALSE(Engine->SceneLoads.Drained());
+    ReadGate.Release.store(true, std::memory_order_release);
+    FinishOpen();
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaBInUse.value.load());
+    EXPECT_TRUE(Engine->SceneLoads.Drained());
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+    EXPECT_EQ(Engine->Scene, &ECS);
+}
+
+TEST_F(EditorSceneIOTest, ChangedAggregateDocumentCapInvalidatesWorkWithoutReusingItsLiveStorage)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    SceneRequestId request = {};
+    ASSERT_TRUE(StartBlockedOpen(&request));
+    Engine->SceneDocumentWorkingBytes += ZKilo(1);
+    EXPECT_FALSE(ProcessOpen());
+    EXPECT_TRUE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    ReadGate.Release.store(true, std::memory_order_release);
+    FinishOpen();
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Failed);
+    EXPECT_EQ(result.Error, SceneLoadError::Invalidated);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+}
+
+TEST_F(EditorSceneIOTest, SourceWorkspaceExhaustionPreservesActiveSceneAndAllowsTheNextLoad)
+{
+    Engine->SceneDocumentWorkingBytes = ZMega(2);
+    Memory.MainArena.CreateSubArena(SceneStorageLease::MinimumBytes + ZMega(2), &Engine->EditorSceneLoadArenaA, "SceneIO/SmallA");
+    Memory.MainArena.CreateSubArena(SceneStorageLease::MinimumBytes + ZMega(2), &Engine->EditorSceneLoadArenaB, "SceneIO/SmallB");
+    ASSERT_TRUE(Save(Path));
+    const auto source_stat = VFS.Stat(Path);
+    ASSERT_TRUE(source_stat.Succeeded());
+    auto file = VFS.Open(Path, VFSOpenFlags::Write | VFSOpenFlags::Append);
+    ASSERT_TRUE(file.Succeeded());
+    const std::string padding(SceneStorageLease::MinimumBytes, ' ');
+    const auto        written = file.Value()->Write({reinterpret_cast<const uint8_t*>(padding.data()), padding.size()}, source_stat.Value().SizeBytes);
+    VFS.Close(file.Value());
+    ASSERT_TRUE(written.Succeeded());
+    ASSERT_EQ(written.Value(), padding.size());
+    const auto     generation = Engine->ScenePublication.Generation();
+    const auto     epoch      = App->Session.SceneEpoch();
+    SceneRequestId request    = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, epoch, &request));
+    FinishOpen();
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Failed);
+    EXPECT_EQ(result.Stage, SceneLoadStage::Read);
+    EXPECT_EQ(result.Error, SceneLoadError::Resources);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    EXPECT_EQ(App->Session.SceneEpoch(), epoch);
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_TRUE(ECS.IsAlive(Entity));
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaBInUse.value.load());
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+    ASSERT_TRUE(Save(Path));
+    ASSERT_TRUE(App->RequestSceneOpen(Path, epoch, &request));
+    FinishOpen();
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+}
+
+TEST_F(EditorSceneIOTest, UnqualifiedCustomCodecsFailBeforeWorkerIOOrCallbackExecution)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    ReadGate.Initialize(&Memory.MainArena);
+    ASSERT_TRUE(ReadGate.Mount(&Backend, VFSPath::Root(), 0).Succeeded());
+    Engine->VFS         = &ReadGate;
+    const auto* builtin = Schemas.FindByKey("TransformComponent");
+    ASSERT_NE(builtin, nullptr);
+    bool                     called = false;
+    SceneComponentSchemaDesc custom = {};
+    custom.Key                      = "UnqualifiedCustom";
+    custom.Version                  = 1;
+    custom.RuntimeType              = ComponentTypeOf<UnsupportedSceneComponent>();
+    custom.Fields                   = builtin->Fields;
+    custom.FieldCount               = builtin->FieldCount;
+    custom.Codecs                   = builtin->Codecs;
+    custom.Codecs.Context           = &called;
+    custom.Codecs.DecodeYAML        = [](void* context, uint32_t, const SceneYAML::Node&, SceneValueWriter*, SceneDiagnostics*) {
+        *static_cast<bool*>(context) = true;
+        return false;
+    };
+    ASSERT_TRUE(Schemas.Register(custom, &Diagnostics));
+    SceneRequestId request = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    EXPECT_FALSE(ProcessOpen());
+    EXPECT_FALSE(called);
+    EXPECT_FALSE(ReadGate.Started.load(std::memory_order_acquire));
+    EXPECT_FALSE(Schemas.Frozen());
+    EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Failed);
+    EXPECT_EQ(result.Error, SceneLoadError::UnsupportedCapability);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+}
+
+TEST_F(EditorSceneIOTest, UnconfiguredSceneStorageFailsWithoutStartingSourceIO)
+{
+    ASSERT_TRUE(Save(Path));
+    ReadGate.Initialize(&Memory.MainArena);
+    ASSERT_TRUE(ReadGate.Mount(&Backend, VFSPath::Root(), 0).Succeeded());
+    Engine->VFS            = &ReadGate;
+    SceneRequestId request = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    EXPECT_FALSE(ProcessOpen());
+    EXPECT_FALSE(App->SceneOpenPending());
+    EXPECT_FALSE(ReadGate.Started.load(std::memory_order_acquire));
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Failed);
+    EXPECT_EQ(result.Stage, SceneLoadStage::Preparation);
+    EXPECT_EQ(result.Error, SceneLoadError::Resources);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+}
+
+TEST_F(EditorSceneIOTest, InvalidOrUnreservableAggregateDocumentCapsFailBeforeWorkerIO)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    ReadGate.Initialize(&Memory.MainArena);
+    ASSERT_TRUE(ReadGate.Mount(&Backend, VFSPath::Root(), 0).Succeeded());
+    Engine->VFS = &ReadGate;
+    for (const size_t cap : {size_t(0), SIZE_MAX, size_t(ZMega(32))})
+    {
+        Engine->SceneDocumentWorkingBytes = cap;
+        SceneRequestId request            = {};
+        ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+        EXPECT_FALSE(ProcessOpen());
+        EXPECT_FALSE(ReadGate.Started.load(std::memory_order_acquire));
+        EXPECT_FALSE(Engine->EditorSceneLoadArenaAInUse.value.load());
+        EXPECT_FALSE(Engine->EditorSceneLoadArenaBInUse.value.load());
+        EXPECT_EQ(Engine->Scene, &ECS);
+        SceneLoadResult result = {};
+        ASSERT_TRUE(Engine->SceneLoads.Poll(request, &result));
+        EXPECT_EQ(result.Outcome, SceneLoadOutcome::Failed);
+        EXPECT_EQ(result.Stage, SceneLoadStage::Preparation);
+        EXPECT_EQ(result.Error, SceneLoadError::Resources);
+        EXPECT_TRUE(Engine->SceneLoads.Acknowledge(request));
+    }
+}
+
+TEST_F(EditorSceneIOTest, RapidOpenSupersessionPreservesWorkerPayloadAndPublishesOnlyTheLatestInput)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    const auto second = VFSPath::Parse("/Scenes/second.zescene").Value();
+    const auto latest = VFSPath::Parse("/Scenes/latest.zescene").Value();
+    ASSERT_TRUE(Save(second));
+    ASSERT_TRUE(Save(latest));
+    const auto generation = Engine->ScenePublication.Generation();
+    const auto epoch      = App->Session.SceneEpoch();
+    ASSERT_TRUE(StartBlockedOpen());
+    SceneRequestId waiting = {}, newest = {};
+    ASSERT_TRUE(App->RequestSceneOpen(second, epoch, &waiting));
+    ASSERT_TRUE(App->RequestSceneOpen(latest, epoch, &newest));
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(waiting, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Superseded);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_TRUE(ProcessOpen());
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation);
+    ASSERT_TRUE(Engine->SceneLoads.Poll(newest, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Pending);
+    EXPECT_FALSE(result.CleanupPending); // Old worker still owns the only preparation slot.
+    ReadGate.Release.store(true, std::memory_order_release);
+    FinishOpen();
+    ASSERT_TRUE(Engine->SceneLoads.Poll(newest, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_EQ(result.CommittedGeneration, generation + 1);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_EQ(static_cast<EditorScene*>(App->CurrentScene)->SourcePath, latest);
+    EXPECT_EQ(Engine->ScenePublication.Generation(), generation + 1);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(waiting));
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(newest));
+}
+
+TEST_F(EditorSceneIOTest, AcknowledgingCancelledWorkerDoesNotFreeItsContextOrDiscardTheNextRequest)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    SceneRequestId cancelled = {};
+    ASSERT_TRUE(StartBlockedOpen(&cancelled));
+    EXPECT_EQ(Engine->SceneLoads.Cancel(cancelled), SceneCancelResult::Cancelled);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(cancelled));
+    SceneRequestId latest = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &latest));
+    EXPECT_TRUE(ProcessOpen());
+    EXPECT_EQ(Engine->Scene, &ECS);
+    ReadGate.Release.store(true, std::memory_order_release);
+    FinishOpen();
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(latest, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(latest));
+}
+
+TEST_F(EditorSceneIOTest, FullOpenResultLedgerRejectsWithoutCancellingTheLastAdmittedScene)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    SceneRequestId requests[SceneLoadCoordinator::ResultCapacity] = {};
+    for (auto& request : requests)
+    {
+        ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    }
+    SceneRequestId rejected = {};
+    EXPECT_FALSE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &rejected));
+    EXPECT_FALSE(static_cast<bool>(rejected));
+    FinishOpen();
+    SceneLoadResult result = {};
+    for (size_t i = 0; i < SceneLoadCoordinator::ResultCapacity; ++i)
+    {
+        ASSERT_TRUE(Engine->SceneLoads.Poll(requests[i], &result));
+        EXPECT_EQ(result.Outcome, i + 1 == SceneLoadCoordinator::ResultCapacity ? SceneLoadOutcome::Committed : SceneLoadOutcome::Superseded);
+        EXPECT_FALSE(result.CleanupPending);
+        EXPECT_TRUE(Engine->SceneLoads.Acknowledge(requests[i]));
+    }
+}
+
+TEST_F(EditorSceneIOTest, OpenCancellationAndReadFailureExposeStableTerminalResults)
+{
+    LoadSlots();
+    const auto     epoch     = App->Session.SceneEpoch();
+    SceneRequestId cancelled = {}, failed = {};
+    ASSERT_TRUE(App->RequestSceneOpen(Path, epoch, &cancelled));
+    EXPECT_EQ(Engine->SceneLoads.Cancel(cancelled), SceneCancelResult::Cancelled);
+    EXPECT_TRUE(ProcessOpen());
+    EXPECT_FALSE(App->SceneOpenPending());
+    ASSERT_TRUE(App->RequestSceneOpen(Path, epoch, &failed));
+    FinishOpen();
+    SceneLoadResult result = {};
+    ASSERT_TRUE(Engine->SceneLoads.Poll(cancelled, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Cancelled);
+    EXPECT_FALSE(result.CleanupPending);
+    ASSERT_TRUE(Engine->SceneLoads.Poll(failed, &result));
+    EXPECT_EQ(result.Outcome, SceneLoadOutcome::Failed);
+    EXPECT_EQ(result.Stage, SceneLoadStage::Read);
+    EXPECT_EQ(result.Error, SceneLoadError::Source);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_EQ(Engine->Scene, &ECS);
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(cancelled));
+    EXPECT_TRUE(Engine->SceneLoads.Acknowledge(failed));
+}
+
+TEST_F(EditorSceneIOTest, RepeatedOpenReleasesUnobservedResultsInsteadOfExhaustingAdmission)
+{
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    const auto generation = Engine->ScenePublication.Generation();
+    for (size_t i = 0; i < SceneLoadCoordinator::ResultCapacity * 3; ++i)
+    {
+        ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch()));
+        FinishOpen();
+        EXPECT_EQ(Engine->ScenePublication.Generation(), generation + i + 1);
+        EXPECT_TRUE(Engine->SceneLoads.Drained());
+        EXPECT_EQ(static_cast<EditorScene*>(App->CurrentScene)->SourcePath, Path);
+    }
+}
+
+TEST_F(EditorSceneIOTest, AsyncRetirementCannotRecursivelyReleaseTheCurrentWorkAndMayAcknowledgeItsCommittedResult)
+{
+    struct ObserveRetirement final : Actor
+    {
+        Editor*                 App      = nullptr;
+        ZEngine::EngineContext* Engine   = nullptr;
+        SceneRequestId*         Request  = nullptr;
+        bool*                   Observed = nullptr;
+
+        void                    OnDestroy() override
+        {
+            EXPECT_FALSE(Engine->ScenePublication.Idle());
+            EXPECT_FALSE(App->ProcessSceneOpen(*Engine));
+            EXPECT_FALSE(App->RequestSceneOpen(VFSPath::Parse("/Scenes/main.zescene").Value(), App->Session.SceneEpoch()));
+            EXPECT_EQ(Engine->SceneLoads.Cancel(*Request), SceneCancelResult::TooLate);
+            SceneLoadResult result = {};
+            EXPECT_TRUE(Engine->SceneLoads.Poll(*Request, &result));
+            EXPECT_EQ(result.Outcome, SceneLoadOutcome::Committed);
+            EXPECT_TRUE(result.CleanupPending);
+            EXPECT_TRUE(Engine->SceneLoads.Acknowledge(*Request));
+            *Observed = true;
+        }
+    };
+    LoadSlots();
+    ASSERT_TRUE(Save(Path));
+    ActorManager actors = {};
+    actors.Initialize(&Memory.MainArena, ECS);
+    Engine->ActorManager    = &actors;
+    SceneRequestId request  = {};
+    bool           observed = false;
+    const auto     handle   = actors.Create<ObserveRetirement>();
+    auto*          actor    = static_cast<ObserveRetirement*>(actors.Access(handle));
+    actor->App              = App.get();
+    actor->Engine           = Engine.get();
+    actor->Request          = &request;
+    actor->Observed         = &observed;
+    ASSERT_TRUE(App->RequestSceneOpen(Path, App->Session.SceneEpoch(), &request));
+    FinishOpen();
+    EXPECT_TRUE(observed);
+    EXPECT_TRUE(Engine->SceneLoads.Drained());
+    SceneLoadResult result = {};
+    EXPECT_FALSE(Engine->SceneLoads.Poll(request, &result));
+    App->OnClosing();
+    App->OnWorldShutdown(*Engine);
+    actors.Shutdown();
+    Engine->ActorManager = nullptr;
 }
 
 TEST_F(EditorSceneIOTest, DirectCandidatePublicationCannotDiscardAnEarlierPendingSetting)

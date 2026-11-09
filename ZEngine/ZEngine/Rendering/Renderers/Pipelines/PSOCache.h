@@ -236,7 +236,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
     inline constexpr uint32_t kMaxPSOLayoutBindings                       = 32;
     inline constexpr uint32_t kMaxPSOSetLayouts                           = 8;
     inline constexpr uint32_t kMaxPSOPushConstantRanges                   = 8;
-    inline constexpr uint32_t kMaxPSOCompatibilityAttachments             = 8;
+    inline constexpr uint32_t kMaxPSOCompatibilityAttachments             = 9; // Eight colors plus one depth/stencil.
     inline constexpr uint32_t kMaxPSOGraphicsShaderStages                 = 5;
     inline constexpr uint32_t kMaxPSOSpecializationEntries                = 8;
     inline constexpr uint32_t kMaxPSOSpecializationValueBytes             = 64;
@@ -275,6 +275,24 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         Ready,
         Retiring,
         Discarded,
+        Failed,
+    };
+
+    /// @brief Nonblocking preparation outcome, observed only by the render owner.
+    enum class PSOPreparationState : uint8_t
+    {
+        Unavailable = 0,
+        Backpressure,
+        Pending,
+        Ready,
+        Failed,
+    };
+
+    struct PSOPreparationResult
+    {
+        PSOPreparationState State  = PSOPreparationState::Unavailable;
+        VkPipeline          Handle = VK_NULL_HANDLE;
+        VkResult            Error  = VK_SUCCESS;
     };
 
     /// @brief C-style callback notified after an asynchronous pipeline request resolves.
@@ -632,8 +650,10 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         uint64_t AsyncPipelineRequests         = 0;
         uint64_t AsyncPipelineJobs             = 0;
         uint64_t AsyncPipelineJobOverflows     = 0;
+        uint64_t AsyncPipelineBucketOverflows  = 0;
         uint64_t AsyncPipelineWaiterOverflows  = 0;
         uint64_t AsyncPipelinePublishes        = 0;
+        uint64_t AsyncPipelineFailures         = 0;
         uint64_t AsyncPipelineStaleCompletions = 0;
         uint64_t WarmupRecipeLoads             = 0;
         uint64_t WarmupRecipeLoadSuccesses     = 0;
@@ -651,15 +671,19 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
         /// @brief Returns a shared descriptor-set layout for an equivalent canonical request.
         VkDescriptorSetLayout         GetOrCreateDescriptorSetLayout(const VkDescriptorSetLayoutCreateInfo& create_info);
+        VkDescriptorSetLayout         TryGetOrCreateDescriptorSetLayout(const VkDescriptorSetLayoutCreateInfo& create_info, VkResult* status = nullptr, PFN_vkCreateDescriptorSetLayout dispatch = vkCreateDescriptorSetLayout);
 
         /// @brief Returns a shared sampler for an equivalent canonical request.
         VkSampler                     GetOrCreateSampler(const VkSamplerCreateInfo& create_info);
 
         /// @brief Returns a shared pipeline layout for equivalent set-layout and push-constant state.
         VkPipelineLayout              GetOrCreatePipelineLayout(const VkPipelineLayoutCreateInfo& create_info);
+        /// Render-owner admission. A failed native creation releases its cache reservation.
+        VkPipelineLayout              TryGetOrCreatePipelineLayout(const VkPipelineLayoutCreateInfo& create_info, VkResult* status = nullptr, PFN_vkCreatePipelineLayout dispatch = vkCreatePipelineLayout);
 
         /// @brief Returns a compatibility render pass for graphics-pipeline creation only.
         VkRenderPass                  GetOrCreateCompatibilityRenderPass(const RenderPasses::Attachment& attachment);
+        VkRenderPass                  TryGetOrCreateCompatibilityRenderPass(const PSOCompatibilityRenderPassKey& key, VkResult* status = nullptr, PFN_vkCreateRenderPass dispatch = vkCreateRenderPass);
 
         /// @brief Returns a shared compute pipeline for an equivalent shader generation and layout.
         VkPipeline                    GetOrCreateComputePipeline(const VkComputePipelineCreateInfo& create_info, uint32_t shader_generation);
@@ -672,6 +696,11 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
         /// @brief Queues an immutable graphics-pipeline job and returns a ready pipeline when one already exists.
         VkPipeline                    RequestGraphicsPipelineAsync(const VkGraphicsPipelineCreateInfo& create_info, uint32_t shader_generation, void* callback_context, PSOPipelineReadyFn callback, bool critical = false);
+
+        /// @brief Polls or queues the exact immutable variant without callbacks or synchronous compilation.
+        /// A ready handle is borrowed; pin it on this render-owner turn before retaining it.
+        PSOPreparationResult          PrepareComputePipelineAsync(const VkComputePipelineCreateInfo& create_info, uint32_t shader_generation);
+        PSOPreparationResult          PrepareGraphicsPipelineAsync(const VkGraphicsPipelineCreateInfo& create_info, uint32_t shader_generation);
 
         /// @brief Publishes worker results, returns worker caches, and starts queued jobs on the render thread.
         void                          FlushAsyncPipelineJobs();
@@ -723,15 +752,18 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
         /// @brief Builds a canonical descriptor-set layout key without creating a Vulkan object.
         PSODescriptorSetLayoutKey     MakeDescriptorSetLayoutKey(const VkDescriptorSetLayoutCreateInfo& create_info);
+        bool                          TryMakeDescriptorSetLayoutKey(const VkDescriptorSetLayoutCreateInfo& create_info, PSODescriptorSetLayoutKey* out, VkResult* status = nullptr);
 
         /// @brief Builds a canonical sampler key without creating a Vulkan object.
         static PSOSamplerKey          MakeSamplerKey(const VkSamplerCreateInfo& create_info);
 
         /// @brief Builds a canonical pipeline-layout key without creating a Vulkan object.
         PSOPipelineLayoutKey          MakePipelineLayoutKey(const VkPipelineLayoutCreateInfo& create_info) const;
+        bool                          TryMakePipelineLayoutKey(const VkPipelineLayoutCreateInfo& create_info, PSOPipelineLayoutKey* out) const;
 
         /// @brief Builds a canonical compatibility render-pass key without creating a Vulkan object.
         PSOCompatibilityRenderPassKey MakeCompatibilityRenderPassKey(const RenderPasses::Attachment& attachment) const;
+        bool                          TryMakeCompatibilityRenderPassKey(const RenderPasses::Attachment& attachment, PSOCompatibilityRenderPassKey* out) const;
 
         /// @brief Builds a canonical compute-pipeline key without creating a Vulkan object.
         PSOComputePipelineKey         MakeComputePipelineKey(const VkComputePipelineCreateInfo& create_info, uint32_t shader_generation) const;
@@ -759,6 +791,20 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             VkSampler Samplers[kMaxPSOImmutableSamplers] = {};
         };
 
+        /// Exclusive render-owner transaction; rolls back only lists first
+        /// reserved by this request, never metadata borrowed by an older layout.
+        struct ImmutableSamplerAdmission
+        {
+            explicit ImmutableSamplerAdmission(PSOCache* cache) : Cache(cache) {}
+            ImmutableSamplerAdmission(const ImmutableSamplerAdmission&)            = delete;
+            ImmutableSamplerAdmission& operator=(const ImmutableSamplerAdmission&) = delete;
+            PSOCache*                  Cache                                       = nullptr;
+            PSOImmutableSamplerListKey Keys[kMaxPSOLayoutBindings]                 = {};
+            uint32_t                   Count                                       = 0;
+            bool                       Committed                                   = false;
+            ~ImmutableSamplerAdmission();
+        };
+
         struct PipelineLayoutEntry
         {
             VkPipelineLayout Handle   = VK_NULL_HANDLE;
@@ -773,6 +819,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
         struct ComputePipelineEntry
         {
+            bool              WarmupRecorded               = false;
             VkPipeline        Handle                       = VK_NULL_HANDLE;
             uint64_t          LastUsedFrame                = 0;
             uint32_t          PinCount                     = 0;
@@ -780,11 +827,13 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             uint32_t          AsyncJobIndex                = UINT32_MAX;
             uint32_t          WaiterCount                  = 0;
             PSOPipelineState  State                        = PSOPipelineState::Discarded;
+            VkResult          Failure                      = VK_SUCCESS;
             PSOPipelineWaiter Waiters[kMaxPSOAsyncWaiters] = {};
         };
 
         struct GraphicsPipelineEntry
         {
+            bool              WarmupRecorded               = false;
             VkPipeline        Handle                       = VK_NULL_HANDLE;
             uint64_t          LastUsedFrame                = 0;
             uint32_t          PinCount                     = 0;
@@ -792,6 +841,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
             uint32_t          AsyncJobIndex                = UINT32_MAX;
             uint32_t          WaiterCount                  = 0;
             PSOPipelineState  State                        = PSOPipelineState::Discarded;
+            VkResult          Failure                      = VK_SUCCESS;
             PSOPipelineWaiter Waiters[kMaxPSOAsyncWaiters] = {};
         };
 
@@ -900,7 +950,8 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         uint64_t                         HashComputePipelineKey(const PSOComputePipelineKey& key) const;
         uint64_t                         HashGraphicsPipelineKey(const PSOGraphicsPipelineKey& key) const;
         uint64_t                         GetSetLayoutIdentity(VkDescriptorSetLayout layout) const;
-        uint64_t                         GetOrCreateImmutableSamplerList(const VkSampler* samplers, uint32_t sampler_count);
+        uint64_t                         TryGetOrCreateImmutableSamplerList(const VkSampler* samplers, uint32_t sampler_count, ImmutableSamplerAdmission& admission);
+        bool                             TryMakeDescriptorSetLayoutKey(const VkDescriptorSetLayoutCreateInfo& create_info, PSODescriptorSetLayoutKey* out, VkResult* status, ImmutableSamplerAdmission& admission);
         const ImmutableSamplerListEntry* FindImmutableSamplerList(uint64_t identity) const;
         uint64_t                         GetPipelineLayoutIdentity(VkPipelineLayout layout) const;
         uint64_t                         GetCompatibilityRenderPassIdentity(VkRenderPass render_pass) const;
@@ -921,6 +972,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         bool                             AppendWaiter(ComputePipelineEntry& entry, const PSOPipelineWaiter& waiter);
         bool                             AppendWaiter(GraphicsPipelineEntry& entry, const PSOPipelineWaiter& waiter);
         void                             PublishAsyncCompletion(const AsyncPipelineCompletion& completion);
+        void                             ResolveAsyncPipelineResult(AsyncPipelineJob& job, const AsyncPipelineCompletion& completion);
         static void                      CompileAsyncPipelineJob(void* context);
         static VkResult                  CompileAsyncComputePipeline(const AsyncPipelineJob& job, VkDevice device, VkPipelineCache worker_cache, VkPipeline* pipeline);
         static VkResult                  CompileAsyncGraphicsPipeline(const AsyncPipelineJob& job, VkDevice device, VkPipelineCache worker_cache, VkPipeline* pipeline);
