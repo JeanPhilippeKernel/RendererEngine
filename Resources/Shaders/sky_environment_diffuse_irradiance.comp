@@ -8,9 +8,10 @@ layout(set = 0, binding = 2, rgba16f) uniform writeonly image2DArray Destination
 
 layout(push_constant) uniform DiffuseIrradiancePushConstants
 {
-    uint  Resolution;
-    uint  SampleCount;
-    uvec2 Padding;
+    uint Resolution;
+    uint SampleCount;
+    uint FaceOffset;
+    uint Padding;
 }
 Push;
 
@@ -49,7 +50,7 @@ vec3 cube_direction(uint face, vec2 uv)
 void main()
 {
     const uvec2 pixel = gl_GlobalInvocationID.xy;
-    const uint  face  = gl_GlobalInvocationID.z;
+    const uint  face  = gl_GlobalInvocationID.z + Push.FaceOffset;
     if (pixel.x >= Push.Resolution || pixel.y >= Push.Resolution || face >= 6u)
         return;
 

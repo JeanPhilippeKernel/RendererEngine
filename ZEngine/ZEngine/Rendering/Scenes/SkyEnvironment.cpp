@@ -178,6 +178,7 @@ namespace ZEngine::Rendering::Scenes
         m_active_bake_reserved_memory_bytes = 0;
         m_active_stage_timeline             = 0;
         m_active_bake_stage                 = SkyEnvironmentBakeStage::AwaitingSource;
+        m_active_bake_face                  = 0;
         m_active_stage_submitted            = false;
         m_active_stage_recorded             = false;
         m_has_pending_request               = false;
@@ -216,11 +217,12 @@ namespace ZEngine::Rendering::Scenes
 
     bool SkyEnvironment::BeginGpuBake(uint64_t revision)
     {
-        if (!m_has_active_bake || m_active_bake.Revision != revision || !m_active_bake_source.Valid() || !m_active_bake_lighting.Valid() || (m_active_bake.Config.IsAtmosphere() && !m_active_bake_atmosphere.Valid()))
+        if (!m_has_active_bake || m_active_bake.Revision != revision || m_active_bake_stage != SkyEnvironmentBakeStage::AwaitingSource || !m_active_bake_source.Valid() || !m_active_bake_lighting.Valid() || (m_active_bake.Config.IsAtmosphere() && !m_active_bake_atmosphere.Valid()))
             return false;
 
         m_active_bake_stage      = m_active_bake.Config.IsAtmosphere() ? SkyEnvironmentBakeStage::AtmosphereTransmittance : SkyEnvironmentBakeStage::SourceMipChain;
         m_active_stage_timeline  = 0;
+        m_active_bake_face       = 0;
         m_active_stage_submitted = false;
         m_active_stage_recorded  = false;
         return true;
@@ -231,9 +233,9 @@ namespace ZEngine::Rendering::Scenes
         return m_has_active_bake && m_active_bake_stage != SkyEnvironmentBakeStage::AwaitingSource && m_active_bake_stage != SkyEnvironmentBakeStage::ReadyToPublish && !m_active_stage_submitted;
     }
 
-    bool SkyEnvironment::NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage)
+    bool SkyEnvironment::NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage, uint32_t face)
     {
-        if (!CanRecordGpuBakeStage() || m_active_bake.Revision != revision || m_active_bake_stage != stage)
+        if (!CanRecordGpuBakeStage() || m_active_bake.Revision != revision || m_active_bake_stage != stage || m_active_bake_face != face)
             return false;
 
         m_active_stage_recorded = true;
@@ -258,6 +260,15 @@ namespace ZEngine::Rendering::Scenes
         m_active_stage_submitted = false;
         m_active_stage_recorded  = false;
         m_active_stage_timeline  = 0;
+        // Preserve the candidate and its image contents until every face has
+        // completed. A face is also a safe cancellation boundary, not a reason
+        // to publish a partially populated cubemap.
+        const bool face_stage    = m_active_bake_stage == SkyEnvironmentBakeStage::AtmosphereSourceRadiance || m_active_bake_stage == SkyEnvironmentBakeStage::DiffuseIrradiance || m_active_bake_stage == SkyEnvironmentBakeStage::SpecularEnvironment;
+        if (face_stage && ++m_active_bake_face < BakeFaceCount)
+        {
+            return true;
+        }
+        m_active_bake_face = 0;
         switch (m_active_bake_stage)
         {
             case SkyEnvironmentBakeStage::AtmosphereTransmittance:
@@ -333,6 +344,7 @@ namespace ZEngine::Rendering::Scenes
         m_active_bake_lighting                                   = {};
         m_active_bake_reserved_memory_bytes                      = 0;
         m_active_bake_stage                                      = SkyEnvironmentBakeStage::AwaitingSource;
+        m_active_bake_face                                       = 0;
         m_active_stage_timeline                                  = 0;
         m_active_stage_submitted                                 = false;
         m_active_stage_recorded                                  = false;
@@ -508,6 +520,7 @@ namespace ZEngine::Rendering::Scenes
         m_active_bake_lighting              = {};
         m_active_bake_reserved_memory_bytes = 0;
         m_active_bake_stage                 = SkyEnvironmentBakeStage::AwaitingSource;
+        m_active_bake_face                  = 0;
         m_active_stage_timeline             = 0;
         m_active_stage_submitted            = false;
         m_active_stage_recorded             = false;
@@ -552,6 +565,11 @@ namespace ZEngine::Rendering::Scenes
     SkyEnvironmentBakeStage SkyEnvironment::GetActiveBakeStage() const
     {
         return m_active_bake_stage;
+    }
+
+    uint32_t SkyEnvironment::GetActiveBakeFace() const
+    {
+        return m_active_bake_face;
     }
 
     const SkyEnvironmentSnapshot* SkyEnvironment::GetPublishedSnapshot() const

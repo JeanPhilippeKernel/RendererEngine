@@ -1355,6 +1355,15 @@ storage. The recorded-frame acknowledgement requires successful activation.
 The first selected frame uses the exact prepared input even when a newer editor
 edit coalesces the initial mailbox; subsequent frames can apply that edit.
 
+Atmosphere source radiance, diffuse irradiance and specular prefiltering record
+one cubemap face per GPU batch, without reducing resolution, mip coverage or
+sample counts. A matching recorded revision/stage/face and successful submission
+are required before its completion timeline can advance the face cursor. All six
+faces must complete before advancing the stage; partially written images retain
+their contents and storage layout between batches. Only the final face transitions
+the completed image to sampled layout. Each completed batch is a cancellation
+boundary, and no partial environment may satisfy publication readiness.
+
 Renderer-owned monotonic revisions distinguish scene generations from their
 scene-local sky revisions, so a new scene's lower authoring revision is not
 mistaken for stale input. HDRI source identity and native artifact path are copied

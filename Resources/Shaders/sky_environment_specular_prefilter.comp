@@ -13,6 +13,7 @@ layout(push_constant) uniform SpecularPrefilterPushConstants
     uint  SampleCount;
     uint  SourceMipCount;
     float Roughness;
+    uint  FaceOffset;
     vec3  Padding;
 }
 Push;
@@ -74,7 +75,7 @@ float distribution_ggx(vec3 normal, vec3 half_vector, float roughness)
 void main()
 {
     const uvec2 pixel = gl_GlobalInvocationID.xy;
-    const uint  face  = gl_GlobalInvocationID.z;
+    const uint  face  = gl_GlobalInvocationID.z + Push.FaceOffset;
     if (pixel.x >= Push.Resolution || pixel.y >= Push.Resolution || face >= 6u)
         return;
 

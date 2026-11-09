@@ -1345,6 +1345,79 @@ TEST(RenderGraphDeclarationTest, SkyStorageBindingsSeparateSingleMipViewsFromWho
     EXPECT_EQ(graph.Passes[2].Writes[0].Range.LevelCount, VK_REMAINING_MIP_LEVELS);
 }
 
+TEST(RenderGraphDeclarationTest, SkyFaceBatchesPreserveEarlierImageContents)
+{
+    Rendering::Scenes::SkyEnvironment environment = {};
+    environment.Initialize({});
+    ASSERT_TRUE(environment.SubmitConfig({}, 1));
+    Rendering::Scenes::SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeAtmosphere(
+        1,
+        {
+        .Transmittance = {.Index = 1, .Generation = 1},
+          .Multiscattering = {.Index = 2, .Generation = 1}
+    }));
+    ASSERT_TRUE(environment.AttachBakeResource(1, {.Index = 3, .Generation = 1}));
+    ASSERT_TRUE(environment.AttachBakeLighting(
+        1,
+        {
+        .DiffuseIrradiance   = {.Index = 4, .Generation = 1},
+        .SpecularEnvironment = {.Index = 5, .Generation = 1},
+        .BrdfIntegrationLut  = {.Index = 6, .Generation = 1},
+        .BakeSettings        = Rendering::ResolveEnvironmentLightingQuality(Rendering::EnvironmentLightingQualityTier::Standard),
+    }));
+    ASSERT_TRUE(environment.BeginGpuBake(1));
+    uint32_t checked_faces = 0;
+    for (uint64_t batch = 0; batch < 21; ++batch)
+    {
+        const auto     stage          = environment.GetActiveBakeStage();
+        const uint32_t face           = environment.GetActiveBakeFace();
+        const bool     source_stage   = stage == Rendering::Scenes::SkyEnvironmentBakeStage::AtmosphereSourceRadiance;
+        const bool     diffuse_stage  = stage == Rendering::Scenes::SkyEnvironmentBakeStage::DiffuseIrradiance;
+        const bool     specular_stage = stage == Rendering::Scenes::SkyEnvironmentBakeStage::SpecularEnvironment;
+        if (source_stage || diffuse_stage || specular_stage)
+        {
+            SCOPED_TRACE(batch);
+            MemoryManager memory = {};
+            memory.Initialize(ZMega(4), {});
+            RenderGraph graph = {};
+            graph.FrameArena.Initialize(ZMega(2), 0);
+            graph.Passes.init(&memory.MainArena, 1);
+            graph.Resources.init(&memory.MainArena, 8);
+            graph.ResourceIndex.init(&memory.MainArena, 8);
+            graph.ImportedResources.init(&memory.MainArena, 8);
+            graph.ImportedResourceIndex.init(&memory.MainArena, 8);
+            graph.Passes.push(MakePass(&memory.MainArena, "Sky face"));
+            RenderGraphResourceBuilder builder = {};
+            builder.Initialize(&graph);
+            builder.CurrentPass = 0;
+            SkyAtmosphereSourceRadiancePass     source(&environment);
+            SkyEnvironmentDiffuseIrradiancePass diffuse(&environment);
+            SkyEnvironmentSpecularPrefilterPass specular(&environment);
+            SkyEnvironmentBakePass*             pass = source_stage ? static_cast<SkyEnvironmentBakePass*>(&source) : diffuse_stage ? static_cast<SkyEnvironmentBakePass*>(&diffuse) : static_cast<SkyEnvironmentBakePass*>(&specular);
+            pass->RegisterCompute(nullptr, {}, &builder);
+            const uint64_t output_index = source_stage ? 3 : diffuse_stage ? 4 : 5;
+            uint32_t       outputs      = 0;
+            for (const auto& imported : graph.ImportedResources)
+            {
+                if (imported.TextureHandle.Index == output_index)
+                {
+                    ++outputs;
+                    EXPECT_EQ(imported.InitialState.Layout, face == 0 ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL);
+                }
+            }
+            EXPECT_EQ(outputs, 1u);
+            ++checked_faces;
+        }
+        ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage, face));
+        ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, batch + 1));
+        ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(batch + 1));
+    }
+    EXPECT_EQ(checked_faces, 18u);
+    EXPECT_TRUE(environment.IsGpuBakeReadyToPublish());
+}
+
 TEST(RenderGraphDeclarationTest, ZuiDeclaresBindlessReadsWithoutASceneOrPayload)
 {
     MemoryManager manager{};

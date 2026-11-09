@@ -116,6 +116,7 @@ namespace ZEngine::Rendering::Scenes
     {
         static constexpr uint32_t                         MaxSnapshots                              = 8;
         static constexpr uint32_t                         MaxPendingFramePins                       = 16;
+        static constexpr uint32_t                         BakeFaceCount                             = 6;
         /// @brief Bounds source-radiance churn from an animated primary sun.
         /// @details Non-celestial edits always schedule immediately. A running
         ///          day/night controller submits at most one new source bake for
@@ -166,10 +167,10 @@ namespace ZEngine::Rendering::Scenes
         /// @brief Returns whether the active stage can be registered into this frame graph.
         [[nodiscard]] bool                                CanRecordGpuBakeStage() const;
         /// @brief Records that the active stage emitted its dispatch commands this frame.
-        bool                                              NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage);
+        bool                                              NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage, uint32_t face = 0);
         /// @brief Marks a successfully recorded GPU stage once its frame was submitted.
         bool                                              MarkGpuBakeStageSubmitted(uint64_t revision, uint64_t timeline_value);
-        /// @brief Advances one completed stage, exposing a cancellation point before the next one.
+        /// @brief Advances one completed face or stage, exposing a cancellation point before the next batch.
         bool                                              AdvanceCompletedGpuBakeStage(uint64_t completed_timeline_value);
         [[nodiscard]] bool                                IsGpuBakeReadyToPublish() const;
         /// @brief Returns false once a newer config, quality setting, or HDRI
@@ -204,6 +205,8 @@ namespace ZEngine::Rendering::Scenes
         [[nodiscard]] const AtmosphereStaticResources*    FindReusableAtmosphere(const SkyConfig& config) const;
         [[nodiscard]] const EnvironmentLightingResources& GetActiveBakeLighting() const;
         [[nodiscard]] SkyEnvironmentBakeStage             GetActiveBakeStage() const;
+        /// @brief Cubemap face for the next source, diffuse, or specular dispatch.
+        [[nodiscard]] uint32_t                            GetActiveBakeFace() const;
         [[nodiscard]] const SkyEnvironmentSnapshot*       GetPublishedSnapshot() const;
         /// @brief Returns the latest presentation state without mutating a published resource snapshot.
         [[nodiscard]] const SkyConfig&                    GetPresentationConfig() const;
@@ -250,6 +253,7 @@ namespace ZEngine::Rendering::Scenes
         uint64_t                        m_prepared_revision                    = 0;
         uint64_t                        m_latest_bake_revision                 = 0;
         uint64_t                        m_active_stage_timeline                = 0;
+        uint32_t                        m_active_bake_face                     = 0;
         uint64_t                        m_memory_budget_bytes                  = 0;
         uint64_t                        m_active_bake_reserved_memory_bytes    = 0;
         SkyEnvironmentBakeStage         m_active_bake_stage                    = SkyEnvironmentBakeStage::AwaitingSource;
