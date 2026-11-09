@@ -23,9 +23,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Install LLVM 22
-        run: choco install llvm --version=22.1.0 --allow-downgrade --no-progress -y
-
       - name: Exclude build directory from Windows Defender
         run: Add-MpPreference -ExclusionPath "${{ github.workspace }}"
         shell: pwsh

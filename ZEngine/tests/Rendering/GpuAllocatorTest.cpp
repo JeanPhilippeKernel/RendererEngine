@@ -5789,7 +5789,29 @@ TEST_F(RenderResourceManagerBatchTest, StorageImageArrayRetainsEachElementAndRef
     backend.Pipeline = nullptr;
 }
 
-TEST(FramebufferAdmissionTest, MetadataAndNativeRefusalsPreserveOutputAndOutgoingHandleThenReuseEmptyWrapper)
+// Keep the real-device prerequisite separate from each owner's initialization:
+// unavailable CI hardware is a skip, but initialization/fault-injection failures
+// on an available device must still fail the assertions in the test body.
+struct NativeAdmissionTest : GpuAllocatorTest
+{
+    void SetUp() override
+    {
+        if (!s_allocator)
+        {
+            GTEST_SKIP() << "No headless Vulkan device available on this machine";
+        }
+    }
+};
+
+struct FramebufferAdmissionTest : NativeAdmissionTest
+{
+};
+
+struct ShaderAdmissionTest : NativeAdmissionTest
+{
+};
+
+TEST_F(FramebufferAdmissionTest, MetadataAndNativeRefusalsPreserveOutputAndOutgoingHandleThenReuseEmptyWrapper)
 {
     NativeMetadataOwner owner = {};
     ASSERT_TRUE(owner.Initialize());
@@ -5891,7 +5913,7 @@ TEST(FramebufferAdmissionTest, MetadataAndNativeRefusalsPreserveOutputAndOutgoin
     EXPECT_EQ(FramebufferAdmissionFault::Calls, calls);
 }
 
-TEST(ShaderAdmissionTest, NativeRefusalsReuseOneStorageSlotWithoutRetirementGrowthThenRetry)
+TEST_F(ShaderAdmissionTest, NativeRefusalsReuseOneStorageSlotWithoutRetirementGrowthThenRetry)
 {
     GlslangLifetime compiler = {};
     ASSERT_TRUE(compiler.Ready);
@@ -5960,7 +5982,7 @@ void main() { Output.Value = 1; }
     owner.Shader.Dispose(); // Reset must be safe even after the metadata arena is rewound.
 }
 
-TEST(ShaderAdmissionTest, FactoryRefusalDoesNotCacheHandleOrMutateRecipeAndReusesFailedSlot)
+TEST_F(ShaderAdmissionTest, FactoryRefusalDoesNotCacheHandleOrMutateRecipeAndReusesFailedSlot)
 {
     GlslangLifetime compiler = {};
     ASSERT_TRUE(compiler.Ready);
@@ -6008,7 +6030,7 @@ void main() { Output.Value = 1; }
     EXPECT_EQ(owner.Native.Vulkan.ValidationErrors.load(), 0u);
 }
 
-TEST(ShaderAdmissionTest, GraphicsReflectionAndLeasedReloadReuseOwnedPathsAndStorage)
+TEST_F(ShaderAdmissionTest, GraphicsReflectionAndLeasedReloadReuseOwnedPathsAndStorage)
 {
     GlslangLifetime compiler = {};
     ASSERT_TRUE(compiler.Ready);
@@ -6054,7 +6076,7 @@ TEST(ShaderAdmissionTest, GraphicsReflectionAndLeasedReloadReuseOwnedPathsAndSto
     EXPECT_EQ(owner.Native.Vulkan.ValidationErrors.load(), 0u);
 }
 
-TEST(ShaderAdmissionTest, ReflectionRetainsExactArrayCountsAndRejectsUnownedRuntimeArraysBeforeNativeCreation)
+TEST_F(ShaderAdmissionTest, ReflectionRetainsExactArrayCountsAndRejectsUnownedRuntimeArraysBeforeNativeCreation)
 {
     GlslangLifetime compiler = {};
     ASSERT_TRUE(compiler.Ready);
@@ -6097,7 +6119,7 @@ void main() { Output.Value = textureLod(Textures[nonuniformEXT(gl_GlobalInvocati
     EXPECT_TRUE(owner.Shader.ShaderModules.empty());
 }
 
-TEST(ShaderAdmissionTest, WrongEntryStageRefusesBeforeNativeCreationAndDescriptorFreeRetryNeedsNoGapSet)
+TEST_F(ShaderAdmissionTest, WrongEntryStageRefusesBeforeNativeCreationAndDescriptorFreeRetryNeedsNoGapSet)
 {
     GlslangLifetime compiler = {};
     ASSERT_TRUE(compiler.Ready);
@@ -6129,7 +6151,7 @@ TEST(ShaderAdmissionTest, WrongEntryStageRefusesBeforeNativeCreationAndDescripto
     EXPECT_EQ(owner.Native.Vulkan.ValidationErrors.load(), 0u);
 }
 
-TEST(ShaderAdmissionTest, DeviceLossIsReportedAndPreventsFurtherNativeAdmission)
+TEST_F(ShaderAdmissionTest, DeviceLossIsReportedAndPreventsFurtherNativeAdmission)
 {
     GlslangLifetime compiler = {};
     ASSERT_TRUE(compiler.Ready);
