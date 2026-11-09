@@ -179,6 +179,7 @@ namespace ZEngine::Rendering::Scenes
         m_active_stage_timeline             = 0;
         m_active_bake_stage                 = SkyEnvironmentBakeStage::AwaitingSource;
         m_active_bake_face                  = 0;
+        m_active_bake_slice                 = 0;
         m_active_stage_submitted            = false;
         m_active_stage_recorded             = false;
         m_has_pending_request               = false;
@@ -223,6 +224,7 @@ namespace ZEngine::Rendering::Scenes
         m_active_bake_stage      = m_active_bake.Config.IsAtmosphere() ? SkyEnvironmentBakeStage::AtmosphereTransmittance : SkyEnvironmentBakeStage::SourceMipChain;
         m_active_stage_timeline  = 0;
         m_active_bake_face       = 0;
+        m_active_bake_slice      = 0;
         m_active_stage_submitted = false;
         m_active_stage_recorded  = false;
         return true;
@@ -233,10 +235,12 @@ namespace ZEngine::Rendering::Scenes
         return m_has_active_bake && m_active_bake_stage != SkyEnvironmentBakeStage::AwaitingSource && m_active_bake_stage != SkyEnvironmentBakeStage::ReadyToPublish && !m_active_stage_submitted;
     }
 
-    bool SkyEnvironment::NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage, uint32_t face)
+    bool SkyEnvironment::NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage, uint32_t face, uint32_t slice)
     {
-        if (!CanRecordGpuBakeStage() || m_active_bake.Revision != revision || m_active_bake_stage != stage || m_active_bake_face != face)
+        if (!CanRecordGpuBakeStage() || m_active_bake.Revision != revision || m_active_bake_stage != stage || m_active_bake_face != face || m_active_bake_slice != slice)
+        {
             return false;
+        }
 
         m_active_stage_recorded = true;
         return true;
@@ -260,10 +264,15 @@ namespace ZEngine::Rendering::Scenes
         m_active_stage_submitted = false;
         m_active_stage_recorded  = false;
         m_active_stage_timeline  = 0;
-        // Preserve the candidate and its image contents until every face has
-        // completed. A face is also a safe cancellation boundary, not a reason
+        // Preserve the candidate and its image contents until every slice has
+        // completed. A slice is also a safe cancellation boundary, not a reason
         // to publish a partially populated cubemap.
-        const bool face_stage    = m_active_bake_stage == SkyEnvironmentBakeStage::AtmosphereSourceRadiance || m_active_bake_stage == SkyEnvironmentBakeStage::DiffuseIrradiance || m_active_bake_stage == SkyEnvironmentBakeStage::SpecularEnvironment;
+        if (++m_active_bake_slice < GetActiveBakeSliceCount())
+        {
+            return true;
+        }
+        m_active_bake_slice   = 0;
+        const bool face_stage = m_active_bake_stage == SkyEnvironmentBakeStage::AtmosphereSourceRadiance || m_active_bake_stage == SkyEnvironmentBakeStage::DiffuseIrradiance || m_active_bake_stage == SkyEnvironmentBakeStage::SpecularEnvironment;
         if (face_stage && ++m_active_bake_face < BakeFaceCount)
         {
             return true;
@@ -345,6 +354,7 @@ namespace ZEngine::Rendering::Scenes
         m_active_bake_reserved_memory_bytes                      = 0;
         m_active_bake_stage                                      = SkyEnvironmentBakeStage::AwaitingSource;
         m_active_bake_face                                       = 0;
+        m_active_bake_slice                                      = 0;
         m_active_stage_timeline                                  = 0;
         m_active_stage_submitted                                 = false;
         m_active_stage_recorded                                  = false;
@@ -521,6 +531,7 @@ namespace ZEngine::Rendering::Scenes
         m_active_bake_reserved_memory_bytes = 0;
         m_active_bake_stage                 = SkyEnvironmentBakeStage::AwaitingSource;
         m_active_bake_face                  = 0;
+        m_active_bake_slice                 = 0;
         m_active_stage_timeline             = 0;
         m_active_stage_submitted            = false;
         m_active_stage_recorded             = false;
@@ -570,6 +581,37 @@ namespace ZEngine::Rendering::Scenes
     uint32_t SkyEnvironment::GetActiveBakeFace() const
     {
         return m_active_bake_face;
+    }
+
+    uint32_t SkyEnvironment::GetActiveBakeSlice() const
+    {
+        return m_active_bake_slice;
+    }
+
+    uint32_t SkyEnvironment::GetActiveBakeSliceCount() const
+    {
+        if (!m_has_active_bake || m_active_bake_stage != SkyEnvironmentBakeStage::SpecularEnvironment)
+        {
+            return 1;
+        }
+        const auto&    settings    = m_active_bake.BakeSettings;
+        const uint64_t row_samples = static_cast<uint64_t>(settings.SpecularResolution) * settings.SpecularSampleCount;
+        const uint64_t budget_rows = row_samples ? SpecularBakeSampleBudget / row_samples : 0;
+        const uint64_t rows        = budget_rows > 0 ? budget_rows : 1;
+        const uint64_t slices      = (static_cast<uint64_t>(settings.SpecularResolution) + rows - 1) / rows;
+        return slices > 0 ? static_cast<uint32_t>(slices) : 1;
+    }
+
+    SkyEnvironmentBakeRowRange SkyEnvironment::GetActiveBakeRowRange(uint32_t resolution) const
+    {
+        if (!m_has_active_bake || m_active_bake_stage != SkyEnvironmentBakeStage::SpecularEnvironment || resolution == 0 || resolution > m_active_bake.BakeSettings.SpecularResolution)
+        {
+            return {};
+        }
+        const uint32_t slices = GetActiveBakeSliceCount();
+        const uint32_t first  = static_cast<uint32_t>(static_cast<uint64_t>(resolution) * m_active_bake_slice / slices);
+        const uint32_t end    = static_cast<uint32_t>(static_cast<uint64_t>(resolution) * (static_cast<uint64_t>(m_active_bake_slice) + 1) / slices);
+        return {.FirstRow = first, .RowCount = end - first};
     }
 
     const SkyEnvironmentSnapshot* SkyEnvironment::GetPublishedSnapshot() const

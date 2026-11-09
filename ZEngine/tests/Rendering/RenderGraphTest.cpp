@@ -1368,11 +1368,12 @@ TEST(RenderGraphDeclarationTest, SkyFaceBatchesPreserveEarlierImageContents)
         .BakeSettings        = Rendering::ResolveEnvironmentLightingQuality(Rendering::EnvironmentLightingQualityTier::Standard),
     }));
     ASSERT_TRUE(environment.BeginGpuBake(1));
-    uint32_t checked_faces = 0;
-    for (uint64_t batch = 0; batch < 21; ++batch)
+    uint32_t checked_batches = 0;
+    for (uint64_t batch = 0; batch < 63; ++batch)
     {
         const auto     stage          = environment.GetActiveBakeStage();
         const uint32_t face           = environment.GetActiveBakeFace();
+        const uint32_t slice          = environment.GetActiveBakeSlice();
         const bool     source_stage   = stage == Rendering::Scenes::SkyEnvironmentBakeStage::AtmosphereSourceRadiance;
         const bool     diffuse_stage  = stage == Rendering::Scenes::SkyEnvironmentBakeStage::DiffuseIrradiance;
         const bool     specular_stage = stage == Rendering::Scenes::SkyEnvironmentBakeStage::SpecularEnvironment;
@@ -1404,17 +1405,17 @@ TEST(RenderGraphDeclarationTest, SkyFaceBatchesPreserveEarlierImageContents)
                 if (imported.TextureHandle.Index == output_index)
                 {
                     ++outputs;
-                    EXPECT_EQ(imported.InitialState.Layout, face == 0 ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL);
+                    EXPECT_EQ(imported.InitialState.Layout, face == 0 && slice == 0 ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL);
                 }
             }
             EXPECT_EQ(outputs, 1u);
-            ++checked_faces;
+            ++checked_batches;
         }
-        ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage, face));
+        ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage, face, slice));
         ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, batch + 1));
         ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(batch + 1));
     }
-    EXPECT_EQ(checked_faces, 18u);
+    EXPECT_EQ(checked_batches, 60u);
     EXPECT_TRUE(environment.IsGpuBakeReadyToPublish());
 }
 

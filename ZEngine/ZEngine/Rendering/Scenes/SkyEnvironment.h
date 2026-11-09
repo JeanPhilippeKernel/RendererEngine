@@ -106,6 +106,12 @@ namespace ZEngine::Rendering::Scenes
         Prepared,
     };
 
+    struct SkyEnvironmentBakeRowRange
+    {
+        uint32_t FirstRow = 0;
+        uint32_t RowCount = 0;
+    };
+
     /// @brief Render-thread-owned lifetime model for one scene's environment.
     ///
     /// Main/editor threads submit copied SkyConfig revisions through the frame
@@ -117,6 +123,9 @@ namespace ZEngine::Rendering::Scenes
         static constexpr uint32_t                         MaxSnapshots                              = 8;
         static constexpr uint32_t                         MaxPendingFramePins                       = 16;
         static constexpr uint32_t                         BakeFaceCount                             = 6;
+        /// @brief Base-mip sample evaluations admitted per specular batch. Lower
+        /// mips use the same proportional row partition, without reducing quality.
+        static constexpr uint64_t                         SpecularBakeSampleBudget                  = 262144;
         /// @brief Bounds source-radiance churn from an animated primary sun.
         /// @details Non-celestial edits always schedule immediately. A running
         ///          day/night controller submits at most one new source bake for
@@ -167,10 +176,10 @@ namespace ZEngine::Rendering::Scenes
         /// @brief Returns whether the active stage can be registered into this frame graph.
         [[nodiscard]] bool                                CanRecordGpuBakeStage() const;
         /// @brief Records that the active stage emitted its dispatch commands this frame.
-        bool                                              NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage, uint32_t face = 0);
+        bool                                              NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage, uint32_t face = 0, uint32_t slice = 0);
         /// @brief Marks a successfully recorded GPU stage once its frame was submitted.
         bool                                              MarkGpuBakeStageSubmitted(uint64_t revision, uint64_t timeline_value);
-        /// @brief Advances one completed face or stage, exposing a cancellation point before the next batch.
+        /// @brief Advances one completed slice, face or stage, exposing a cancellation point before the next batch.
         bool                                              AdvanceCompletedGpuBakeStage(uint64_t completed_timeline_value);
         [[nodiscard]] bool                                IsGpuBakeReadyToPublish() const;
         /// @brief Returns false once a newer config, quality setting, or HDRI
@@ -207,6 +216,11 @@ namespace ZEngine::Rendering::Scenes
         [[nodiscard]] SkyEnvironmentBakeStage             GetActiveBakeStage() const;
         /// @brief Cubemap face for the next source, diffuse, or specular dispatch.
         [[nodiscard]] uint32_t                            GetActiveBakeFace() const;
+        [[nodiscard]] uint32_t                            GetActiveBakeSlice() const;
+        [[nodiscard]] uint32_t                            GetActiveBakeSliceCount() const;
+        /// @brief Exact, non-overlapping row partition for an output mip. Empty
+        /// ranges are skipped; tiny mips may be written only by the final slice.
+        [[nodiscard]] SkyEnvironmentBakeRowRange          GetActiveBakeRowRange(uint32_t resolution) const;
         [[nodiscard]] const SkyEnvironmentSnapshot*       GetPublishedSnapshot() const;
         /// @brief Returns the latest presentation state without mutating a published resource snapshot.
         [[nodiscard]] const SkyConfig&                    GetPresentationConfig() const;
@@ -254,6 +268,7 @@ namespace ZEngine::Rendering::Scenes
         uint64_t                        m_latest_bake_revision                 = 0;
         uint64_t                        m_active_stage_timeline                = 0;
         uint32_t                        m_active_bake_face                     = 0;
+        uint32_t                        m_active_bake_slice                    = 0;
         uint64_t                        m_memory_budget_bytes                  = 0;
         uint64_t                        m_active_bake_reserved_memory_bytes    = 0;
         SkyEnvironmentBakeStage         m_active_bake_stage                    = SkyEnvironmentBakeStage::AwaitingSource;

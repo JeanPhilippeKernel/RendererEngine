@@ -46,11 +46,16 @@ namespace
 
     bool FinishSkyGpuStages(SkyEnvironment& environment, uint64_t revision, uint64_t first_timeline = 1)
     {
-        // Atmosphere has three whole-image stages and eighteen face batches;
-        // HDRI has one whole-image stage and twelve face batches. Never spin.
-        for (uint64_t index = 0; index < 21 && !environment.IsGpuBakeReadyToPublish(); ++index)
+        const auto* request = environment.GetActiveBake();
+        if (!request)
         {
-            if (!environment.NotifyGpuBakeStageRecorded(revision, environment.GetActiveBakeStage(), environment.GetActiveBakeFace()) || !environment.MarkGpuBakeStageSubmitted(revision, first_timeline + index) || !environment.AdvanceCompletedGpuBakeStage(first_timeline + index))
+            return false;
+        }
+        // A finite bound even when each specular row needs its own slice.
+        const uint64_t maximum_batches = 3 + 2 * SkyEnvironment::BakeFaceCount + static_cast<uint64_t>(SkyEnvironment::BakeFaceCount) * request->BakeSettings.SpecularResolution;
+        for (uint64_t index = 0; index < maximum_batches && !environment.IsGpuBakeReadyToPublish(); ++index)
+        {
+            if (!environment.NotifyGpuBakeStageRecorded(revision, environment.GetActiveBakeStage(), environment.GetActiveBakeFace(), environment.GetActiveBakeSlice()) || !environment.MarkGpuBakeStageSubmitted(revision, first_timeline + index) || !environment.AdvanceCompletedGpuBakeStage(first_timeline + index))
             {
                 return false;
             }
@@ -840,27 +845,34 @@ TEST(SkyEnvironmentTest, GpuBakeStagesAdvanceOnlyAfterTheirSubmittedTimelineComp
     uint64_t timeline = 6;
     for (const auto stage : {SkyEnvironmentBakeStage::DiffuseIrradiance, SkyEnvironmentBakeStage::SpecularEnvironment})
     {
-        for (uint32_t face = 0; face < SkyEnvironment::BakeFaceCount; ++face, ++timeline)
+        const uint32_t slices = environment.GetActiveBakeSliceCount();
+        for (uint32_t face = 0; face < SkyEnvironment::BakeFaceCount; ++face)
         {
-            ASSERT_EQ(environment.GetActiveBakeStage(), stage);
-            ASSERT_EQ(environment.GetActiveBakeFace(), face);
-            EXPECT_FALSE(environment.MarkGpuBakeStageSubmitted(1, timeline));
-            EXPECT_FALSE(environment.NotifyGpuBakeStageRecorded(2, stage, face));
-            EXPECT_FALSE(environment.NotifyGpuBakeStageRecorded(1, stage, SkyEnvironment::BakeFaceCount));
-            ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage, face));
-            EXPECT_FALSE(environment.MarkGpuBakeStageSubmitted(1, 0));
-            EXPECT_EQ(environment.GetActiveBakeFace(), face);
-            ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, timeline));
-            EXPECT_FALSE(environment.BeginGpuBake(1));
-            EXPECT_FALSE(environment.CanRecordGpuBakeStage());
-            EXPECT_FALSE(environment.AdvanceCompletedGpuBakeStage(timeline - 1));
-            EXPECT_EQ(environment.GetActiveBakeFace(), face);
-            EXPECT_FALSE(environment.IsGpuBakeReadyToPublish());
-            ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(timeline));
-            EXPECT_FALSE(environment.AdvanceCompletedGpuBakeStage(timeline));
-            if (face + 1 < SkyEnvironment::BakeFaceCount)
+            for (uint32_t slice = 0; slice < slices; ++slice, ++timeline)
             {
-                EXPECT_FALSE(environment.NotifyGpuBakeStageRecorded(1, stage, face));
+                ASSERT_EQ(environment.GetActiveBakeStage(), stage);
+                ASSERT_EQ(environment.GetActiveBakeFace(), face);
+                ASSERT_EQ(environment.GetActiveBakeSlice(), slice);
+                EXPECT_FALSE(environment.MarkGpuBakeStageSubmitted(1, timeline));
+                EXPECT_FALSE(environment.NotifyGpuBakeStageRecorded(2, stage, face, slice));
+                EXPECT_FALSE(environment.NotifyGpuBakeStageRecorded(1, stage, SkyEnvironment::BakeFaceCount, slice));
+                EXPECT_FALSE(environment.NotifyGpuBakeStageRecorded(1, stage, face, slices));
+                ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage, face, slice));
+                EXPECT_FALSE(environment.MarkGpuBakeStageSubmitted(1, 0));
+                EXPECT_EQ(environment.GetActiveBakeFace(), face);
+                EXPECT_EQ(environment.GetActiveBakeSlice(), slice);
+                ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, timeline));
+                EXPECT_FALSE(environment.BeginGpuBake(1));
+                EXPECT_FALSE(environment.CanRecordGpuBakeStage());
+                EXPECT_FALSE(environment.AdvanceCompletedGpuBakeStage(timeline - 1));
+                EXPECT_EQ(environment.GetActiveBakeFace(), face);
+                EXPECT_FALSE(environment.IsGpuBakeReadyToPublish());
+                ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(timeline));
+                EXPECT_FALSE(environment.AdvanceCompletedGpuBakeStage(timeline));
+                if (slice + 1 < slices || face + 1 < SkyEnvironment::BakeFaceCount)
+                {
+                    EXPECT_FALSE(environment.NotifyGpuBakeStageRecorded(1, stage, face, slice));
+                }
             }
         }
     }
@@ -868,6 +880,114 @@ TEST(SkyEnvironmentTest, GpuBakeStagesAdvanceOnlyAfterTheirSubmittedTimelineComp
     ASSERT_EQ(environment.CompleteBake(1, Texture(2), true, Lighting(20)), SkyEnvironmentBakeResult::Published);
     EXPECT_EQ(environment.GetPublishedSnapshot()->Lighting.DiffuseIrradiance.Index, 20u);
     EXPECT_EQ(environment.GetPublishedSnapshot()->Lighting.SpecularEnvironment.Index, 21u);
+}
+
+TEST(SkyEnvironmentTest, SpecularSlicesCoverEveryMipExactlyOnceWithoutReducingSamples)
+{
+    EnvironmentLightingBakeSettings odd  = {};
+    odd.SpecularResolution               = 127;
+    odd.SpecularSampleCount              = 37;
+    EnvironmentLightingBakeSettings tiny = {};
+    tiny.SpecularResolution              = 1;
+    tiny.SpecularSampleCount             = UINT32_MAX;
+    for (const auto settings : {ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Low), ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard), ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::High), odd, tiny})
+    {
+        SCOPED_TRACE(settings.SpecularResolution);
+        SCOPED_TRACE(settings.SpecularSampleCount);
+        SkyEnvironment environment = {};
+        environment.Initialize(Texture(1), Lighting(10));
+        ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, settings, {}, 0, true, SkyEnvironmentPublication::Explicit));
+        SkyEnvironmentBakeRequest request = {};
+        ASSERT_TRUE(environment.TakeBakeRequest(request));
+        ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+        ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(20, settings)));
+        ASSERT_TRUE(environment.BeginGpuBake(1));
+        EXPECT_EQ(environment.GetActiveBakeRowRange(settings.SpecularResolution).RowCount, 0u);
+        uint64_t timeline = 1;
+        for (uint32_t batch = 0; batch < 7; ++batch, ++timeline)
+        {
+            ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, environment.GetActiveBakeStage(), environment.GetActiveBakeFace()));
+            ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, timeline));
+            ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(timeline));
+        }
+        ASSERT_EQ(environment.GetActiveBakeStage(), SkyEnvironmentBakeStage::SpecularEnvironment);
+        const uint32_t slices = environment.GetActiveBakeSliceCount();
+        ASSERT_GT(slices, 0u);
+        ASSERT_LE(slices, settings.SpecularResolution);
+        for (uint32_t face = 0; face < SkyEnvironment::BakeFaceCount; ++face)
+        {
+            uint32_t covered_rows[32] = {};
+            for (uint32_t slice = 0; slice < slices; ++slice, ++timeline)
+            {
+                ASSERT_EQ(environment.GetActiveBakeFace(), face);
+                ASSERT_EQ(environment.GetActiveBakeSlice(), slice);
+                ASSERT_EQ(environment.GetActiveBake()->BakeSettings.SpecularSampleCount, settings.SpecularSampleCount);
+                uint32_t mip = 0;
+                for (uint32_t resolution = settings.SpecularResolution; resolution > 0; resolution >>= 1, ++mip)
+                {
+                    const auto rows = environment.GetActiveBakeRowRange(resolution);
+                    EXPECT_EQ(rows.FirstRow, covered_rows[mip]);
+                    covered_rows[mip] += rows.RowCount;
+                    EXPECT_LE(covered_rows[mip], resolution);
+                    if (slice + 1 == slices)
+                    {
+                        EXPECT_EQ(covered_rows[mip], resolution);
+                    }
+                    if (mip == 0)
+                    {
+                        const uint64_t row_work = static_cast<uint64_t>(resolution) * settings.SpecularSampleCount;
+                        if (row_work <= SkyEnvironment::SpecularBakeSampleBudget)
+                        {
+                            EXPECT_LE(row_work * rows.RowCount, SkyEnvironment::SpecularBakeSampleBudget);
+                        }
+                        else
+                        {
+                            EXPECT_EQ(rows.RowCount, 1u);
+                        }
+                    }
+                }
+                EXPECT_EQ(environment.GetActiveBakeRowRange(0).RowCount, 0u);
+                EXPECT_EQ(environment.GetActiveBakeRowRange(settings.SpecularResolution + 1).RowCount, 0u);
+                EXPECT_FALSE(environment.IsGpuBakeReadyToPublish());
+                EXPECT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Ignored);
+                ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, SkyEnvironmentBakeStage::SpecularEnvironment, face, slice));
+                ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, timeline));
+                ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(timeline));
+            }
+        }
+        EXPECT_TRUE(environment.IsGpuBakeReadyToPublish());
+        EXPECT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Prepared);
+        EXPECT_TRUE(environment.ActivatePrepared(1));
+        EXPECT_EQ(environment.GetActiveBakeSlice(), 0u);
+    }
+}
+
+TEST(SkyEnvironmentTest, SpecularSliceCountDoesNotOverflowForWideCustomSettings)
+{
+    auto settings                = EnvironmentLightingBakeSettings{};
+    settings.SpecularResolution  = UINT32_MAX;
+    settings.SpecularSampleCount = UINT32_MAX;
+    SkyEnvironment environment   = {};
+    environment.Initialize(Texture(1), Lighting(10));
+    ASSERT_TRUE(environment.SubmitConfig(HDRIConfig(), 1, settings));
+    SkyEnvironmentBakeRequest request = {};
+    ASSERT_TRUE(environment.TakeBakeRequest(request));
+    ASSERT_TRUE(environment.AttachBakeResource(1, Texture(2)));
+    ASSERT_TRUE(environment.AttachBakeLighting(1, Lighting(20, settings)));
+    ASSERT_TRUE(environment.BeginGpuBake(1));
+    for (uint64_t timeline = 1; timeline <= 7; ++timeline)
+    {
+        ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, environment.GetActiveBakeStage(), environment.GetActiveBakeFace()));
+        ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, timeline));
+        ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(timeline));
+    }
+    EXPECT_EQ(environment.GetActiveBakeSliceCount(), UINT32_MAX);
+    EXPECT_EQ(environment.GetActiveBakeRowRange(UINT32_MAX).FirstRow, 0u);
+    EXPECT_EQ(environment.GetActiveBakeRowRange(UINT32_MAX).RowCount, 1u);
+    EXPECT_EQ(environment.GetActiveBakeRowRange(1).RowCount, 0u);
+    const auto retired = environment.Shutdown();
+    EXPECT_EQ(retired.Lighting.SpecularEnvironment.Index, 21u);
+    EXPECT_EQ(environment.GetActiveBakeSlice(), 0u);
 }
 
 TEST(SkyEnvironmentTest, AtmosphereBakeIncludesStaticLutsBeforeSourceRadiance)
@@ -900,16 +1020,21 @@ TEST(SkyEnvironmentTest, AtmosphereBakeIncludesStaticLutsBeforeSourceRadiance)
     {
         const bool     face_stage  = stage == SkyEnvironmentBakeStage::AtmosphereSourceRadiance || stage == SkyEnvironmentBakeStage::DiffuseIrradiance || stage == SkyEnvironmentBakeStage::SpecularEnvironment;
         const uint32_t batch_count = face_stage ? SkyEnvironment::BakeFaceCount : 1;
-        for (uint32_t face = 0; face < batch_count; ++face, ++timeline)
+        const uint32_t slices      = environment.GetActiveBakeSliceCount();
+        for (uint32_t face = 0; face < batch_count; ++face)
         {
-            ASSERT_EQ(environment.GetActiveBakeStage(), stage);
-            ASSERT_EQ(environment.GetActiveBakeFace(), face);
-            ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage, face));
-            ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, timeline));
-            ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(timeline));
+            for (uint32_t slice = 0; slice < slices; ++slice, ++timeline)
+            {
+                ASSERT_EQ(environment.GetActiveBakeStage(), stage);
+                ASSERT_EQ(environment.GetActiveBakeFace(), face);
+                ASSERT_EQ(environment.GetActiveBakeSlice(), slice);
+                ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage, face, slice));
+                ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, timeline));
+                ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(timeline));
+            }
         }
     }
-    EXPECT_EQ(timeline, 22u);
+    EXPECT_EQ(timeline, 64u);
 
     ASSERT_TRUE(environment.IsGpuBakeReadyToPublish());
     ASSERT_EQ(environment.CompleteBake(1, Texture(30), true, Lighting(40), Atmosphere(20)), SkyEnvironmentBakeResult::Published);
@@ -923,8 +1048,8 @@ TEST(SkyEnvironmentTest, AtmosphereBakeIncludesStaticLutsBeforeSourceRadiance)
 TEST(SkyEnvironmentPreparationTest, EveryFaceBoundaryPreservesPublicationAndCancellationOwnership)
 {
     // Exercise cancellation during every submitted batch, including the final
-    // face. The previous environment must remain visible throughout.
-    for (uint64_t cancelled_batch = 0; cancelled_batch < 21; ++cancelled_batch)
+    // slice. The previous environment must remain visible throughout.
+    for (uint64_t cancelled_batch = 0; cancelled_batch < 63; ++cancelled_batch)
     {
         SCOPED_TRACE(cancelled_batch);
         SkyEnvironment environment = {};
@@ -942,9 +1067,10 @@ TEST(SkyEnvironmentPreparationTest, EveryFaceBoundaryPreservesPublicationAndCanc
         {
             const auto stage = environment.GetActiveBakeStage();
             const auto face  = environment.GetActiveBakeFace();
+            const auto slice = environment.GetActiveBakeSlice();
             EXPECT_EQ(environment.CompleteBake(1, {}, true), SkyEnvironmentBakeResult::Ignored);
             EXPECT_FALSE(environment.ActivatePrepared(1));
-            ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage, face));
+            ASSERT_TRUE(environment.NotifyGpuBakeStageRecorded(1, stage, face, slice));
             ASSERT_TRUE(environment.MarkGpuBakeStageSubmitted(1, batch + 1));
             if (batch == cancelled_batch)
             {
@@ -952,6 +1078,7 @@ TEST(SkyEnvironmentPreparationTest, EveryFaceBoundaryPreservesPublicationAndCanc
                 EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Ignored);
                 EXPECT_FALSE(environment.AdvanceCompletedGpuBakeStage(batch));
                 EXPECT_EQ(environment.GetActiveBakeFace(), face);
+                EXPECT_EQ(environment.GetActiveBakeSlice(), slice);
                 EXPECT_EQ(environment.GetActiveBakeSource().Index, 30u);
             }
             ASSERT_TRUE(environment.AdvanceCompletedGpuBakeStage(batch + 1));
@@ -959,6 +1086,7 @@ TEST(SkyEnvironmentPreparationTest, EveryFaceBoundaryPreservesPublicationAndCanc
         EXPECT_EQ(environment.CompleteBake(1, {}, false), SkyEnvironmentBakeResult::Discarded);
         EXPECT_EQ(environment.GetActiveBake(), nullptr);
         EXPECT_EQ(environment.GetActiveBakeFace(), 0u);
+        EXPECT_EQ(environment.GetActiveBakeSlice(), 0u);
         EXPECT_TRUE(environment.GetPublishedSnapshot()->IsFallback);
         EXPECT_EQ(environment.GetPreparedSnapshot(1), nullptr);
         // A retry starts at the first batch, never at the discarded face.

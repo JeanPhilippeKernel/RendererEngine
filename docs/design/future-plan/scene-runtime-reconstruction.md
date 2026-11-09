@@ -1357,10 +1357,16 @@ edit coalesces the initial mailbox; subsequent frames can apply that edit.
 
 Atmosphere source radiance, diffuse irradiance and specular prefiltering record
 one cubemap face per GPU batch, without reducing resolution, mip coverage or
-sample counts. A matching recorded revision/stage/face and successful submission
-are required before its completion timeline can advance the face cursor. All six
-faces must complete before advancing the stage; partially written images retain
-their contents and storage layout between batches. Only the final face transitions
+sample counts. Specular filtering additionally partitions each face into row
+slices, admitting at most 262,144 base-mip sample evaluations per slice when a
+single row fits that work allowance. Lower mips use the same proportional row
+partition; empty ranges are skipped and every output pixel is written exactly
+once. This is a finite work allowance, not an elapsed-time guarantee for arbitrary
+custom resolutions, sample counts or devices. A matching recorded revision,
+stage, face and slice plus successful submission are required before its completion
+timeline can advance the cursor. All slices of all six faces must complete before
+advancing the stage; partially written images retain their contents and storage
+layout between batches. Only the final slice of the final face transitions
 the completed image to sampled layout. Each completed batch is a cancellation
 boundary, and no partial environment may satisfy publication readiness.
 

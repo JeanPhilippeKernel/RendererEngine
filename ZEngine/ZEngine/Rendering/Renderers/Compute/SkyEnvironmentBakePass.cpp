@@ -42,7 +42,9 @@ namespace ZEngine::Rendering::Renderers
             uint32_t SourceMipCount = 1;
             float    Roughness      = 0.0f;
             uint32_t FaceOffset     = 0;
-            float    Padding[5]     = {};
+            uint32_t RowOffset      = 0;
+            uint32_t RowCount       = 0;
+            float    Padding[3]     = {};
         };
 
         struct AtmosphereStaticPushConstants
@@ -70,6 +72,8 @@ namespace ZEngine::Rendering::Renderers
         static_assert(sizeof(AtmosphereSourceRadiancePushConstants) == 128, "Atmosphere source push constants must match GLSL");
         static_assert(offsetof(DiffuseIrradiancePushConstants, FaceOffset) == 8);
         static_assert(offsetof(SpecularPrefilterPushConstants, FaceOffset) == 20);
+        static_assert(offsetof(SpecularPrefilterPushConstants, RowOffset) == 24);
+        static_assert(offsetof(SpecularPrefilterPushConstants, RowCount) == 28);
         static_assert(offsetof(AtmosphereSourceRadiancePushConstants, FaceOffset) == 124);
 
         AtmosphereStaticPushConstants MakeAtmosphereStaticPushConstants(const Scenes::AtmosphereSettings& atmosphere)
@@ -526,7 +530,7 @@ namespace ZEngine::Rendering::Renderers
         const Textures::TextureHandle source = m_environment->GetActiveBakeSource();
         const Textures::TextureHandle output = m_environment->GetActiveBakeLighting().SpecularEnvironment;
         res_builder->ReadTexture(res_builder->ImportTexture(kSourceRadianceName, source, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), "SourceRadiance");
-        res_builder->ImportTexture(kSpecularEnvironmentName, output, m_environment->GetActiveBakeFace() == 0 ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL);
+        res_builder->ImportTexture(kSpecularEnvironmentName, output, m_environment->GetActiveBakeFace() == 0 && m_environment->GetActiveBakeSlice() == 0 ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_GENERAL);
         res_builder->ReadWriteStorageImage(kSpecularEnvironmentName, nullptr);
     }
 
@@ -547,26 +551,33 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         for (uint32_t mip = 0; mip < mip_count; ++mip)
         {
-            const uint32_t                       downsampled_resolution = base_resolution >> mip;
-            const uint32_t                       resolution             = downsampled_resolution > 1u ? downsampled_resolution : 1u;
-            const SpecularPrefilterPushConstants push                   = {
+            const uint32_t                           downsampled_resolution = base_resolution >> mip;
+            const uint32_t                           resolution             = downsampled_resolution > 1u ? downsampled_resolution : 1u;
+            const Scenes::SkyEnvironmentBakeRowRange rows                   = m_environment->GetActiveBakeRowRange(resolution);
+            if (rows.RowCount == 0)
+            {
+                continue;
+            }
+            const SpecularPrefilterPushConstants push = {
                 .Resolution     = resolution,
                 .MipLevel       = mip,
                 .SampleCount    = bake_settings.SpecularSampleCount,
                 .SourceMipCount = source_mips,
                 .Roughness      = mip_count > 1 ? static_cast<float>(mip) / static_cast<float>(mip_count - 1) : 0.0f,
                 .FaceOffset     = m_environment->GetActiveBakeFace(),
+                .RowOffset      = rows.FirstRow,
+                .RowCount       = rows.RowCount,
             };
             command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-            command_buffer->Dispatch((resolution + kLocalSize - 1) / kLocalSize, (resolution + kLocalSize - 1) / kLocalSize, 1);
+            command_buffer->Dispatch((resolution + kLocalSize - 1) / kLocalSize, (rows.RowCount + kLocalSize - 1) / kLocalSize, 1);
         }
-        if (m_environment->GetActiveBakeFace() + 1 == Scenes::SkyEnvironment::BakeFaceCount)
+        if (m_environment->GetActiveBakeFace() + 1 == Scenes::SkyEnvironment::BakeFaceCount && m_environment->GetActiveBakeSlice() + 1 == m_environment->GetActiveBakeSliceCount())
         {
             MakeShaderReadable(device, command_buffer, output);
         }
         if (const auto* bake = m_environment->GetActiveBake())
         {
-            m_environment->NotifyGpuBakeStageRecorded(bake->Revision, Scenes::SkyEnvironmentBakeStage::SpecularEnvironment, m_environment->GetActiveBakeFace());
+            m_environment->NotifyGpuBakeStageRecorded(bake->Revision, Scenes::SkyEnvironmentBakeStage::SpecularEnvironment, m_environment->GetActiveBakeFace(), m_environment->GetActiveBakeSlice());
         }
     }
 } // namespace ZEngine::Rendering::Renderers
