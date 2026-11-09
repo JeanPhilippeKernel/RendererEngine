@@ -135,6 +135,17 @@ namespace
         {
             return DescriptorBoundPass::ReplayDescriptorBindings(static_cast<DescriptorBoundPass*>(this));
         }
+        void BindPartialReplay(const LayoutBindingSpecification& binding)
+        {
+            BoundBindings.insert(binding.Name);
+            DescriptorReplayRecords[0].Name    = binding.Name;
+            DescriptorReplayRecords[0].Binding = binding;
+            DescriptorReplayRecordCount        = 1;
+        }
+        uint32_t ReplayRecordCount() const
+        {
+            return DescriptorReplayRecordCount;
+        }
     };
 } // namespace
 
@@ -178,8 +189,40 @@ TEST(AssetPreviewPassTest, PreviouslyVerifiedEmptyInterfaceCannotSkipIncompatibl
     EXPECT_TRUE(pass.VerifyNames());
     shader.LayoutBindingSpecifications.init(device->Arena, 1);
     shader.LayoutBindingSpecifications.push({.Set = 0, .Binding = 0, .Name = "NewRequiredBinding"});
+    // Starting another frame must not erase the previous interface's proof.
+    pass.BeginDescriptorPreparation();
     EXPECT_FALSE(pass.Replay());
     EXPECT_FALSE(pass.VerifyNames());
+    pass.Pipeline = nullptr;
+}
+
+TEST(AssetPreviewPassTest, StartupResizePartialBindingsDoNotPoisonFirstAsynchronousBake)
+{
+    ZEngine::Core::Memory::MemoryManager memory = {};
+    memory.Initialize(ZMega(1), {});
+    auto device                                = std::make_unique<ZEngine::Hardwares::VulkanDevice>();
+    device->Arena                              = &memory.MainArena;
+    ZEngine::Rendering::Shaders::Shader shader = {};
+    shader.LayoutBindingSpecifications.init(device->Arena, 2);
+    shader.LayoutBindingSpecifications.push({.Set = 0, .Binding = 0, .Name = "UBPreview"});
+    shader.LayoutBindingSpecifications.push({.Set = 0, .Binding = 1, .Name = "GBuffer"});
+    ZEngine::Rendering::Renderers::Pipelines::GraphicPipeline pipeline = {};
+    pipeline.Shader                                                    = &shader;
+    PreviewBindingTestPass pass                                        = {};
+    pass.InitializeNames(device.get());
+    pass.Pipeline = &pipeline;
+    // Resize writes declared graph resources, but the callback's uniform and
+    // samplers have not been prepared while pipeline compilation is pending.
+    pass.BindPartialReplay(shader.LayoutBindingSpecifications[1]);
+    EXPECT_FALSE(pass.VerifyNames());
+    EXPECT_TRUE(pass.Replay());
+    EXPECT_EQ(pass.ReplayRecordCount(), 0u);
+    EXPECT_TRUE(pass.BoundBindings.empty());
+    EXPECT_FALSE(pass.VerifyNames());
+    pass.BindNames(device->Arena);
+    EXPECT_FALSE(pass.VerifyNames());
+    pass.BoundBindings.insert("GBuffer");
+    EXPECT_TRUE(pass.VerifyNames());
     pass.Pipeline = nullptr;
 }
 

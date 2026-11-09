@@ -870,6 +870,13 @@ matching lease instead of dropping ownership. Prepared storage banks transfer
 those leases on adoption and acquire accepted-frame holds only when verified as
 recording inputs. These mechanisms preserve objects/allocations, not contents;
 write/read visibility and alias ordering still belong to graph synchronization.
+Descriptor replay distinguishes an interface that has previously passed complete
+verification from partial startup writes. A resize while the first asynchronous
+pipeline is pending may bind graph resources before callback uniforms/samplers;
+those unverified replay records are discarded, not mistaken for a shader reload.
+Normal preparation must still prove every required binding before recording.
+Starting a new frame does not erase prior interface verification or permit an
+incompatible shader reload to bypass replay validation.
 Storage-image leases alone do not establish complete candidate graph readiness;
 attachment preparation below covers framebuffers/views, and the camera and
 backend preparation establish their separate required proofs.
@@ -1756,6 +1763,14 @@ acquire/fence waits, native queue submission, presentation and retirement.
 Recording-worker task spans and creation-to-entry dispatch delays distinguish
 task work from dispatch/wake-up latency. These wall-clock observations are not
 direct OS scheduler/preemption measurements or proof of a loader-caused delay.
+Tasks lasting at least 1 ms additionally report wall time, calling-thread CPU
+time, and their non-CPU difference where a fine-grained thread CPU clock is
+available. CPU reads are nested inside the wall interval. An unavailable or
+inconsistent clock is reported explicitly, never treated as zero CPU work.
+Non-CPU time includes blocking, descheduling and clock-read overhead; it does not identify their
+cause. Coarse scheduler-accounting ticks and process-wide CPU time are not
+substituted on unsupported platforms. These are profiling-only observations,
+not changes to worker scheduling or permission to discard historical outliers.
 Completed GPU pass sums/maxima are
 exported only from available timestamp-query results: their capture timestamp is
 the later CPU poll, not the original submitted frame. Sums may include overlapping

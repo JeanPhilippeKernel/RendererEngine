@@ -123,13 +123,19 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                 const DescriptorReplayRecord& record  = records[index];
                 const auto                    current = shader->GetLayoutBindingSpecification(record.Name);
                 if (current.Set == UINT32_MAX || current.Binding == UINT32_MAX || !IsSameDescriptorBinding(record.Binding, current))
+                {
+                    ZENGINE_CORE_ERROR("Descriptor replay: input '{}' no longer matches its recorded interface (set={}, binding={}, count={}; current set={}, binding={}, count={})", record.Name, record.Binding.Set, record.Binding.Binding, record.Binding.Count, current.Set, current.Binding, current.Count)
                     return false;
+                }
             }
 
             for (const auto& binding : shader->LayoutBindingSpecifications)
             {
                 if (!HasDescriptorReplayRecord(records, record_count, binding.Name))
+                {
+                    ZENGINE_CORE_ERROR("Descriptor replay: input '{}' has no recorded binding ({} records)", binding.Name, record_count)
                     return false;
+                }
             }
             return true;
         }
@@ -373,7 +379,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     void DescriptorBoundPass::ReleaseDescriptorStorage()
     {
         m_descriptor_preparation.Reset();
-        m_descriptor_bindings_verified       = false;
+        m_descriptor_interface_verified      = false;
         m_unpublished_descriptor_preparation = false;
         m_descriptor_frame_index             = UINT32_MAX;
         m_prepared_descriptor_frames         = 0;
@@ -422,16 +428,21 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     {
         ReleaseDescriptorStorage();
         BoundBindings.clear();
+        ResetDescriptorReplayRecords();
+        if (auto* pipeline = GetPipeline())
+        {
+            pipeline->DescriptorBindingsValid = true;
+        }
+    }
+
+    void DescriptorBoundPass::ResetDescriptorReplayRecords()
+    {
         DescriptorReplayRecordCount = 0;
         DescriptorReplayNameBytes   = 0;
         DescriptorReplayValid       = true;
         for (auto& record : DescriptorReplayRecords)
         {
             record = {};
-        }
-        if (auto* pipeline = GetPipeline())
-        {
-            pipeline->DescriptorBindingsValid = true;
         }
     }
 
@@ -495,7 +506,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
                     }
                 }
             }
-            m_descriptor_bindings_verified = true;
+            m_descriptor_interface_verified = true;
             return true;
         }
         return false;
@@ -530,7 +541,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     void DescriptorBoundPass::BeginDescriptorPreparation(uint32_t frame, bool unpublished)
     {
         BoundBindings.clear();
-        m_descriptor_bindings_verified       = false;
         m_descriptor_frame_index             = frame;
         m_unpublished_descriptor_preparation = unpublished;
         const auto* pipeline                 = GetPipeline();
@@ -577,7 +587,6 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         }
         prepared.ReleaseDescriptorStorage(); // Defers the replaced pool; no GPU wait.
         m_descriptor_preparation.Reset();
-        m_descriptor_bindings_verified       = false;
         m_unpublished_descriptor_preparation = false;
         m_descriptor_frame_index             = UINT32_MAX;
         m_prepared_descriptor_frames         = 0;
@@ -1445,11 +1454,14 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         // The graph starts a fresh preparation after resolving the pipeline.
         m_descriptor_preparation.Reset();
         auto* pipeline = GetPipeline();
-        // The first asynchronous bake precedes the callback's initial Prepare.
-        // There is no old descriptor state to replay yet. Prepare followed by
-        // VerifyDescriptorBindings must still establish the complete interface.
-        if (pipeline && pipeline->Shader && !m_descriptor_bindings_verified && DescriptorReplayRecordCount == 0 && BoundBindings.empty())
+        // Resize may bind graph-declared inputs before the first asynchronous
+        // bake finishes. Those partial writes are not a verified old interface.
+        // Discard their replay metadata; normal Prepare/Verify must still prove
+        // the complete current interface before any commands can be recorded.
+        if (pipeline && pipeline->Shader && !m_descriptor_interface_verified)
         {
+            BoundBindings.clear();
+            ResetDescriptorReplayRecords();
             return true;
         }
         if (!pipeline || !AreDescriptorReplayRecordsCompatible(DescriptorReplayRecords, DescriptorReplayRecordCount, pipeline->Shader))

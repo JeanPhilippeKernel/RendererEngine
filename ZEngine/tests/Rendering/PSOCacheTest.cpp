@@ -1136,10 +1136,11 @@ TEST_P(PSOCachePreparationTest, WarmupRecordingHashesOncePerExactVariantAndShade
     ASSERT_TRUE(file.Value()->Write({bytes, sizeof(bytes)}, 0).Succeeded());
     context.Close(file.Value());
     PSOCacheTestAccess::SetWarmupVFS(Storage.Get(), &context);
-    const auto record = [&](uint32_t generation) {
+    const PSOCompatibilityRenderPassKey compatibility = {};
+    const auto                          record        = [&](uint32_t generation) {
         if (GetParam())
         {
-            Storage.Get().RecordGraphicsWarmup("warmup_once", Storage.Get().MakeGraphicsPipelineKey(Graphics, generation), {});
+            Storage.Get().RecordGraphicsWarmup("warmup_once", Storage.Get().MakeGraphicsPipelineKey(Graphics, generation), compatibility);
         }
         else
         {

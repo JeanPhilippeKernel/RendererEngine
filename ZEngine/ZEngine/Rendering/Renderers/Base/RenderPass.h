@@ -182,7 +182,9 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
             }
         };
         bool             ReplayDescriptorBindings();
-        bool             m_descriptor_bindings_verified       = false;
+        // Replay requires a previously complete interface, not merely writes
+        // made by resize while the first asynchronous pipeline is pending.
+        bool             m_descriptor_interface_verified      = false;
         bool             m_unpublished_descriptor_preparation = false;
         uint32_t         m_descriptor_frame_index             = UINT32_MAX;
         uint32_t         m_prepared_descriptor_frames         = 0;
@@ -191,6 +193,7 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
         uint32_t         DescriptorFrameIndex() const;
         void             BeginDescriptorPreparation(uint32_t frame, bool unpublished);
         void             RecordDescriptorBinding(const DescriptorReplayRecord& record);
+        void             ResetDescriptorReplayRecords();
     };
 
     /// Descriptor-only candidate owner. Borrows a generation-leased pipeline;

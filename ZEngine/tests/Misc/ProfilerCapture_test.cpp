@@ -1,4 +1,5 @@
 #include <ZEngine/Profiling/ProfilerBuffer.h>
+#include <ZEngine/Profiling/ThreadCpuTime.h>
 #include <gtest/gtest.h>
 #include <chrono>
 #include <filesystem>
@@ -7,6 +8,42 @@
 #include <thread>
 
 using ZEngine::Profiling::ProfilerBuffer;
+using ZEngine::Profiling::ThreadExecutionTimes;
+
+TEST(ThreadExecutionTimesTest, SeparatesCpuAndNonCpuWithoutInferringTheBlockingCause)
+{
+    const auto result = ThreadExecutionTimes::Between({100, true}, {400, true}, 1000);
+    ASSERT_TRUE(result.Valid);
+    EXPECT_EQ(result.CpuNanoseconds, 300u);
+    EXPECT_EQ(result.NonCpuNanoseconds, 700u);
+}
+
+TEST(ThreadExecutionTimesTest, InvalidOrInconsistentClocksCannotMasqueradeAsZeroCpuWork)
+{
+    EXPECT_FALSE(ThreadExecutionTimes::Between({}, {400, true}, 1000).Valid);
+    EXPECT_FALSE(ThreadExecutionTimes::Between({100, true}, {}, 1000).Valid);
+    EXPECT_FALSE(ThreadExecutionTimes::Between({400, true}, {100, true}, 1000).Valid);
+    EXPECT_FALSE(ThreadExecutionTimes::Between({100, true}, {400, true}, 299).Valid);
+    const auto exact = ThreadExecutionTimes::Between({100, true}, {400, true}, 300);
+    ASSERT_TRUE(exact.Valid);
+    EXPECT_EQ(exact.NonCpuNanoseconds, 0u);
+}
+
+TEST(ThreadExecutionTimesTest, CallingThreadClockIsMonotonicOrExplicitlyUnavailable)
+{
+    const auto first  = ZEngine::Profiling::ReadThreadCpuTime();
+    const auto second = ZEngine::Profiling::ReadThreadCpuTime();
+#if defined(__APPLE__) || defined(__linux__)
+    ASSERT_TRUE(first.Valid);
+    ASSERT_TRUE(second.Valid);
+#else
+    EXPECT_EQ(first.Valid, second.Valid);
+#endif
+    if (first.Valid && second.Valid)
+    {
+        EXPECT_GE(second.Nanoseconds, first.Nanoseconds);
+    }
+}
 
 TEST(ProfilerCaptureTest, CapturesAcrossFramesFiltersNamesAndExportsOnlyAfterStopping)
 {

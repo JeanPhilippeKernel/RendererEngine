@@ -1,5 +1,6 @@
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Profiling/Profiling.h>
+#include <ZEngine/Profiling/ThreadCpuTime.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/RenderGraph.h>
 #include <ZEngine/Rendering/Renderers/RenderGraphTopology.h>
@@ -435,6 +436,10 @@ namespace ZEngine::Rendering::Renderers
             ZENGINE_PROFILE_VALUE("SceneLoad.RecordingWorker.DispatchDelayMs", dispatch_delay_ms);
 #endif
             ZENGINE_PROFILE_SCOPE("SceneLoad.RecordingWorker.Task");
+#if ZENGINE_PROFILING
+            const auto wall_begin = std::chrono::steady_clock::now();
+            const auto cpu_begin  = Profiling::ReadThreadCpuTime();
+#endif
             if (task.Graph && task.Level)
             {
                 for (uint32_t pass_index : task.Level->PassIndices)
@@ -447,6 +452,26 @@ namespace ZEngine::Rendering::Renderers
                     }
                 }
             }
+#if ZENGINE_PROFILING
+            const auto cpu_end = Profiling::ReadThreadCpuTime();
+            const auto wall_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - wall_begin).count());
+            // Preserve detail for long tasks without multiplying every short
+            // recording task into several bounded-capture records.
+            if (wall_ns >= 1'000'000)
+            {
+                const auto execution = Profiling::ThreadExecutionTimes::Between(cpu_begin, cpu_end, wall_ns);
+                if (execution.Valid)
+                {
+                    ZENGINE_PROFILE_VALUE("SceneLoad.RecordingWorker.LongTaskWallMs", wall_ns / 1'000'000.0);
+                    ZENGINE_PROFILE_VALUE("SceneLoad.RecordingWorker.LongTaskCpuMs", execution.CpuNanoseconds / 1'000'000.0);
+                    ZENGINE_PROFILE_VALUE("SceneLoad.RecordingWorker.LongTaskNonCpuMs", execution.NonCpuNanoseconds / 1'000'000.0);
+                }
+                else
+                {
+                    ZENGINE_PROFILE_SCOPE("SceneLoad.RecordingWorker.LongTaskCpuClockUnavailable");
+                }
+            }
+#endif
         }
 
         void AppendUnsigned(Core::Containers::String& output, uint64_t value)
