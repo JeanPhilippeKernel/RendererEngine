@@ -38,6 +38,29 @@ namespace ZEngine::ECS
         return m_arena != nullptr;
     }
 
+    bool SceneComponentSchemaRegistry::FreezeForWorker(SceneDiagnostics* diagnostics)
+    {
+        if (m_frozen)
+        {
+            return true;
+        }
+        if (!IsInitialized())
+        {
+            SceneDiagnosticError(diagnostics, "Worker scene codecs require an initialized registry.", SceneDiagnosticCode::InvalidArgument);
+            return false;
+        }
+        for (const auto& schema : m_schemas)
+        {
+            if (!schema.PureCandidateLocal)
+            {
+                SceneDiagnosticError(diagnostics, "A scene schema has not admitted all callbacks as pure candidate-local operations.", SceneDiagnosticCode::UnsupportedCapability);
+                return false;
+            }
+        }
+        m_frozen = true;
+        return true;
+    }
+
     void SceneComponentSchemaRegistry::Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity)
     {
         ZENGINE_VALIDATE_ASSERT(arena != nullptr, "SceneComponentSchemaRegistry::Initialize: arena must not be null")
@@ -74,6 +97,11 @@ namespace ZEngine::ECS
 
     bool SceneComponentSchemaRegistry::Register(const SceneComponentSchemaDesc& desc, SceneDiagnostics* diagnostics)
     {
+        if (m_frozen)
+        {
+            Reject(diagnostics, "registry is frozen for asynchronous readers");
+            return false;
+        }
         if (!IsInitialized())
         {
             Reject(diagnostics, "registry is not initialized");
@@ -188,13 +216,14 @@ namespace ZEngine::ECS
         }
 
         SceneComponentSchema schema{};
-        schema.Key         = key_copy;
-        schema.Version     = desc.Version;
-        schema.RuntimeType = desc.RuntimeType;
-        schema.Fields      = fields;
-        schema.FieldCount  = desc.FieldCount;
-        schema.Codecs      = desc.Codecs;
-        schema.References  = desc.References;
+        schema.Key                = key_copy;
+        schema.Version            = desc.Version;
+        schema.RuntimeType        = desc.RuntimeType;
+        schema.Fields             = fields;
+        schema.FieldCount         = desc.FieldCount;
+        schema.Codecs             = desc.Codecs;
+        schema.References         = desc.References;
+        schema.PureCandidateLocal = desc.PureCandidateLocal;
 
         m_schemas.push(schema);
 

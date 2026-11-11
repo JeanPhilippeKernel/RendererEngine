@@ -53,6 +53,9 @@ namespace ZEngine::Core::Serialization
         [[nodiscard]] bool          Int64(int64_t* value);
         [[nodiscard]] bool          Boolean(bool* value);
         [[nodiscard]] bool          Null();
+        // Explicit, fully validated skip for forward-compatible source schemas.
+        // Reuses caller scratch at every nesting level and obeys parser limits.
+        [[nodiscard]] bool          SkipValue(Containers::ArrayView<char> scratch);
         [[nodiscard]] bool          Finish();
         [[nodiscard]] VFS::VFSError Error() const noexcept
         {

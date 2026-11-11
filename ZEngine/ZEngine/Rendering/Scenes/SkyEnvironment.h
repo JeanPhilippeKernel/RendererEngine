@@ -71,6 +71,13 @@ namespace ZEngine::Rendering::Scenes
         bool                         Retired         = false;
     };
 
+    /// @brief Scene candidates must explicitly activate their completed resources.
+    enum class SkyEnvironmentPublication : uint8_t
+    {
+        Immediate = 0,
+        Explicit,
+    };
+
     /// @brief Immutable bake input claimed by the render thread.
     struct SkyEnvironmentBakeRequest
     {
@@ -86,6 +93,7 @@ namespace ZEngine::Rendering::Scenes
         bool                            HDRIArtifactReady = true;
         /// @brief True only when this request has every valid input needed to bake.
         bool                            BakeInputsValid   = true;
+        SkyEnvironmentPublication       Publication       = SkyEnvironmentPublication::Immediate;
     };
 
     /// @brief Result of a revision-tagged environment bake completion.
@@ -95,6 +103,13 @@ namespace ZEngine::Rendering::Scenes
         Published,
         Failed,
         Discarded,
+        Prepared,
+    };
+
+    struct SkyEnvironmentBakeRowRange
+    {
+        uint32_t FirstRow = 0;
+        uint32_t RowCount = 0;
     };
 
     /// @brief Render-thread-owned lifetime model for one scene's environment.
@@ -107,6 +122,10 @@ namespace ZEngine::Rendering::Scenes
     {
         static constexpr uint32_t                         MaxSnapshots                              = 8;
         static constexpr uint32_t                         MaxPendingFramePins                       = 16;
+        static constexpr uint32_t                         BakeFaceCount                             = 6;
+        /// @brief Base-mip sample evaluations admitted per specular batch. Lower
+        /// mips use the same proportional row partition, without reducing quality.
+        static constexpr uint64_t                         SpecularBakeSampleBudget                  = 262144;
         /// @brief Bounds source-radiance churn from an animated primary sun.
         /// @details Non-celestial edits always schedule immediately. A running
         ///          day/night controller submits at most one new source bake for
@@ -126,8 +145,22 @@ namespace ZEngine::Rendering::Scenes
         bool                                              ReserveActiveBakeMemory(uint64_t revision, uint64_t bytes);
 
         /// @brief Coalesces an immutable config revision while preserving its identity.
+        /// @details Explicit publication leaves presentation and frame selection
+        /// unchanged until ActivatePrepared. It schedules a complete candidate
+        /// bake instead of applying interactive celestial throttling or relabelling
+        /// another revision's in-flight work.
         /// @return False if the revision is stale or already observed.
-        bool                                              SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings = {}, const SkyCelestialLight& celestial_light = {}, uint64_t hdri_source_hash = 0, bool hdri_artifact_ready = true);
+        bool                                              SubmitConfig(const SkyConfig& config, uint64_t revision, const EnvironmentLightingBakeSettings& bake_settings = {}, const SkyCelestialLight& celestial_light = {}, uint64_t hdri_source_hash = 0, bool hdri_artifact_ready = true, SkyEnvironmentPublication publication = SkyEnvironmentPublication::Immediate);
+
+        /// @brief Returns a completed candidate without selecting it for rendering.
+        /// @details Render-thread only; the snapshot remains owned until activation,
+        /// cancellation, supersession, or shutdown, and counts against the same budget.
+        [[nodiscard]] const SkyEnvironmentSnapshot*       GetPreparedSnapshot(uint64_t revision) const;
+        /// @brief Selects an exact prepared revision without allocation or GPU work.
+        bool                                              ActivatePrepared(uint64_t revision);
+        /// @brief Invalidates only the matching candidate; submitted bake work still
+        /// drains through the normal stage-completion and retirement paths.
+        bool                                              CancelPrepared(uint64_t revision);
 
         /// @brief Claims the newest revision when no other bake is in flight.
         bool                                              TakeBakeRequest(SkyEnvironmentBakeRequest& out_request);
@@ -143,17 +176,21 @@ namespace ZEngine::Rendering::Scenes
         /// @brief Returns whether the active stage can be registered into this frame graph.
         [[nodiscard]] bool                                CanRecordGpuBakeStage() const;
         /// @brief Records that the active stage emitted its dispatch commands this frame.
-        bool                                              NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage);
+        bool                                              NotifyGpuBakeStageRecorded(uint64_t revision, SkyEnvironmentBakeStage stage, uint32_t face = 0, uint32_t slice = 0);
         /// @brief Marks a successfully recorded GPU stage once its frame was submitted.
         bool                                              MarkGpuBakeStageSubmitted(uint64_t revision, uint64_t timeline_value);
-        /// @brief Advances one completed stage, exposing a cancellation point before the next one.
+        /// @brief Advances one completed slice, face or stage, exposing a cancellation point before the next batch.
         bool                                              AdvanceCompletedGpuBakeStage(uint64_t completed_timeline_value);
         [[nodiscard]] bool                                IsGpuBakeReadyToPublish() const;
         /// @brief Returns false once a newer config, quality setting, or HDRI
         /// source snapshot supersedes the active request.
         [[nodiscard]] bool                                IsActiveBakeCurrent() const;
 
-        /// @brief Completes a bake, publishing it only if its revision is still current.
+        /// @brief Completes a current bake, publishing or retaining it as requested.
+        /// @details Explicit completion requires all submitted GPU stages to finish
+        /// and the exact baked resources. Ignored keeps ownership with the active
+        /// bake; Published/Prepared transfer it to a snapshot. For Failed/Discarded,
+        /// the caller retires the captured bake resources as in the immediate path.
         SkyEnvironmentBakeResult                          CompleteBake(uint64_t revision, Textures::TextureHandle source_radiance, bool success, const EnvironmentLightingResources& lighting = {}, const AtmosphereStaticResources& atmosphere = {});
 
         /// @brief Pins the single snapshot that every sky consumer must use this frame.
@@ -177,6 +214,13 @@ namespace ZEngine::Rendering::Scenes
         [[nodiscard]] const AtmosphereStaticResources*    FindReusableAtmosphere(const SkyConfig& config) const;
         [[nodiscard]] const EnvironmentLightingResources& GetActiveBakeLighting() const;
         [[nodiscard]] SkyEnvironmentBakeStage             GetActiveBakeStage() const;
+        /// @brief Cubemap face for the next source, diffuse, or specular dispatch.
+        [[nodiscard]] uint32_t                            GetActiveBakeFace() const;
+        [[nodiscard]] uint32_t                            GetActiveBakeSlice() const;
+        [[nodiscard]] uint32_t                            GetActiveBakeSliceCount() const;
+        /// @brief Exact, non-overlapping row partition for an output mip. Empty
+        /// ranges are skipped; tiny mips may be written only by the final slice.
+        [[nodiscard]] SkyEnvironmentBakeRowRange          GetActiveBakeRowRange(uint32_t resolution) const;
         [[nodiscard]] const SkyEnvironmentSnapshot*       GetPublishedSnapshot() const;
         /// @brief Returns the latest presentation state without mutating a published resource snapshot.
         [[nodiscard]] const SkyConfig&                    GetPresentationConfig() const;
@@ -197,6 +241,7 @@ namespace ZEngine::Rendering::Scenes
         [[nodiscard]] bool              IsAtmosphereShared(uint32_t excluded_snapshot_slot, const AtmosphereStaticResources& atmosphere) const;
         void                            ReleaseNextFramePin(uint64_t timeline_value);
         int32_t                         FindFreeSnapshotSlot() const;
+        void                            RetirePreparedSnapshot();
 
         SkyEnvironmentSnapshot          m_snapshots[MaxSnapshots]              = {};
         SkyEnvironmentBakeRequest       m_pending_request                      = {};
@@ -208,20 +253,27 @@ namespace ZEngine::Rendering::Scenes
         EnvironmentLightingBakeSettings m_bake_settings                        = {};
         SkyConfig                       m_presentation_config                  = {};
         SkyCelestialLight               m_presentation_celestial_light         = {};
+        SkyConfig                       m_requested_config                     = {};
+        SkyCelestialLight               m_requested_celestial_light            = {};
         SkyConfig                       m_bake_config                          = {};
         SkyCelestialLight               m_bake_celestial_light                 = {};
         uint64_t                        m_bake_hdri_source_hash                = 0;
         uint16_t                        m_frame_pin_slots[MaxPendingFramePins] = {};
         uint32_t                        m_published_slot                       = 0;
+        uint32_t                        m_prepared_slot                        = MaxSnapshots;
         uint32_t                        m_frame_pin_head                       = 0;
         uint32_t                        m_frame_pin_count                      = 0;
         uint64_t                        m_latest_revision                      = 0;
+        uint64_t                        m_prepared_revision                    = 0;
         uint64_t                        m_latest_bake_revision                 = 0;
         uint64_t                        m_active_stage_timeline                = 0;
+        uint32_t                        m_active_bake_face                     = 0;
+        uint32_t                        m_active_bake_slice                    = 0;
         uint64_t                        m_memory_budget_bytes                  = 0;
         uint64_t                        m_active_bake_reserved_memory_bytes    = 0;
         SkyEnvironmentBakeStage         m_active_bake_stage                    = SkyEnvironmentBakeStage::AwaitingSource;
         bool                            m_has_pending_request                  = false;
+        bool                            m_defer_publication                    = false;
         bool                            m_has_active_bake                      = false;
         bool                            m_active_bake_owns_atmosphere          = false;
         bool                            m_bake_inputs_valid                    = false;

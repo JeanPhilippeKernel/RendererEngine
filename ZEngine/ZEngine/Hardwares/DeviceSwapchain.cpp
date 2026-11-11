@@ -2,6 +2,7 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/Rendering/Specifications/AttachmentSpecification.h>
@@ -266,6 +267,10 @@ namespace ZEngine::Hardwares
         }
         if (RenderTimeline)
         {
+            if (Device->RRM)
+            {
+                ZENGINE_VALIDATE_ASSERT(static_cast<RenderResourceManager*>(Device->RRM)->ForgetResourceTimeline(RenderTimeline), "Cannot destroy a frame timeline with pending resource consumers")
+            }
             RenderTimeline->~Semaphore();
             RenderTimeline = nullptr;
         }
@@ -277,6 +282,7 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::AcquireNextImage(uint32_t frame_context_idx)
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.AcquireImage");
         // Do not reset fences or command pools while a minimized/zero-size
         // window cannot acquire an image. Restore recreates through the normal path.
         if (FramebufferExtent.width == 0 || FramebufferExtent.height == 0)
@@ -295,7 +301,7 @@ namespace ZEngine::Hardwares
             uint64_t direct_completed = 0;
             if (DirectGraphicsTimeline)
                 vkGetSemaphoreCounterValue(Device->LogicalDevice, DirectGraphicsTimeline->GetHandle(), &direct_completed);
-            ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire wait={} frame={} render_completed={} render_submitted={} direct_timeline={} direct_completed={} direct_submitted={}", reason, frame.Index, render_completed, RenderTimelineNextValue, static_cast<const void*>(DirectGraphicsTimeline ? DirectGraphicsTimeline->GetHandle() : VK_NULL_HANDLE), direct_completed, DirectGraphicsTimelineValue)
+            ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire wait={} frame={} render_completed={} render_submitted={} direct_timeline={} direct_completed={} direct_submitted={}", reason, frame.Index, render_completed, RenderTimelineNextValue.load(), static_cast<const void*>(DirectGraphicsTimeline ? DirectGraphicsTimeline->GetHandle() : VK_NULL_HANDLE), direct_completed, DirectGraphicsTimelineValue)
         };
 #endif
         if (Recreation != RecreationState::None)
@@ -416,6 +422,7 @@ namespace ZEngine::Hardwares
         FrameContext& frame = FrameContexts[frame_context_idx + FrameContextOffset];
         if (frame.Fence->GetState() == Rendering::Primitives::FenceState::Submitted)
         {
+            ZENGINE_PROFILE_SCOPE("SceneLoad.Render.FrameFenceWait");
 #ifndef NDEBUG
             trace_fence_wait("frame", frame);
 #endif
@@ -438,7 +445,10 @@ namespace ZEngine::Hardwares
         if (TraceSubmission)
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire call frame={} semaphore={}", frame.Index, static_cast<const void*>(frame.Acquired->GetHandle()))
 #endif
-        VkResult acquire_image_result = vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, ImageAcquireTimeoutNs, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &image_idx);
+        const auto acquire_image_result = [&]() {
+            ZENGINE_PROFILE_SCOPE("SceneLoad.Render.AcquireImageWSI");
+            return vkAcquireNextImageKHR(Device->LogicalDevice, SwapchainHandle, ImageAcquireTimeoutNs, frame.Acquired->GetHandle(), VK_NULL_HANDLE, &image_idx);
+        }();
 #ifndef NDEBUG
         if (TraceSubmission)
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] acquire returned frame={} result={} image={}", frame.Index, static_cast<int32_t>(acquire_image_result), image_idx)
@@ -461,6 +471,7 @@ namespace ZEngine::Hardwares
         ZENGINE_VALIDATE_ASSERT(!current_frame_owns_image, "An acquired image cannot wait on the frame fence being reset")
         if (!current_frame_owns_image && image_fence != nullptr && !image_fence->IsSignaled())
         {
+            ZENGINE_PROFILE_SCOPE("SceneLoad.Render.ImageFenceWait");
 #ifndef NDEBUG
             trace_fence_wait("image", frame);
 #endif
@@ -474,7 +485,10 @@ namespace ZEngine::Hardwares
         RenderCompletes[image_idx]->SetState(Rendering::Primitives::SemaphoreState::Idle);
         // Tick only after a valid acquisition and the image fence wait. On a
         // failed acquire (especially DEVICE_LOST), no further Vulkan work is safe.
-        Device->TickMemory();
+        {
+            ZENGINE_PROFILE_SCOPE("SceneLoad.Render.MemoryRetirement");
+            Device->TickMemory();
+        }
     }
 
     bool DeviceSwapchain::ApplyAcquireResult(FrameContext& frame, VkResult result, uint32_t image_index)
@@ -507,8 +521,13 @@ namespace ZEngine::Hardwares
 
     void DeviceSwapchain::Present()
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SubmitAndPresent");
 
         auto discard_submission_callbacks = [this]() {
+            if (Device->RRM)
+            {
+                static_cast<RenderResourceManager*>(Device->RRM)->FinishResourceFrame();
+            }
             for (const RenderWorkSubmissionCallback& callback : RenderWorkSubmittedCallbacks)
                 if (callback.Cancel)
                     callback.Cancel(callback.Context);
@@ -706,7 +725,10 @@ namespace ZEngine::Hardwares
         if (TraceSubmission)
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] present submit begin frame={} render_value={} queue={}", CurrentFrame->Index, work_complete_value, static_cast<const void*>(queue.Handle))
 #endif
-        auto submit = vkQueueSubmit2(queue.Handle, 1, &submit_info_1, CurrentFrame->Fence->GetHandle());
+        const auto submit = [&]() {
+            ZENGINE_PROFILE_SCOPE("SceneLoad.Render.QueueSubmit");
+            return vkQueueSubmit2(queue.Handle, 1, &submit_info_1, CurrentFrame->Fence->GetHandle());
+        }();
 #ifndef NDEBUG
         if (TraceSubmission)
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] present submit returned frame={} result={}", CurrentFrame->Index, static_cast<int32_t>(submit))
@@ -723,6 +745,12 @@ namespace ZEngine::Hardwares
         // submission. Aborted frames therefore leave no unsignaled association.
         CurrentFrame->Fence->SetState(Rendering::Primitives::FenceState::Submitted);
         ImageInFlights[CurrentFrame->ImageIndex] = CurrentFrame->Fence;
+        if (Device->RRM)
+        {
+            auto* resources = static_cast<RenderResourceManager*>(Device->RRM);
+            resources->NotifyResourceSubmission(RenderResourceManager::ResourceFrameTimelineIndex, RenderTimeline, work_complete_value);
+            resources->FinishResourceFrame();
+        }
 
 #ifndef NDEBUG
         if (TraceSubmission)
@@ -760,7 +788,10 @@ namespace ZEngine::Hardwares
         if (TraceSubmission)
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] present WSI begin frame={} image={} queue={}", CurrentFrame->Index, CurrentFrame->ImageIndex, static_cast<const void*>(queue.Handle))
 #endif
-        VkResult present_result = vkQueuePresentKHR(queue.Handle, &present_info);
+        const auto present_result = [&]() {
+            ZENGINE_PROFILE_SCOPE("SceneLoad.Render.PresentWSI");
+            return vkQueuePresentKHR(queue.Handle, &present_info);
+        }();
 #ifndef NDEBUG
         if (TraceSubmission)
             ZENGINE_CORE_INFO("[VulkanSubmitTrace] present WSI returned frame={} image={} result={}", CurrentFrame->Index, CurrentFrame->ImageIndex, static_cast<int32_t>(present_result))

@@ -22,21 +22,21 @@ namespace ZEngine::Rendering::Renderers
     struct EnvironmentBackgroundPass final : public IRenderGraphCallbackPass
     {
         /// @brief Selects the render-thread-published environment snapshot for this frame.
-        void                                 SetEnvironment(Textures::TextureHandle environment_map, const Rendering::Scenes::SkyConfig& config);
+        void SetEnvironment(Textures::TextureHandle environment_map, const Rendering::Scenes::SkyConfig& config);
         /// @brief Enables this fallback/HDRI background when no analytic background is active.
-        void                                 SetActive(bool active);
+        void SetActive(bool active);
         /// @brief Draws a fixed editor fallback instead of sampling the environment cubemap.
-        void                                 SetUseSolidColorFallback(bool enabled);
+        void SetUseSolidColorFallback(bool enabled);
         /// @brief Selects the far depth used by the current projection convention.
-        void                                 SetCameraDepthConvention(bool uses_reverse_z);
+        void SetCameraDepthConvention(bool uses_reverse_z);
 
-        bool                                 Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
+        bool Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
         /// @brief Builds the static PSO recipe for the full-screen sky draw.
-        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const override;
-        void                                 Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass) override;
-        void                                 Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
-        bool                                 RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
-        bool                                 SupportsSecondaryRecording() const override
+        bool TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const override;
+        void Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass) override;
+        void Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        bool RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        bool SupportsSecondaryRecording() const override
         {
             return true;
         }

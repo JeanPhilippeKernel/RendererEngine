@@ -183,6 +183,8 @@ namespace ZEngine::Importers::AssetCodec
     void                                     DeserializeMeshAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMesh& mesh, AssetNodeHierarchy& hierarchies);
 
     void                                     DeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material);
+    // Bounded source-compatible read. Refusal preserves output and arena offset.
+    [[nodiscard]] Core::VFS::VFSResult<void> TryDeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material, const uuids::uuid& expected_uuid = {});
 
     void                                     DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>& textures);
 

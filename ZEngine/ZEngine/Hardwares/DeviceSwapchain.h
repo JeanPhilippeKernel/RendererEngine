@@ -6,6 +6,7 @@
 #include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/ZEngineDef.h>
 #include <vulkan/vulkan.h>
+#include <atomic>
 #include <limits>
 
 namespace ZEngine::Hardwares
@@ -80,36 +81,36 @@ namespace ZEngine::Hardwares
         const uint32_t                                             FrameContextPoolSizeFactor     = 4;
         uint64_t                                                   IdleFrameThreshold             = 0;
         PaddedAtomic<uint64_t>                                     IdleFrameCount                 = {.value = 0};
-        uint64_t                                                   RenderTimelineNextValue        = 0;
-        VkSwapchainKHR                                             SwapchainHandle                = VK_NULL_HANDLE;
-        FrameContextPtr                                            CurrentFrame                   = nullptr;
-        Rendering::Primitives::Semaphore*                          RenderTimeline                 = nullptr;
+        std::atomic<uint64_t>                                      RenderTimelineNextValue{0};
+        VkSwapchainKHR                                             SwapchainHandle              = VK_NULL_HANDLE;
+        FrameContextPtr                                            CurrentFrame                 = nullptr;
+        Rendering::Primitives::Semaphore*                          RenderTimeline               = nullptr;
         // Latest graphics work submitted directly by RenderGraph rather than through
         // Present(). A later upload must wait on this semaphore directly: relaying it
         // through RenderTimeline preserves execution order but loses the draw access
         // scope needed for a subsequent buffer write.
-        Rendering::Primitives::Semaphore*                          DirectGraphicsTimeline         = nullptr;
-        uint64_t                                                   DirectGraphicsTimelineValue    = 0;
-        Rendering::Renderers::RenderPasses::Attachment*            SwapchainAttachment            = nullptr;
-        Core::Containers::Array<FrameContext>                      FrameContexts                  = {};
-        Core::Containers::Array<VkImage>                           SwapchainImages                = {};
-        Core::Containers::Array<VkImageView>                       SwapchainImageViews            = {};
-        Core::Containers::Array<VkFramebuffer>                     SwapchainFramebuffers          = {};
-        Core::Containers::Array<VkImageLayout>                     SwapchainImageLayouts          = {};
+        Rendering::Primitives::Semaphore*                          DirectGraphicsTimeline       = nullptr;
+        uint64_t                                                   DirectGraphicsTimelineValue  = 0;
+        Rendering::Renderers::RenderPasses::Attachment*            SwapchainAttachment          = nullptr;
+        Core::Containers::Array<FrameContext>                      FrameContexts                = {};
+        Core::Containers::Array<VkImage>                           SwapchainImages              = {};
+        Core::Containers::Array<VkImageView>                       SwapchainImageViews          = {};
+        Core::Containers::Array<VkFramebuffer>                     SwapchainFramebuffers        = {};
+        Core::Containers::Array<VkImageLayout>                     SwapchainImageLayouts        = {};
         // Fence from the accepted graphics submission that last rendered each
         // swapchain image. Reset fences are never retained here.
-        Core::Containers::Array<Rendering::Primitives::Fence*>     ImageInFlights                 = {};
-        Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes                = {};
+        Core::Containers::Array<Rendering::Primitives::Fence*>     ImageInFlights               = {};
+        Core::Containers::Array<Rendering::Primitives::Semaphore*> RenderCompletes              = {};
         // Render-thread-owned snapshot of asynchronous GPU work relevant to the
         // current frame. Both graph batches and Present() consume this list.
-        Core::Containers::Array<FrameAsyncOperation>               FrameAsyncOperations           = {};
+        Core::Containers::Array<FrameAsyncOperation>               FrameAsyncOperations         = {};
         // Render-thread-owned callbacks. A callback is delivered only once
         // vkQueueSubmit2 has accepted this frame's graphics command buffers.
-        Core::Containers::Array<RenderWorkSubmissionCallback>      RenderWorkSubmittedCallbacks   = {};
+        Core::Containers::Array<RenderWorkSubmissionCallback>      RenderWorkSubmittedCallbacks = {};
 
         // Debug-only, opt-in render-graph diagnostic state. It is reset at the
         // beginning of every frame and set only for a traced graph submission.
-        bool                                                       TraceSubmission                = false;
+        bool                                                       TraceSubmission              = false;
 
         // Returns false when no image was acquired (timeout, failed acquire, or
         // zero-size surface). Callers must skip all rendering work for that frame.

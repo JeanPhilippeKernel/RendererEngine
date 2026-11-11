@@ -84,6 +84,7 @@ namespace ZEngine::Core::VFS
         /// Atomic binding/rebinding of a mesh pair. Reusing a retained hierarchy
         /// requires its exact snapshot; unrelated or recycled records fail closed.
         [[nodiscard]] bool                            TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot, const AssetRecordSnapshot* retained_hierarchy = nullptr);
+        [[nodiscard]] bool                            TryBindLoadedAsset(const AssetRecordSnapshot& expected, Managers::AssetHandle slot);
 
         bool                                          Remove(Helpers::Handle<AssetRecord> handle);
 

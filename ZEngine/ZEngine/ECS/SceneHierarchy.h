@@ -1,4 +1,5 @@
 #pragma once
+#include <ZEngine/Core/Maths/Matrix.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/ECS/EntityRegistry.h>
 #include <span>
@@ -7,7 +8,8 @@ namespace ZEngine::ECS
 {
     class Scene;
 
-    /// @brief Cached forest topology and derived-frame revisions. Main-thread owned.
+    /// @brief Cached forest topology and derived-frame revisions. Single-owner;
+    /// unpublished reconstruction may run on a worker before publication.
     /// No ECS pointers survive synchronization; component storage may move independently.
     class SceneHierarchy
     {
@@ -16,17 +18,24 @@ namespace ZEngine::ECS
 
         struct Node
         {
-            EntityID Entity          = {};
-            EntityID Parent          = {};
-            uint64_t WorldRevision   = 0;
-            uint32_t ParentIndex     = NoIndex;
-            uint32_t ParentTransform = NoIndex;
-            uint32_t FirstChild      = NoIndex;
-            uint32_t NextSibling     = NoIndex;
-            bool     HasTransform    = false;
-            bool     TopologyValid   = false;
-            bool     FrameValid      = false;
-            bool     Ordered         = false;
+            EntityID           Entity               = {};
+            EntityID           Parent               = {};
+            uint64_t           WorldRevision        = 0;
+            uint32_t           ParentIndex          = NoIndex;
+            uint32_t           ParentTransform      = NoIndex;
+            uint32_t           FirstChild           = NoIndex;
+            uint32_t           NextSibling          = NoIndex;
+            bool               HasTransform         = false;
+            bool               TopologyValid        = false;
+            bool               FrameValid           = false;
+            bool               Ordered              = false;
+            Core::Maths::Vec3f CachedPosition       = {};
+            Core::Maths::Vec3f CachedRotation       = {};
+            Core::Maths::Vec3f CachedScale          = {};
+            Core::Maths::Mat4f CachedWorld          = {};
+            uint64_t           CachedParentRevision = 0;
+            bool               CachedLocalValid     = false;
+            bool               Cached               = false;
         };
 
         [[nodiscard]] bool     Initialize(Core::Memory::ArenaAllocator* arena);
@@ -45,6 +54,11 @@ namespace ZEngine::ECS
         [[nodiscard]] uint64_t BuildCount() const
         {
             return m_build_count;
+        }
+        /// Actual matrix derivations, not visits or wall-time estimates. Owner-thread only.
+        [[nodiscard]] uint64_t DerivationCount() const
+        {
+            return m_derivation_count;
         }
         [[nodiscard]] const Node*           Find(EntityID entity) const;
         [[nodiscard]] uint64_t              ParentWorldRevision(EntityID entity) const;
@@ -71,6 +85,7 @@ namespace ZEngine::ECS
         uint64_t                      m_revision            = 0;
         uint64_t                      m_build_count         = 0;
         uint64_t                      m_world_revision      = 0;
+        uint64_t                      m_derivation_count    = 0;
         uint64_t                      m_structural_revision = UINT64_MAX;
         bool                          m_dirty               = true;
     };

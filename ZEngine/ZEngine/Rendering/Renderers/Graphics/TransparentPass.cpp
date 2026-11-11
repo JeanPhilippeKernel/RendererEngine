@@ -23,8 +23,12 @@ namespace ZEngine::Rendering::Renderers
         return true;
     }
 
-    Specifications::GraphicsPipelineDesc TransparentPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator*) const
+    bool TransparentPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         Specifications::GraphicsPipelineDesc desc = {};
         desc.DebugName                            = "Forward-Transparent-Pipeline";
         desc.EnableBlending                       = true;
@@ -34,7 +38,8 @@ namespace ZEngine::Rendering::Renderers
         // double-sidedness is not represented by the current material schema.
         desc.CullMode                             = VK_CULL_MODE_NONE;
         desc.ShaderSpecificationValue.Name        = "forward_transparent";
-        return desc;
+        *out                                      = std::move(desc);
+        return true;
     }
 
     void TransparentPass::Prepare(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr, RenderGraphResourceInspectorPtr, RenderPasses::RenderPass* pass)
@@ -68,7 +73,7 @@ namespace ZEngine::Rendering::Renderers
         environment.DiffuseIntensity  = m_sky_config.SkyDiffuseIntensity;
         environment.SpecularIntensity = m_sky_config.SkySpecularIntensity;
         commands->PushConstants(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(environment), &environment);
-        commands->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, scene->OpaqueIndirectCommandCount * sizeof(VkDrawIndirectCommand), scene->TransparentIndirectCommandCount);
+        commands->DrawIndirect(scene->GetCulledIndirectBuffer(device->SwapchainPtr->CurrentFrame->Index).Handle, scene->OpaqueIndirectCommandCount * sizeof(VkDrawIndirectCommand), scene->TransparentIndirectCommandCount);
         return true;
     }
 } // namespace ZEngine::Rendering::Renderers

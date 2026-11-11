@@ -20,11 +20,45 @@
 #include <cmath>
 #include <memory>
 #include <numbers>
+#include "SceneLifecycleInputPolicy.h"
 
 using namespace Tetragrama;
 using namespace ZEngine::ECS;
 using namespace ZEngine::ECS::Components;
 using namespace ZEngine::UI;
+
+TEST(SceneLifecycleInputPolicyTest, InteractiveInputCannotAlterTheFixedFixture)
+{
+    for (const auto type : {ZEngine::Core::EventType::KeyPressed, ZEngine::Core::EventType::KeyReleased, ZEngine::Core::EventType::TextInput, ZEngine::Core::EventType::MouseButtonPressed, ZEngine::Core::EventType::MouseButtonReleased, ZEngine::Core::EventType::MouseMoved, ZEngine::Core::EventType::MouseWheel})
+    {
+        EXPECT_TRUE(Tetragrama::Tests::IsSceneLifecycleInteractiveEvent(type));
+    }
+}
+
+TEST(SceneLifecycleInputPolicyTest, WindowLifecycleAndInternalLayoutEventsStillReachTheEditor)
+{
+    for (const auto type : {
+         ZEngine::Core::EventType::WindowShown,
+         ZEngine::Core::EventType::WindowHidden,
+         ZEngine::Core::EventType::WindowMoved,
+         ZEngine::Core::EventType::WindowResized,
+         ZEngine::Core::EventType::WindowClosed,
+         ZEngine::Core::EventType::WindowSizeChanged,
+         ZEngine::Core::EventType::WindowMinimized,
+         ZEngine::Core::EventType::WindowMaximized,
+         ZEngine::Core::EventType::WindowRestored,
+         ZEngine::Core::EventType::WindowFocusLost,
+         ZEngine::Core::EventType::WindowFocusGained,
+         ZEngine::Core::EventType::EngineClosed,
+         ZEngine::Core::EventType::UserInterfaceComponent,
+         ZEngine::Core::EventType::SceneViewportResized,
+         ZEngine::Core::EventType::SceneViewportFocused,
+         ZEngine::Core::EventType::SceneViewportUnfocused,
+         ZEngine::Core::EventType::SceneTextureAvailable})
+    {
+        EXPECT_FALSE(Tetragrama::Tests::IsSceneLifecycleInteractiveEvent(type));
+    }
+}
 
 namespace Tetragrama
 {

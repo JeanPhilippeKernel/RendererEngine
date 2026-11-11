@@ -8,6 +8,7 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GbufferPass.h>
 #include <ZEngine/Rendering/Renderers/Pipelines/PSOCache.h>
@@ -15,9 +16,11 @@
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <utility>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Core::Maths;
@@ -59,13 +62,6 @@ namespace
         out[5] = normalize(sub(row(3), row(2))); // far
     }
 
-    float MaxColumnScale(const Mat4f& m)
-    {
-        float s0 = Vec3f(m(0, 0), m(1, 0), m(2, 0)).magnitude();
-        float s1 = Vec3f(m(0, 1), m(1, 1), m(2, 1)).magnitude();
-        float s2 = Vec3f(m(0, 2), m(1, 2), m(2, 2)).magnitude();
-        return s0 > s1 ? (s0 > s2 ? s0 : s2) : (s1 > s2 ? s1 : s2);
-    }
 } // anonymous namespace
 
 namespace ZEngine::Applications
@@ -119,6 +115,7 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::Shutdown()
     {
+        ZENGINE_VALIDATE_ASSERT(m_prepared_frame_count == 0, "Prepared frames must retire before pipeline shutdown")
         SceneRenderer->Deinitialize();
         if (ZUICtx)
         {
@@ -130,16 +127,55 @@ namespace ZEngine::Applications
         }
     }
 
-    void AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
+    bool AppRenderPipeline::ResizeRenderTarget(uint32_t w, uint32_t h)
     {
         if (w > 0 && h > 0 && SceneRenderer && SceneRenderer->RenderGraph)
         {
-            SceneRenderer->RenderGraph->Resize(w, h);
+            return SceneRenderer->RenderGraph->Resize(w, h);
         }
+        return false;
+    }
+
+    bool AppRenderPipeline::ApplyRenderTargetResize(const RenderFrameState& state, uint64_t& applied_sequence)
+    {
+        if (state.ResizeSequence == applied_sequence)
+        {
+            return true;
+        }
+        if (SceneRenderer && SceneRenderer->HasPreparedSceneTargets(state.SceneResources, state.RenderTargetW, state.RenderTargetH))
+        {
+            // Activation will install the already prepared images in RenderScene.
+            // Resizing the outgoing pool here would allocate and wait needlessly.
+            applied_sequence = state.ResizeSequence;
+            return true;
+        }
+        if (!ResizeRenderTarget(state.RenderTargetW, state.RenderTargetH))
+        {
+            return false;
+        }
+        applied_sequence = state.ResizeSequence;
+        return true;
+    }
+
+    bool AppRenderPipeline::ResolvePreparedSceneView(RenderFrameState& state) const
+    {
+        auto*                                 rrm     = Device && Device->RRM ? static_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+        Rendering::Scenes::PreparedSceneFrame initial = {};
+        if (!rrm || !state.SceneResources || !rrm->GetPreparedSceneFrame(state.SceneResources, &initial) || !initial.View.Captured)
+        {
+            return false;
+        }
+        state.Camera         = initial.View.Camera;
+        state.RenderTargetW  = initial.View.Width;
+        state.RenderTargetH  = initial.View.Height;
+        state.ResizeSequence = initial.View.ResizeSequence;
+        state.ShowGrid       = initial.View.ShowGrid;
+        return true;
     }
 
     bool AppRenderPipeline::BeginFrame()
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.BeginFrame");
         Device->FlushShaderReloadRequests();
         if (Device->PipelineStateCache)
         {
@@ -151,12 +187,25 @@ namespace ZEngine::Applications
         swapchain->AcquireNextImage(CurrentFrameContextIndex);
         if (!swapchain->IsFrameValid())
         {
+            if (Device->RRM)
+            {
+                static_cast<Rendering::RenderResourceManager*>(Device->RRM)->PollFrameResources();
+                static_cast<Rendering::RenderResourceManager*>(Device->RRM)->PollSceneResourcePreparations();
+            }
+            if (SceneRenderer)
+            {
+                SceneRenderer->PollSceneEnvironmentPreparations();
+            }
             return false;
         }
 
         if (Device->RRM)
         {
             static_cast<Rendering::RenderResourceManager*>(Device->RRM)->BeginFrame(swapchain->CurrentFrame->Index);
+        }
+        if (SceneRenderer)
+        {
+            SceneRenderer->PollSceneEnvironmentPreparations();
         }
         swapchain->FrameAsyncOperations.clear();
         swapchain->TraceSubmission = false;
@@ -187,6 +236,7 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::EndFrame()
     {
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.EndFrame");
         if (!Device->SwapchainPtr->IsFrameValid())
         {
             Device->SwapchainPtr->Present();
@@ -214,31 +264,46 @@ namespace ZEngine::Applications
 
     void AppRenderPipeline::RenderScene(const RenderFrameState& state, const Rendering::Renderers::ZUIRenderPayload* overlay)
     {
-        const auto& camera       = state.Camera;
-        const auto& scene        = state.Scene;
-        auto        swpachain    = Device->SwapchainPtr;
-        auto        frame_index  = swpachain->CurrentFrame->Index;
-        auto        thread_index = RenderMainThreadIndex;
+        ZENGINE_PROFILE_SCOPE("SceneLoad.Render.RecordScene");
+        const auto&                           scene             = state.Scene;
+        auto                                  swpachain         = Device->SwapchainPtr;
+        auto                                  frame_index       = swpachain->CurrentFrame->Index;
+        auto                                  thread_index      = RenderMainThreadIndex;
+        auto*                                 rrm               = Device->RRM ? static_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+        Rendering::Scenes::PreparedSceneFrame initial_frame     = {};
+        const bool                            use_initial_frame = rrm && state.SceneResources && rrm->GetPreparedSceneFrame(state.SceneResources, &initial_frame);
+        if (use_initial_frame && !rrm->GetFramePreparedSceneFrame(state.SceneResources, &initial_frame))
+        {
+            return; // Never replace a required initial dependency with a partial draw.
+        }
+        const bool  use_initial_view = use_initial_frame && initial_frame.View.Captured;
+        const auto& camera           = use_initial_view ? initial_frame.View.Camera : state.Camera;
 
-        SceneRenderer->ApplySkyConfig(state.Sky, state.CelestialLight, state.SkyRevision);
-        SceneRenderer->ApplyGridConfig(scene.Grid);
+        if (!SceneRenderer->ApplySkyConfig(state.Sky, state.CelestialLight, state.SkyRevision, state.SceneGeneration, state.SceneResources))
+        {
+            return; // Never draw a newly published scene with another world's sky.
+        }
+        auto grid    = use_initial_frame ? initial_frame.Grid : scene.Grid;
+        grid.Enabled = grid.Enabled && (use_initial_view ? initial_frame.View.ShowGrid : state.ShowGrid);
+        SceneRenderer->ApplyGridConfig(grid);
         Rendering::Renderers::GridLabelFrameData grid_labels = {};
-        (void) Rendering::Renderers::BuildGridLabelFrame(scene.Grid, camera, state.GridLabelFont, state.RenderTargetW, state.RenderTargetH, grid_labels);
+        const auto                               view_width  = use_initial_view ? initial_frame.View.Width : state.RenderTargetW;
+        const auto                               view_height = use_initial_view ? initial_frame.View.Height : state.RenderTargetH;
+        (void) Rendering::Renderers::BuildGridLabelFrame(grid, camera, use_initial_view ? initial_frame.View.GridLabelFont : state.GridLabelFont, view_width, view_height, grid_labels);
         SceneRenderer->ApplyGridLabels(grid_labels);
         SceneRenderer->ApplyGizmo(state.Gizmo);
         SceneRenderer->ApplySelectionOutline(state.SelectionOutline.Enabled());
 
-        auto*      gpu                = SceneRenderer->RenderSceneData;
+        auto*      gpu                     = SceneRenderer->RenderSceneData;
         // Begin exactly once. A mailbox may retain the same request for several
         // render opportunities while it waits for a free consumer slot.
-        const auto object_pick        = state.ObjectPick;
-        const auto hover_pick         = state.HoverPick;
-        const bool record_object_pick = object_pick.Valid() && object_pick.Begin(object_pick.Context);
-        const bool record_hover_pick  = hover_pick.Valid() && hover_pick.Begin(hover_pick.Context);
+        const auto object_pick             = state.ObjectPick;
+        const auto hover_pick              = state.HoverPick;
+        const bool record_object_pick      = object_pick.Valid() && object_pick.Begin(object_pick.Context);
+        const bool record_hover_pick       = hover_pick.Valid() && hover_pick.Begin(hover_pick.Context);
+        bool       prepared_frame_complete = true;
 
         {
-            auto*        rrm       = Device->RRM ? reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
-            auto*        mgr       = Managers::AssetManager::Instance();
             auto         scratch   = ZGetScratch(&Engine::GetContext()->UIContextArena);
 
             // Extract camera frustum once for this frame.
@@ -251,140 +316,194 @@ namespace ZEngine::Applications
             Core::Containers::Array<TransparentCommand>                     transparent_inputs{};
             Core::Containers::Array<Core::Maths::Mat4f>                     transforms;
             Core::Containers::Array<uint32_t>                               selection_token_states;
-            allocs.init(scratch.Arena, scene.InstanceCount * 4);
-            culling_inputs.init(scratch.Arena, scene.InstanceCount * 4);
-            transparent_inputs.init(scratch.Arena, scene.InstanceCount * 4);
-            transforms.init(scratch.Arena, scene.InstanceCount);
+            const uint32_t                                                  draw_capacity = use_initial_frame ? static_cast<uint32_t>(initial_frame.Draws.size()) : scene.InstanceCount * 4;
+            allocs.init(scratch.Arena, draw_capacity);
+            culling_inputs.init(scratch.Arena, draw_capacity);
+            transparent_inputs.init(scratch.Arena, draw_capacity);
+            transforms.init(scratch.Arena, use_initial_frame ? initial_frame.Transforms.size() : scene.InstanceCount);
             if (state.SelectionOutline.Enabled())
             {
-                selection_token_states.init(scratch.Arena, Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS + 1, Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS + 1);
+                const auto token_count = use_initial_frame ? static_cast<uint32_t>(initial_frame.Draws.size()) + 1 : Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS + 1;
+                selection_token_states.init(scratch.Arena, token_count, token_count);
                 ZEngine::Helpers::secure_memset(selection_token_states.data(), 0, selection_token_states.size() * sizeof(uint32_t), selection_token_states.size() * sizeof(uint32_t));
             }
 
-            for (uint32_t inst_i = 0; inst_i < scene.InstanceCount; ++inst_i)
+            auto append_draw = [&](Rendering::Meshes::SubMeshAllocation alloc, const Vec4f& world_bounds, ECS::EntityID entity, bool transparent) {
+                const uint32_t draw_index = static_cast<uint32_t>(allocs.size());
+                const bool     selected   = state.SelectionOutline.Contains(entity);
+                const bool     hovered    = !selected && entity == state.SelectionOutline.Hovered;
+                const uint32_t feedback   = selected ? 2u : hovered ? 1u : 0u;
+                if (!use_initial_frame)
+                {
+                    alloc.PickToken = entity.IsValid() && (record_object_pick || record_hover_pick || feedback) && draw_index < Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS ? draw_index + 1 : 0;
+                }
+                if (record_object_pick && alloc.PickToken)
+                {
+                    object_pick.RecordToken(object_pick.Context, alloc.PickToken, entity);
+                }
+                if (record_hover_pick && alloc.PickToken)
+                {
+                    hover_pick.RecordToken(hover_pick.Context, alloc.PickToken, entity);
+                }
+                if (feedback && alloc.PickToken)
+                {
+                    selection_token_states[alloc.PickToken] = feedback;
+                }
+                allocs.push(alloc);
+                if (use_initial_frame && initial_frame.PresentationPrepared)
+                {
+                    return; // Captured-view ordering is already in the private GPU inputs.
+                }
+                const Rendering::Scenes::FrustumCullingInput input = {
+                    .WorldBounds = world_bounds, .Command = {.vertexCount = alloc.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_index}
+                };
+                if (transparent)
+                {
+                    const auto view_center = camera.View * Vec4f(world_bounds.x, world_bounds.y, world_bounds.z, 1.f);
+                    transparent_inputs.push({.Input = input, .ViewDepth = -view_center.z});
+                }
+                else
+                {
+                    culling_inputs.push(input);
+                }
+            };
+
+            for (uint32_t inst_i = 0; !use_initial_frame && inst_i < scene.InstanceCount; ++inst_i)
             {
-                const auto& inst   = scene.Instances[inst_i];
+                const auto&                                            inst          = scene.Instances[inst_i];
 
-                auto        handle = rrm ? rrm->FindMeshBuffer(inst.MeshUUID) : Rendering::BufferHandle{};
-                if (!handle.IsValid())
+                Rendering::RenderResourceManager::MeshGeometrySnapshot geometry      = {};
+                const bool                                             prepared_mesh = rrm && state.SceneResources && rrm->GetPreparedSceneGeometry(state.SceneResources, inst.MeshUUID, &geometry);
+                if (prepared_mesh)
                 {
+                    if (!rrm->GetFramePreparedSceneGeometry(state.SceneResources, inst.MeshUUID, &geometry))
+                    {
+                        prepared_frame_complete = false;
+                        continue;
+                    }
+                }
+                else
+                {
+                    // Ordinary frames, including assets added by authoring after
+                    // activation, keep the existing streaming path. Initial
+                    // prepared meshes never resolve their newer public handles.
+                    const auto handle = rrm ? rrm->FindMeshBuffer(inst.MeshUUID) : Rendering::BufferHandle{};
+                    if (!handle.IsValid())
+                    {
+                        prepared_frame_complete = false;
+                        continue;
+                    }
+                    if (!rrm->IsMeshResident(handle))
+                    {
+                        rrm->RequestMeshLoad(handle, inst.MeshUUID);
+                        prepared_frame_complete = false;
+                        continue;
+                    }
+                    if (!rrm->GetFrameMeshGeometry(handle, &geometry))
+                    {
+                        prepared_frame_complete = false;
+                        continue;
+                    }
+                }
+                if (!geometry.DrawMetadata)
+                {
+                    prepared_frame_complete = false;
                     continue;
                 }
+                const uint32_t vtx_base     = geometry.VertexOffset();
+                const uint32_t idx_base     = geometry.IndexOffset();
 
-                // Skip non-resident meshes — either upload still in flight (Pending) or the
-                // slot was evicted (Unloaded). For evicted slots, enqueue a reload so the
-                // streaming manager re-uploads the data at the start of the next frame.
-                if (!rrm->IsMeshResident(handle))
-                {
-                    rrm->RequestMeshLoad(handle, inst.MeshUUID);
-                    continue;
-                }
-
-                rrm->MarkMeshReferenced(handle);
-
-                uint32_t vtx_base = 0, idx_base = 0;
-                rrm->GetMeshOffsets(handle, vtx_base, idx_base);
-
-                if (!mgr)
-                {
-                    continue;
-                }
-                // CPU descriptors/material slots can grow while an uncached scene
-                // asset is published. Keep borrowed data inside the ingest lease;
-                // GPU lookups above and buffer submissions below hold no lease.
-                std::lock_guard asset_lock(mgr->IngestMutex);
-                auto*           mesh = mgr->GetMeshAsset(inst.MeshUUID);
-                if (!mesh)
-                {
-                    continue;
-                }
+                // Layout and bounds belong to the pinned upload version, never
+                // the latest CPU mesh under this UUID. Material admission below
+                // copies and retains its exact shader values and texture versions.
+                const auto*    mesh         = geometry.DrawMetadata;
 
                 // Build a world-space sphere for the GPU culling pass. A mesh with
                 // no authored bound is deliberately retained as always visible.
-                Vec4f world_bounds(0.f, 0.f, 0.f, -1.f);
-                if (mesh->BoundsRadius > 0.f)
-                {
-                    const Vec3f& c = mesh->BoundsCenter;
-                    Vec3f        worldCenter(inst.Transform(0, 0) * c.x + inst.Transform(0, 1) * c.y + inst.Transform(0, 2) * c.z + inst.Transform(0, 3), inst.Transform(1, 0) * c.x + inst.Transform(1, 1) * c.y + inst.Transform(1, 2) * c.z + inst.Transform(1, 3), inst.Transform(2, 0) * c.x + inst.Transform(2, 1) * c.y + inst.Transform(2, 2) * c.z + inst.Transform(2, 3));
-                    float        worldRadius = mesh->BoundsRadius * MaxColumnScale(inst.Transform);
-                    world_bounds             = Vec4f(worldCenter, worldRadius);
-                }
+                const auto     world_bounds = Rendering::Scenes::MakeDrawWorldBounds(inst.Transform, mesh->BoundsCenter, mesh->BoundsRadius);
 
                 transforms.push(inst.Transform);
-                uint32_t       transform_idx  = static_cast<uint32_t>(transforms.size() - 1);
-                // This state is shared by every submesh of the instance.
-                // Compute it once before assigning one pick token per draw.
-                const bool     selected       = state.SelectionOutline.Contains(inst.Entity);
-                const bool     hovered        = !selected && inst.Entity == state.SelectionOutline.Hovered;
-                const uint32_t feedback_state = selected ? 2u : hovered ? 1u : 0u;
-                const bool     needs_token    = inst.Entity.IsValid() && (record_object_pick || record_hover_pick || feedback_state != 0);
+                uint32_t transform_idx = static_cast<uint32_t>(transforms.size() - 1);
 
                 for (uint32_t sub_i = 0; sub_i < static_cast<uint32_t>(mesh->SubMeshes.size()); ++sub_i)
                 {
-                    const auto&                          sub      = mesh->SubMeshes[sub_i];
-                    uint32_t*                            mat_slot = mgr ? mgr->UUIDToMaterialSlot.find(sub.MaterialUUID) : nullptr;
-                    uint32_t                             mat_idx  = mat_slot ? *mat_slot : 0;
-                    uint32_t                             draw_idx = static_cast<uint32_t>(allocs.size());
-
-                    Rendering::Meshes::SubMeshAllocation alloc    = {};
-                    alloc.VertexOffset                            = vtx_base + sub.VertexOffset;
-                    alloc.VertexCount                             = sub.VertexCount;
-                    alloc.IndexOffset                             = idx_base + sub.IndexOffset;
-                    alloc.IndexCount                              = sub.IndexCount;
-                    alloc.InstanceCount                           = 1;
-                    alloc.TransformId                             = transform_idx;
-                    alloc.MaterialId                              = mat_idx;
-                    // The same frame-local token image supports independent click
-                    // and hover readbacks plus selected-state outline feedback.
-                    alloc.PickToken                               = needs_token && draw_idx < Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS ? draw_idx + 1 : 0;
-                    if (record_object_pick && alloc.PickToken != 0)
+                    const auto&                                               sub      = mesh->SubMeshes[sub_i];
+                    uint32_t                                                  mat_idx  = 0;
+                    Rendering::RenderResourceManager::MaterialVersionSnapshot material = {};
+                    // Preserve the legacy missing-material fallback explicitly;
+                    // a known material with an unretainable map is never replaced.
+                    const bool                                                admitted = prepared_mesh ? rrm->GetFramePreparedSceneMaterial(state.SceneResources, sub.MaterialUUID, &mat_idx, &material) : rrm->GetFrameMaterialVersion(sub.MaterialUUID, &mat_idx, &material, true);
+                    if (!admitted)
                     {
-                        object_pick.RecordToken(object_pick.Context, alloc.PickToken, inst.Entity);
+                        prepared_frame_complete = false;
+                        continue;
                     }
-                    if (record_hover_pick && alloc.PickToken != 0)
-                    {
-                        hover_pick.RecordToken(hover_pick.Context, alloc.PickToken, inst.Entity);
-                    }
-                    if (feedback_state != 0 && alloc.PickToken != 0)
-                    {
-                        selection_token_states[alloc.PickToken] = feedback_state;
-                    }
-                    allocs.push(alloc);
-                    VkDrawIndirectCommand                        draw  = {.vertexCount = sub.IndexCount, .instanceCount = 1, .firstVertex = 0, .firstInstance = draw_idx};
-                    const Rendering::Scenes::FrustumCullingInput input = {.WorldBounds = world_bounds, .Command = draw};
-                    if (mat_idx < mgr->GPUMeshMaterials.size() && mgr->GPUMeshMaterials[mat_idx].AlphaMode == Rendering::Materials::AlphaMode::Blend)
-                    {
-                        const auto center      = inst.Transform * Vec4f(mesh->BoundsCenter, 1.f);
-                        const auto view_center = camera.View * center;
-                        transparent_inputs.push({.Input = input, .ViewDepth = -view_center.z});
-                    }
-                    else
-                        culling_inputs.push(input);
+                    Rendering::Meshes::SubMeshAllocation alloc = {};
+                    alloc.VertexOffset                         = vtx_base + sub.VertexOffset;
+                    alloc.VertexCount                          = sub.VertexCount;
+                    alloc.IndexOffset                          = idx_base + sub.IndexOffset;
+                    alloc.IndexCount                           = sub.IndexCount;
+                    alloc.InstanceCount                        = 1;
+                    alloc.TransformId                          = transform_idx;
+                    alloc.MaterialId                           = mat_idx;
+                    append_draw(alloc, world_bounds, inst.Entity, material.Material.AlphaMode == Rendering::Materials::AlphaMode::Blend);
+                }
+            }
+            if (use_initial_frame)
+            {
+                for (const auto& draw : initial_frame.Draws)
+                {
+                    append_draw(draw.Allocation, draw.WorldBounds, draw.Entity, draw.Transparent);
                 }
             }
 
-            gpu->OpaqueIndirectCommandCount      = static_cast<uint32_t>(culling_inputs.size());
-            gpu->TransparentIndirectCommandCount = static_cast<uint32_t>(transparent_inputs.size());
+            const bool prepared_presentation     = use_initial_frame && initial_frame.PresentationPrepared;
+            gpu->OpaqueIndirectCommandCount      = prepared_presentation ? initial_frame.OpaqueDrawCount : static_cast<uint32_t>(culling_inputs.size());
+            gpu->TransparentIndirectCommandCount = prepared_presentation ? static_cast<uint32_t>(initial_frame.Draws.size()) - initial_frame.OpaqueDrawCount : static_cast<uint32_t>(transparent_inputs.size());
             if (transparent_inputs.size() > 1)
+            {
                 std::sort(transparent_inputs.data(), transparent_inputs.data() + transparent_inputs.size(), [](const TransparentCommand& a, const TransparentCommand& b) { return Rendering::Materials::TransparentDepthBefore(a.ViewDepth, a.Input.Command.firstInstance, b.ViewDepth, b.Input.Command.firstInstance); });
+            }
             for (const auto& transparent : transparent_inputs)
+            {
                 culling_inputs.push(transparent.Input);
-            gpu->IndirectCommandCount = static_cast<uint32_t>(culling_inputs.size());
+            }
+            gpu->IndirectCommandCount = gpu->OpaqueIndirectCommandCount + gpu->TransparentIndirectCommandCount;
             ZENGINE_VALIDATE_ASSERT(gpu->IndirectCommandCount <= Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS, "Too many draw commands — increase SceneData::MAX_DRAW_COMMANDS")
 
-            if (rrm && gpu->TransformBuffers[frame_index].Handle && transforms.size() > 0)
+            if (rrm && !initial_frame.TransformBuffer && gpu->TransformBuffers[frame_index].Handle && transforms.size() > 0)
             {
                 rrm->UpdateBuffer(gpu->TransformBuffers[frame_index], transforms.data(), transforms.size() * sizeof(Core::Maths::Mat4f));
             }
-            if (rrm && gpu->RenderDataBuffers[frame_index].Handle && allocs.size() > 0)
+            if (rrm && !initial_frame.DrawBuffer && gpu->RenderDataBuffers[frame_index].Handle && allocs.size() > 0)
             {
                 rrm->UpdateBuffer(gpu->RenderDataBuffers[frame_index], allocs.data(), allocs.size() * sizeof(Rendering::Meshes::SubMeshAllocation));
             }
-            if (rrm && gpu->CullingInputBuffers[frame_index].Handle && culling_inputs.size() > 0)
+            if (rrm && culling_inputs.size() > 0 && frame_index < initial_frame.CullingInputBuffers.size())
+            {
+                VkResult status = VK_SUCCESS;
+                if (!Device->GpuMem.WriteHostBuffer(initial_frame.CullingInputBuffers[frame_index], culling_inputs.data(), culling_inputs.size() * sizeof(Rendering::Scenes::FrustumCullingInput), 0, &status))
+                {
+                    Device->CheckDeviceLost(status, "Prepared scene camera-dependent culling input");
+                    ZReleaseScratch(scratch);
+                    return;
+                }
+            }
+            else if (rrm && gpu->CullingInputBuffers[frame_index].Handle && culling_inputs.size() > 0)
             {
                 rrm->UpdateBuffer(gpu->CullingInputBuffers[frame_index], culling_inputs.data(), culling_inputs.size() * sizeof(Rendering::Scenes::FrustumCullingInput));
             }
-            if (rrm && state.SelectionOutline.Enabled() && gpu->SelectionTokenStateBuffers[frame_index].Handle)
+            if (rrm && state.SelectionOutline.Enabled() && frame_index < initial_frame.SelectionTokenBuffers.size())
+            {
+                VkResult status = VK_SUCCESS;
+                if (!Device->GpuMem.WriteHostBuffer(initial_frame.SelectionTokenBuffers[frame_index], selection_token_states.data(), selection_token_states.size() * sizeof(uint32_t), 0, &status))
+                {
+                    Device->CheckDeviceLost(status, "Prepared scene selection feedback");
+                    ZReleaseScratch(scratch);
+                    return;
+                }
+            }
+            else if (rrm && state.SelectionOutline.Enabled() && gpu->SelectionTokenStateBuffers[frame_index].Handle)
             {
                 rrm->UpdateBuffer(gpu->SelectionTokenStateBuffers[frame_index], selection_token_states.data(), selection_token_states.size() * sizeof(uint32_t));
             }
@@ -413,9 +532,10 @@ namespace ZEngine::Applications
         {
             auto* rrm     = reinterpret_cast<Rendering::RenderResourceManager*>(Device->RRM);
             auto* gpu_buf = SceneRenderer->RenderSceneData;
-            if (gpu_buf->LightBuffers[frame_index].Handle)
+            if (!initial_frame.LightBuffer && gpu_buf->LightBuffers[frame_index].Handle)
             {
-                rrm->UpdateBuffer(gpu_buf->LightBuffers[frame_index], &scene.Lights, sizeof(Rendering::Scenes::LightArrayUBO));
+                const auto& lights = use_initial_frame ? initial_frame.Lights : scene.Lights;
+                rrm->UpdateBuffer(gpu_buf->LightBuffers[frame_index], &lights, sizeof(Rendering::Scenes::LightArrayUBO));
             }
         }
 
@@ -433,8 +553,31 @@ namespace ZEngine::Applications
             hover_pick.Submitted(hover_pick.Context);
         }
         SceneRenderer->BeginSkyFrame(camera);
-        CurrentCmdBuf = SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera);
+        auto* const recorded = SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera, use_initial_frame ? &initial_frame : nullptr);
+        if (recorded)
+        {
+            CurrentCmdBuf = recorded;
+        }
+        // A rejected graph leaves the acquired primary buffer open for the
+        // presentation bridge, but is not a recorded first scene frame.
+        if (state.SceneResources && prepared_frame_complete && recorded && Device->RRM)
+        {
+            static_cast<Rendering::RenderResourceManager*>(Device->RRM)->NotifyPreparedSceneFrameRecorded(state.SceneResources);
+        }
+        if (prepared_frame_complete && recorded && state.SceneGeneration)
+        {
+            m_recorded_scene_generation = state.SceneGeneration;
+            m_recorded_scene_draw_count = SceneRenderer->RenderSceneData->IndirectCommandCount;
+            Device->SwapchainPtr->EnqueueRenderWorkSubmittedCallback(&AppRenderPipeline::OnSceneFrameSubmitted, this);
+        }
         ZUIRenderPass->SetPayload(nullptr);
+    }
+
+    void AppRenderPipeline::OnSceneFrameSubmitted(void* context, Rendering::Primitives::Semaphore*, uint64_t)
+    {
+        auto&      owner = *static_cast<AppRenderPipeline*>(context);
+        const auto now   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        owner.m_scene_submissions.Record(owner.m_recorded_scene_generation, static_cast<uint64_t>(now), owner.m_recorded_scene_draw_count);
     }
 
     void AppRenderPipeline::BeginOverlayFrame(float dt)
@@ -533,12 +676,61 @@ namespace ZEngine::Applications
 
     bool AppRenderPipeline::PublishFrameState(const RenderFrameState& state, const Rendering::Scenes::RenderScene* source_scene)
     {
+        PreparedFrameState prepared = {};
+        if (!PrepareFrameState(state, source_scene, &prepared))
+        {
+            return false;
+        }
+        prepared.Publish();
+        return true;
+    }
+
+    AppRenderPipeline::PreparedFrameState::~PreparedFrameState()
+    {
+        Reset();
+    }
+
+    AppRenderPipeline::PreparedFrameState::PreparedFrameState(PreparedFrameState&& other) noexcept : m_owner(std::exchange(other.m_owner, nullptr)), m_slot(other.m_slot) {}
+
+    AppRenderPipeline::PreparedFrameState& AppRenderPipeline::PreparedFrameState::operator=(PreparedFrameState&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Reset();
+            m_owner = std::exchange(other.m_owner, nullptr);
+            m_slot  = other.m_slot;
+        }
+        return *this;
+    }
+
+    void AppRenderPipeline::PreparedFrameState::Reset() noexcept
+    {
+        if (m_owner)
+        {
+            --m_owner->m_prepared_frame_count;
+            m_owner->m_frame_resources[m_slot].Reset();
+            m_owner->FrameStateSlots[m_slot].value.store(static_cast<uint32_t>(PayloadSlotState::Free), std::memory_order_release);
+            m_owner = nullptr;
+        }
+    }
+
+    void AppRenderPipeline::PreparedFrameState::Publish() noexcept
+    {
+        ZENGINE_VALIDATE_ASSERT(m_owner, "Cannot publish an empty prepared frame")
+        auto* owner = std::exchange(m_owner, nullptr);
+        --owner->m_prepared_frame_count;
+        owner->FrameStateSequences[m_slot].value.store(owner->m_next_frame_state_sequence++, std::memory_order_relaxed);
+        owner->FrameStateSlots[m_slot].value.store(static_cast<uint32_t>(PayloadSlotState::Ready), std::memory_order_release);
+    }
+
+    bool AppRenderPipeline::PrepareFrameState(const RenderFrameState& state, const Rendering::Scenes::RenderScene* source_scene, PreparedFrameState* out)
+    {
         constexpr uint32_t free_state    = static_cast<uint32_t>(PayloadSlotState::Free);
         constexpr uint32_t ready_state   = static_cast<uint32_t>(PayloadSlotState::Ready);
         constexpr uint32_t writing_state = static_cast<uint32_t>(PayloadSlotState::Writing);
 
         // Reject before claiming a slot: an invalid frame must not evict valid unread data.
-        if (!state.Gizmo.ValidCounts() || !state.Gizmo.ValidMeshLineGroups())
+        if (!out || *out || m_next_frame_state_sequence >= std::numeric_limits<uint64_t>::max() - m_prepared_frame_count || !state.Gizmo.ValidCounts() || !state.Gizmo.ValidMeshLineGroups())
         {
             return false;
         }
@@ -546,16 +738,33 @@ namespace ZEngine::Applications
         if (source_scene && (!m_frame_instance_capacity || instance_count > m_frame_instance_capacity))
         {
             if (!m_snapshot_capacity_reported)
+            {
                 ZENGINE_CORE_WARN("Render snapshot requires {} instances; capacity is {}. Scene publication rejected without truncation.", instance_count, m_frame_instance_capacity)
+            }
             m_snapshot_capacity_reported = true;
             return false;
         }
-        m_snapshot_capacity_reported = false;
+        m_snapshot_capacity_reported                                   = false;
+
+        Rendering::RenderResourceManager::SceneResourceLease resources = {};
+        if (state.SceneResources)
+        {
+            auto* rrm = Device ? static_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+            if (!rrm)
+            {
+                return false;
+            }
+            resources = rrm->AcquireSceneResourceLease(state.SceneResources, state.SceneGeneration);
+            if (!resources)
+            {
+                return false;
+            }
+        }
 
         // Prefer a free slot, then replace the oldest unread state.
-        uint32_t selected_slot       = MaxFrameStateBufferCount;
-        uint64_t oldest_sequence     = std::numeric_limits<uint64_t>::max();
-        bool     claimed             = false;
+        uint32_t selected_slot   = MaxFrameStateBufferCount;
+        uint64_t oldest_sequence = std::numeric_limits<uint64_t>::max();
+        bool     claimed         = false;
         for (uint32_t slot = 0; slot < MaxFrameStateBufferCount; ++slot)
         {
             uint32_t expected = free_state;
@@ -585,11 +794,12 @@ namespace ZEngine::Applications
             return false;
         }
 
-        auto& destination = FrameStates[selected_slot];
-        destination       = state;
+        auto& destination                = FrameStates[selected_slot];
+        m_frame_resources[selected_slot] = std::move(resources);
+        destination                      = state;
         // Source access is exclusively main-thread, after hierarchy/light synchronization.
         // The render consumer sees no borrowed scene, even when that source is later destroyed.
-        destination.Scene = {};
+        destination.Scene                = {};
         if (source_scene)
         {
             auto*          instances = m_frame_instances[selected_slot];
@@ -609,8 +819,9 @@ namespace ZEngine::Applications
             destination.CelestialLight      = source_scene->CelestialLight;
             destination.SkyRevision         = source_scene->SkyRevision.value.load(std::memory_order_acquire);
         }
-        FrameStateSequences[selected_slot].value.store(m_next_frame_state_sequence++, std::memory_order_relaxed);
-        FrameStateSlots[selected_slot].value.store(ready_state, std::memory_order_release);
+        ++m_prepared_frame_count;
+        out->m_owner = this;
+        out->m_slot  = selected_slot;
         return true;
     }
 
@@ -653,6 +864,7 @@ namespace ZEngine::Applications
             newest_sequence = FrameStateSequences[newest_slot].value.load(std::memory_order_relaxed);
             if (newest_sequence <= m_last_read_frame_sequence)
             {
+                m_frame_resources[newest_slot].Reset();
                 FrameStateSlots[newest_slot].value.store(free_state, std::memory_order_release);
                 continue;
             }
@@ -670,6 +882,10 @@ namespace ZEngine::Applications
                 if (FrameStateSlots[slot].value.compare_exchange_strong(expected, reading_state, std::memory_order_acq_rel, std::memory_order_acquire))
                 {
                     const auto sequence = FrameStateSequences[slot].value.load(std::memory_order_relaxed);
+                    if (sequence <= newest_sequence)
+                    {
+                        m_frame_resources[slot].Reset();
+                    }
                     FrameStateSlots[slot].value.store(sequence <= newest_sequence ? free_state : ready_state, std::memory_order_release);
                 }
             }
@@ -685,8 +901,22 @@ namespace ZEngine::Applications
     {
         if (m_retained_frame_slot < MaxFrameStateBufferCount)
         {
+            m_frame_resources[m_retained_frame_slot].Reset();
             FrameStateSlots[m_retained_frame_slot].value.store(static_cast<uint32_t>(PayloadSlotState::Free), std::memory_order_release);
             m_retained_frame_slot = MaxFrameStateBufferCount;
+        }
+    }
+
+    void AppRenderPipeline::ReleaseSceneResourceFramesAfterReadersJoined()
+    {
+        ZENGINE_VALIDATE_ASSERT(m_prepared_frame_count == 0, "Unpublished frame reservation survived shutdown")
+        if (SceneRenderer)
+        {
+            SceneRenderer->ReleaseSceneResourceBindingsAfterReadersJoined();
+        }
+        for (auto& resources : m_frame_resources)
+        {
+            resources.Reset();
         }
     }
 

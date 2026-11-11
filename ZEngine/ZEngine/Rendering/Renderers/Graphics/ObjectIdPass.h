@@ -7,8 +7,8 @@ namespace ZEngine::Rendering::Renderers
     // the closest nonzero-alpha surface must own the integer selection token.
     struct ObjectIdPass final : GbufferPass
     {
-        bool                                 Register(Hardwares::VulkanDevicePtr device, cstring name, const RenderGraphFrameContext& frame, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr inspector) override;
-        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const override;
-        bool                                 RecordDraw(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr commands) override;
+        bool Register(Hardwares::VulkanDevicePtr device, cstring name, const RenderGraphFrameContext& frame, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr inspector) override;
+        bool TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const override;
+        bool RecordDraw(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr commands) override;
     };
 } // namespace ZEngine::Rendering::Renderers

@@ -1,5 +1,6 @@
 #include <ZEngine/ECS/AuthoredComponentValues.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
+#include <ZEngine/ECS/Components/UUIDComponent.h>
 #include <ZEngine/ECS/SceneBinaryValue.h>
 #include <ZEngine/ECS/SceneValue.h>
 #include <ZEngine/ECS/SceneYamlValue.h>
@@ -360,12 +361,13 @@ namespace ZEngine::ECS
             }
             return registry.Register(
                 {
-                .Key         = Codec::Key,
-                .Version     = 1,
-                .RuntimeType = ComponentTypeOf<typename Codec::Component>(),
-                .Fields      = Codec::Fields.data(),
-                .FieldCount  = static_cast<uint32_t>(Codec::Fields.size()),
-                .Codecs      = {.Capture = Fns::Capture, .PopulateCandidate = Fns::Populate, .EncodeBinary = Fns::Encode, .DecodeBinary = Fns::Decode, .EncodeYAML = Fns::EncodeYAML, .DecodeYAML = Fns::DecodeYAML, .CandidateMemoryBound = Fns::CandidateMemoryBound},
+                .Key                = Codec::Key,
+                .Version            = 1,
+                .RuntimeType        = ComponentTypeOf<typename Codec::Component>(),
+                .Fields             = Codec::Fields.data(),
+                .FieldCount         = static_cast<uint32_t>(Codec::Fields.size()),
+                .Codecs             = {.Capture = Fns::Capture, .PopulateCandidate = Fns::Populate, .EncodeBinary = Fns::Encode, .DecodeBinary = Fns::Decode, .EncodeYAML = Fns::EncodeYAML, .DecodeYAML = Fns::DecodeYAML, .CandidateMemoryBound = Fns::CandidateMemoryBound},
+                .PureCandidateLocal = true,
             },
                 diagnostics);
         }
@@ -373,6 +375,9 @@ namespace ZEngine::ECS
 
     bool RegisterBuiltInSceneComponentSchemas(SceneComponentSchemaRegistry& registry, SceneDiagnostics* diagnostics)
     {
+        // UUID storage is populated outside the registered component codecs.
+        // Warm its process-local type identity before workers may reconstruct.
+        (void) ComponentTypeOf<Components::UUIDComponent>();
         return Register<TransformCodec>(registry, diagnostics) && Register<LightCodec>(registry, diagnostics) && Register<CameraCodec>(registry, diagnostics) && Register<RigidBodyCodec>(registry, diagnostics) && RegisterSceneIdentityComponentSchemas(registry, diagnostics);
     }
 } // namespace ZEngine::ECS

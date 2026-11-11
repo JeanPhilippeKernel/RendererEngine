@@ -737,7 +737,14 @@ namespace Tetragrama
                     if (focused)
                     {
                         (void) ProcessNewScene(*engine);
-                        (void) ProcessSceneOpen(*engine);
+                    }
+                    // File input is focus-gated above, but an already admitted
+                    // load owns worker/storage leases until its terminal cleanup.
+                    // Continue its consent checks, publication and cancellation
+                    // while unfocused; focus loss must not suspend that lifetime.
+                    (void) ProcessSceneOpen(*engine);
+                    if (focused)
+                    {
                         if (MeshDrop.Pending())
                         {
                             ZEngine::ECS::SceneDiagnostics diagnostics = {};
@@ -979,6 +986,12 @@ namespace Tetragrama
 
     void Editor::OnClosing()
     {
+        // Legacy retirement callbacks cannot recursively tear down the newly
+        // published owner. The normal host close runs after this transition.
+        if (m_publishing_scene || m_processing_scene_open)
+        {
+            return;
+        }
         DiscardSceneSettings();
         if (ContentBrowser)
             ContentBrowser->CloseListings();
@@ -1015,19 +1028,32 @@ namespace Tetragrama
     void Editor::PrepareScene(ZEngine::Applications::RenderFrameState& state)
     {
         GameApplication::PrepareScene(state);
+        state.SceneResources = m_loaded_scene ? m_loaded_scene->InitialRenderResources() : ZEngine::Rendering::RenderResourceManager::SceneResourcePreparationId{};
         UpdateCameraRevision(state.Camera);
         m_render_target_revision = state.ResizeSequence;
         PrepareSelectionOutline(state);
         PrepareObjectPick(state);
         PrepareHoverPick(state);
         state.ShowGrid      = Session.GizmoSettings().ShowGrid;
-        // Copy only U/V bitmap metrics from the existing Body font. Rendering
-        // pairs these values with the Grid/camera retained in the same mailbox,
-        // never this mutable UI context or a glyph pointer.
-        state.GridLabelFont = {};
-        const auto* ctx     = RenderPipeline ? RenderPipeline->ZUICtx : nullptr;
-        const auto* atlas   = ctx ? ctx->Atlas : nullptr;
-        const auto* font    = atlas ? atlas->Body : nullptr;
+        state.GridLabelFont = CaptureGridLabelFont();
+        state.Gizmo.Reset();
+        if (EnableGizmoDebug)
+        {
+            (void) Gizmo::BuildDebugFrame(state.Camera, GizmoLogicalViewportHeight, state.RenderTargetW, state.RenderTargetH, state.Gizmo);
+        }
+        else
+        {
+            GizmoViewport.BuildRender(Session, state.Camera, RenderPipeline ? RenderPipeline->ZUICtx : nullptr, m_gizmo_focused, state.RenderTargetW, state.RenderTargetH, state.Gizmo);
+        }
+    }
+
+    Rendering::Renderers::GridLabelFontSnapshot Editor::CaptureGridLabelFont() const
+    {
+        // Candidate admission and ordinary mailboxes copy the same value metrics;
+        // neither retains UI/font/glyph pointers or duplicates the capture recipe.
+        const auto* ctx   = RenderPipeline ? RenderPipeline->ZUICtx : nullptr;
+        const auto* atlas = ctx ? ctx->Atlas : nullptr;
+        const auto* font  = atlas ? atlas->Body : nullptr;
         if (font && font->Glyphs && atlas->Handle.Valid())
         {
             constexpr Core::Containers::FixedArray<uint32_t, 2> codepoints = {'U', 'V'};
@@ -1050,18 +1076,10 @@ namespace Tetragrama
             }
             if (complete)
             {
-                state.GridLabelFont = captured;
+                return captured;
             }
         }
-        state.Gizmo.Reset();
-        if (EnableGizmoDebug)
-        {
-            (void) Gizmo::BuildDebugFrame(state.Camera, GizmoLogicalViewportHeight, state.RenderTargetW, state.RenderTargetH, state.Gizmo);
-        }
-        else
-        {
-            GizmoViewport.BuildRender(Session, state.Camera, RenderPipeline ? RenderPipeline->ZUICtx : nullptr, m_gizmo_focused, state.RenderTargetW, state.RenderTargetH, state.Gizmo);
-        }
+        return {};
     }
 
     void Editor::SaveScene()

@@ -59,6 +59,11 @@ namespace ZEngine::Core::VFS
         return m_index.TryReadSlot(uuid, type, out);
     }
 
+    bool AssetRegistry::TryBindLoadedAsset(const AssetRecordSnapshot& expected, Managers::AssetHandle slot)
+    {
+        return m_index.TryBindLoadedAsset(expected, slot);
+    }
+
     bool AssetRegistry::TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot, const AssetRecordSnapshot* retained_hierarchy)
     {
         return m_index.TryBindLoadedMesh(expected, hierarchy, mesh_slot, hierarchy_slot, retained_hierarchy);

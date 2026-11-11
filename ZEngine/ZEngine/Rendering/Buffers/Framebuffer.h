@@ -14,6 +14,11 @@ namespace ZEngine::Rendering::Buffers
         explicit FramebufferVNext(Hardwares::VulkanDevice* device);
         ~FramebufferVNext();
 
+        /// Admit one unpublished wrapper before native creation. An existing
+        /// empty wrapper is reused; live output is never overwritten. Refusal
+        /// preserves output, its handle, and the exclusive metadata cursor.
+        static bool                                          TryPrepare(Hardwares::VulkanDevice* device, Core::Containers::ArrayView<VkImageView> views, VkRenderPass render_pass, uint32_t width, uint32_t height, uint32_t layers, FramebufferVNext** out, VkResult* status = nullptr, PFN_vkCreateFramebuffer dispatch = vkCreateFramebuffer);
+
         VkFramebuffer                                        Handle{VK_NULL_HANDLE};
 
         void                                                 Create();

@@ -5,6 +5,7 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Helpers/SerializerCommonHelper.h>
 #include <ZEngine/Importers/AssetCodec.h>
+#include <ZEngine/Importers/MaterialAssetDocument.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
@@ -446,100 +447,75 @@ namespace ZEngine::Importers::AssetCodec
 
     void DeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material)
     {
-        if (!secure_strlen(asset_file))
-        {
-            return;
-        }
-        std::ifstream in(asset_file);
-        if (!in.is_open())
-        {
-            return;
-        }
+        (void) TryDeserializeMaterialAssetFile(arena, asset_file, material);
+    }
 
-        std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        in.close();
-
-        auto j = nlohmann::json::parse(content, nullptr, /*allow_exceptions=*/false);
-        if (j.is_discarded())
+    VFSResult<void> TryDeserializeMaterialAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, AssetMaterial& material, const uuids::uuid& expected_uuid)
+    {
+        if (!arena || !asset_file || !*asset_file)
         {
-            return;
+            return VFSResult<void>::Fail(VFSError::InvalidPath);
         }
-
-        auto read_str = [&](const char* key, Core::Containers::String& out) {
-            if (j.contains(key) && j[key].is_string())
-            {
-                out.init(arena, j[key].get<std::string>().c_str());
-            }
-        };
-        auto read_uuid = [&](const nlohmann::json& node, const char* key, uuids::uuid& out) {
-            if (node.contains(key) && node[key].is_string())
-            {
-                auto parsed = uuids::uuid::from_string(node[key].get<std::string>());
-                if (parsed.has_value())
-                {
-                    out = parsed.value();
-                }
-            }
-        };
-        auto read_color = [&](const char* key, float* dst, int n) {
-            if (j.contains(key) && j[key].is_array())
-            {
-                const auto& arr = j[key];
-                for (int i = 0; i < n && i < (int) arr.size(); ++i)
-                {
-                    if (arr[i].is_number())
-                    {
-                        dst[i] = arr[i].get<float>();
-                    }
-                }
-            }
-        };
-        auto read_tex = [&](const char* slot, uuids::uuid& uuid_out, Core::Containers::String& path_out) {
-            if (!j.contains("textures") || !j["textures"].contains(slot))
-            {
-                return;
-            }
-            const auto& t = j["textures"][slot];
-            read_uuid(t, "uuid", uuid_out);
-            if (t.contains("path") && t["path"].is_string())
-            {
-                auto s = t["path"].get<std::string>();
-                if (!s.empty())
-                {
-                    path_out.init(arena, s.c_str());
-                }
-            }
-        };
-
-        read_str("name", material.Name);
-        read_uuid(j, "uuid", material.MaterialUUID);
-        read_tex("albedo", material.AlbedoTexUUID, material.AlbedoTexPath);
-        read_tex("emissive", material.EmissiveTexUUID, material.EmissiveTexPath);
-        read_tex("normal", material.NormalTexUUID, material.NormalTexPath);
-        read_tex("opacity", material.OpacityTexUUID, material.OpacityTexPath);
-        read_tex("specular", material.SpecularTexUUID, material.SpecularTexPath);
-        read_color("ambient_color", material.AmbientColor, 4);
-        read_color("albedo_color", material.AlbedoColor, 4);
-        read_color("emissive_color", material.EmissiveColor, 4);
-        read_color("roughness_color", material.RoughnessColor, 4);
-        read_color("specular_color", material.SpecularColor, 4);
-        read_color("factors", material.Factors, 4);
-        // A missing mode denotes the old contract. Do not guess BLEND from a
-        // cutoff or zero alpha: the original mode cannot be recovered reliably.
-        material.AlphaMode = Rendering::Materials::AlphaMode::Legacy;
-        if (j.contains("alpha_mode") && j["alpha_mode"].is_string())
+        MaterialAssetReader          reader   = {};
+        const MaterialAssetDocument* document = nullptr;
         {
-            material.AlphaMode = Rendering::Materials::ParseAlphaMode(j["alpha_mode"].get<std::string>());
+            // Bound the byte snapshot before allocating it; no std::string/DOM.
+            // Its lifetime ends before retained strings are allocated.
+            Core::Memory::ArenaCheckpoint bytes_checkpoint(arena);
+            std::ifstream                 in(asset_file, std::ios::binary | std::ios::ate);
+            if (!in.is_open())
+            {
+                return VFSResult<void>::Fail(VFSError::NotFound);
+            }
+            const auto length = in.tellg();
+            if (length < 0 || uint64_t(length) > ZMega(1))
+            {
+                return VFSResult<void>::Fail(VFSError::SizeLimitExceeded);
+            }
+            auto* bytes = static_cast<uint8_t*>(arena->AllocateNoZero(std::max(size_t(1), size_t(length)), alignof(uint8_t)));
+            if (!bytes)
+            {
+                return VFSResult<void>::Fail(VFSError::OutOfMemory);
+            }
+            in.seekg(0);
+            if (!in.read(reinterpret_cast<char*>(bytes), length) || in.peek() != std::char_traits<char>::eof())
+            {
+                return VFSResult<void>::Fail(VFSError::Corrupted);
+            }
+            const auto parsed = reader.Read({bytes, size_t(length)}, expected_uuid, ZMega(1), MaterialReadPolicy::SourceCompatible);
+            if (parsed.Failed())
+            {
+                return VFSResult<void>::Fail(parsed.Error());
+            }
+            document = parsed.Value();
         }
-        if (j.contains("alpha_cutoff") && j["alpha_cutoff"].is_number())
+        Core::Memory::ArenaCheckpoint strings_checkpoint(arena);
+        AssetMaterial                 candidate = {};
+        candidate.MaterialUUID                  = document->UUID;
+        candidate.AlphaMode                     = document->AlphaMode;
+        String*      paths[]                    = {&candidate.AlbedoTexPath, &candidate.EmissiveTexPath, &candidate.NormalTexPath, &candidate.OpacityTexPath, &candidate.SpecularTexPath};
+        uuids::uuid* ids[]                      = {&candidate.AlbedoTexUUID, &candidate.EmissiveTexUUID, &candidate.NormalTexUUID, &candidate.OpacityTexUUID, &candidate.SpecularTexUUID};
+        if (!candidate.Name.try_init(arena, document->Name))
         {
-            const float cutoff = j["alpha_cutoff"].get<float>();
-            // glTF requires a nonnegative cutoff, but does not cap it at one.
-            if (std::isfinite(cutoff) && cutoff >= 0.f)
+            return VFSResult<void>::Fail(VFSError::OutOfMemory);
+        }
+        for (size_t index = 0; index < document->Textures.size(); ++index)
+        {
+            *ids[index] = document->Textures[index].UUID;
+            if (!paths[index]->try_init(arena, document->Textures[index].Path))
             {
-                material.Factors[2] = cutoff;
+                return VFSResult<void>::Fail(VFSError::OutOfMemory);
             }
         }
+        const Core::Containers::FixedArray<float, 4>* vectors[] = {&document->AmbientColor, &document->AlbedoColor, &document->EmissiveColor, &document->RoughnessColor, &document->SpecularColor, &document->Factors};
+        float*                                        outputs[] = {candidate.AmbientColor, candidate.AlbedoColor, candidate.EmissiveColor, candidate.RoughnessColor, candidate.SpecularColor, candidate.Factors};
+        for (size_t index = 0; index < std::size(vectors); ++index)
+        {
+            std::copy(vectors[index]->begin(), vectors[index]->end(), outputs[index]);
+        }
+        material = std::move(candidate);
+        strings_checkpoint.Commit();
+        return VFSResult<void>::Ok();
     }
 
     void DeserializeTextureAssetFile(Core::Memory::ArenaAllocator* arena, const char* asset_file, Core::Containers::Array<AssetTexture>& textures)

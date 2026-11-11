@@ -4,6 +4,8 @@
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
 #include <cmath>
 
+using namespace ZEngine::Rendering::Specifications;
+
 namespace ZEngine::Rendering::Renderers
 {
     namespace
@@ -117,24 +119,38 @@ namespace ZEngine::Rendering::Renderers
         m_initialized = true;
     }
 
-    Specifications::GraphicsPipelineDesc GizmoPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const
+    bool GizmoPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
-        using namespace Specifications;
-        GraphicsPipelineDesc desc          = {};
-        desc.DebugName                     = "Gizmo-Pipeline";
-        desc.EnableDepthTest               = false;
-        desc.EnableDepthWrite              = false;
-        desc.EnableBlending                = true;
-        desc.CullMode                      = 0;
-        desc.ShaderSpecificationValue.Name = "gizmo";
-        desc.VertexInputBindingSpecifications.init(arena, 1, 1);
-        desc.VertexInputBindingSpecifications[0] = {.Stride = sizeof(GizmoGPUInstance), .Rate = VK_VERTEX_INPUT_RATE_INSTANCE, .Binding = 0};
-        desc.VertexInputAttributeSpecifications.init(arena, 6, 6);
+        if (!arena || !out)
+        {
+            return false;
+        }
+        Core::Memory::ArenaCheckpoint checkpoint(arena);
+        GraphicsPipelineDesc          desc                  = {};
+        desc.DebugName                                      = "Gizmo-Pipeline";
+        desc.EnableDepthTest                                = false;
+        desc.EnableDepthWrite                               = false;
+        desc.EnableBlending                                 = true;
+        desc.CullMode                                       = 0;
+        desc.ShaderSpecificationValue.Name                  = "gizmo";
+        desc.VertexInputBindingSpecifications.m_allocator   = arena;
+        desc.VertexInputAttributeSpecifications.m_allocator = arena;
+        if (!desc.VertexInputBindingSpecifications.try_reserve(1) || !desc.VertexInputAttributeSpecifications.try_reserve(6))
+        {
+            return false;
+        }
+        desc.VertexInputBindingSpecifications.m_size   = 1;
+        desc.VertexInputAttributeSpecifications.m_size = 6;
+        desc.VertexInputBindingSpecifications[0]       = {.Stride = sizeof(GizmoGPUInstance), .Rate = VK_VERTEX_INPUT_RATE_INSTANCE, .Binding = 0};
         for (uint32_t i = 0; i < 4; ++i)
+        {
             desc.VertexInputAttributeSpecifications[i] = {.Location = i, .Binding = 0, .Offset = i * 16, .Format = ImageFormat::R32G32B32A32_SFLOAT};
+        }
         desc.VertexInputAttributeSpecifications[4] = {.Location = 4, .Binding = 0, .Offset = offsetof(GizmoGPUInstance, Color), .Format = ImageFormat::R8G8B8A8_UNORM};
         desc.VertexInputAttributeSpecifications[5] = {.Location = 5, .Binding = 0, .Offset = offsetof(GizmoGPUInstance, Outline), .Format = ImageFormat::R8G8B8A8_UNORM};
-        return desc;
+        *out                                       = std::move(desc);
+        checkpoint.Commit();
+        return true;
     }
 
     bool GizmoPass::Register(Hardwares::VulkanDevicePtr device, cstring, const RenderGraphFrameContext& context, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr)

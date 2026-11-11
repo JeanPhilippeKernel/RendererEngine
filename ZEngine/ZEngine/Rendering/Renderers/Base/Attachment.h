@@ -13,11 +13,24 @@ namespace ZEngine::Rendering::Renderers::RenderPasses
     struct Attachment
     {
         Attachment(Hardwares::VulkanDevice* device, Specifications::AttachmentSpecification spec);
+        /// Checked creation retains the recipe on failure for a later retry.
+        Attachment(Hardwares::VulkanDevice* device, Specifications::AttachmentSpecification spec, VkResult* status);
         ~Attachment();
         void                                           Dispose();
+        /// Idempotent; failure never replaces an existing native object. The
+        /// optional dispatch supports alternate loaders and deterministic faults.
+        [[nodiscard]] bool                             TryPrepare(VkResult* status = nullptr, PFN_vkCreateRenderPass create_render_pass = vkCreateRenderPass);
+
+        static constexpr uint32_t                      MaxAttachments  = 9; // Eight colors and one depth/stencil.
+        static constexpr uint32_t                      MaxDependencies = 32;
 
         VkRenderPass                                   GetHandle() const;
         const Specifications::AttachmentSpecification& GetSpecification() const;
+        /// Returns undefined for a missing attachment or unsupported device format.
+        VkFormat                                       GetResolvedFormat(uint32_t index) const;
+        /// Compatibility of the canonical single-subpass render passes this
+        /// type constructs, not a generic format-only compatibility test.
+        bool                                           IsRenderPassCompatibleWith(const Attachment& other) const;
 
         uint32_t                                       GetColorAttachmentCount() const;
         uint32_t                                       GetDepthAttachmentCount() const;

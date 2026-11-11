@@ -11,12 +11,16 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <algorithm>
 #include <limits>
+#include <mutex>
 #include <new>
 
 namespace ZEngine::Core::Memory
 {
     struct ArenaCommitTracker
     {
+        // Sibling arenas may have exclusive owners on different threads. Their
+        // cursors remain thread-confined; only root page/accounting metadata is shared.
+        mutable std::mutex    Mutex           = {};
         uint8_t*              CommittedPages  = nullptr;
         size_t                PageCount       = 0;
         size_t                AllocationBytes = 0;
@@ -48,6 +52,7 @@ namespace ZEngine::Core::Memory
         m_growth_initial_size     = other.m_growth_initial_size;
         if (m_owns_commit_tracker && m_commit_tracker)
         {
+            const std::lock_guard lock(m_commit_tracker->Mutex);
             m_commit_tracker->Owner = this;
         }
 
@@ -284,6 +289,7 @@ namespace ZEngine::Core::Memory
             return nullptr;
         }
 #endif
+        new (tracker) ArenaCommitTracker{};
         tracker->CommittedPages  = reinterpret_cast<uint8_t*>(tracker) + sizeof(ArenaCommitTracker);
         tracker->PageCount       = page_count;
         tracker->AllocationBytes = tracker_size;
@@ -298,10 +304,14 @@ namespace ZEngine::Core::Memory
         {
             return;
         }
+#ifndef _WIN32
+        const auto allocation_bytes = tracker->AllocationBytes;
+#endif
+        tracker->~ArenaCommitTracker();
 #ifdef _WIN32
         VirtualFree(tracker, 0, MEM_RELEASE);
 #else
-        munmap(tracker, tracker->AllocationBytes);
+        munmap(tracker, allocation_bytes);
 #endif
     }
 
@@ -317,7 +327,12 @@ namespace ZEngine::Core::Memory
 
     bool ArenaAllocator::RetainedStorage(ArenaRetainedStorage* output) const noexcept
     {
-        if (!output || !m_memory || m_is_borrowed || !m_commit_tracker || !m_commit_tracker->Owner || !m_mem_page_size)
+        if (!output || !m_memory || m_is_borrowed || !m_commit_tracker || !m_mem_page_size)
+        {
+            return false;
+        }
+        const std::lock_guard lock(m_commit_tracker->Mutex);
+        if (!m_commit_tracker->Owner)
         {
             return false;
         }
@@ -348,7 +363,8 @@ namespace ZEngine::Core::Memory
         {
             return false;
         }
-        const auto last = (offset + bytes - 1) / m_mem_page_size;
+        const std::lock_guard lock(m_commit_tracker->Mutex);
+        const auto            last = (offset + bytes - 1) / m_mem_page_size;
         for (size_t page = offset / m_mem_page_size; page <= last; ++page)
         {
             if (!m_commit_tracker->CommittedPages[page])
@@ -409,7 +425,8 @@ namespace ZEngine::Core::Memory
         }
 #endif
 
-        size_t newly_committed_pages = 0;
+        const std::lock_guard lock(arena->m_commit_tracker->Mutex);
+        size_t                newly_committed_pages = 0;
         for (size_t page = first_page; page < first_page + page_count; ++page)
         {
             if (arena->m_commit_tracker->CommittedPages[page] == 0)
@@ -706,24 +723,34 @@ namespace ZEngine::Core::Memory
             SetAllocationFailure(this, ArenaAllocationFailureKind::CapacityExceeded, size);
             return; // A segmented owner cannot expose a contiguous child range.
         }
-        ZENGINE_VALIDATE_ASSERT(out_arena != nullptr, "ArenaAllocator::CreateSubArena: out_arena must not be null")
-        ZENGINE_VALIDATE_ASSERT(size > 0, "ArenaAllocator::CreateSubArena: size must be > 0")
-        ZENGINE_VALIDATE_ASSERT(m_memory != nullptr, "ArenaAllocator::CreateSubArena: parent arena not initialized")
+        ZENGINE_VALIDATE_ASSERT(TryCreateSubArena(size, out_arena, owner_name), "ArenaAllocator::CreateSubArena: invalid request or insufficient parent storage")
+    }
+
+    bool ArenaAllocator::TryCreateSubArena(size_t size, ArenaAllocator* out_arena, cstring owner_name)
+    {
+        if (!m_memory || !size || !out_arena || out_arena == this || out_arena->m_memory || m_growth_route || !m_mem_page_size || (m_mem_page_size & (m_mem_page_size - 1)) || m_current_offset > m_total_size)
+        {
+            SetAllocationFailure(this, m_memory ? ArenaAllocationFailureKind::CapacityExceeded : ArenaAllocationFailureKind::ArenaNotInitialized, size);
+            return false;
+        }
 
         // Give every child a page-rounded physical range. It preserves the requested
         // logical capacity while ensuring a later parent allocation cannot mprotect the
         // child's final, otherwise unused partial page.
-        uintptr_t current_ptr  = (uintptr_t) m_memory + (uintptr_t) m_current_offset;
+        const auto base = reinterpret_cast<uintptr_t>(m_memory);
+        if (m_current_offset > UINTPTR_MAX - base || base + m_current_offset > UINTPTR_MAX - (m_mem_page_size - 1))
+        {
+            SetAllocationFailure(this, ArenaAllocationFailureKind::CapacityExceeded, size);
+            return false;
+        }
+        uintptr_t current_ptr  = base + m_current_offset;
         uintptr_t offset       = Helpers::memory_align(current_ptr, m_mem_page_size);
         offset                -= (uintptr_t) m_memory;
         size_t reserved_size   = 0;
-        ZENGINE_VALIDATE_ASSERT(RoundUpToPage(size, m_mem_page_size, &reserved_size), "ArenaAllocator::CreateSubArena: size cannot be page-aligned")
-
-        if (offset > m_total_size || reserved_size > m_total_size - offset)
+        if (!RoundUpToPage(size, m_mem_page_size, &reserved_size) || offset > m_total_size || reserved_size > m_total_size - offset || offset > SIZE_MAX - m_root_offset)
         {
             SetAllocationFailure(this, ArenaAllocationFailureKind::CapacityExceeded, size);
-            ZENGINE_VALIDATE_ASSERT(false, "ArenaAllocator::CreateSubArena: not enough space in parent arena")
-            return;
+            return false;
         }
 
         out_arena->m_memory                  = m_memory + offset;
@@ -747,6 +774,7 @@ namespace ZEngine::Core::Memory
         // No page is committed until the owning arena allocates from its range.
         m_previous_offset                    = offset;
         m_current_offset                     = offset + reserved_size;
+        return true;
     }
 
     ArenaTemp BeginTempArena(ArenaAllocator* arena)

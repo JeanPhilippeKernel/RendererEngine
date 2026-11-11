@@ -17,7 +17,8 @@ layout(push_constant) uniform AtmosphereSourceRadiancePushConstants
     vec4 SunDirectionAndRadius;
     vec4 SunRadianceAvailabilityAndCaptureAltitude;
     vec4 GroundAlbedoAndAmbient;
-    vec4 LowerHemisphereColor;
+    vec3 LowerHemisphereColor;
+    uint FaceOffset;
 }
 Push;
 
@@ -46,7 +47,7 @@ vec3 cube_direction(uint face, vec2 uv)
 void main()
 {
     const uvec2 pixel  = gl_GlobalInvocationID.xy;
-    const uint  face   = gl_GlobalInvocationID.z;
+    const uint  face   = gl_GlobalInvocationID.z + Push.FaceOffset;
     const ivec3 extent = imageSize(Destination);
     if (pixel.x >= uint(extent.x) || pixel.y >= uint(extent.y) || face >= uint(extent.z))
         return;

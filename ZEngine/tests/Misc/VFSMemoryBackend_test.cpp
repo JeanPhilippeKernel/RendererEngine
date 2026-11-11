@@ -1,6 +1,8 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Rendering/Shaders/ShaderReader.h>
 #include <gtest/gtest.h>
 #include <atomic>
 #include <limits>
@@ -15,6 +17,70 @@ using ZEngine::Core::Containers::ArrayView;
 
 namespace
 {
+    struct ShaderReadFaultFile : IVFSFile
+    {
+        uint32_t          Words[5]  = {0x07230203, 0x00010000, 0, 1, 0};
+        VFSPath           FilePath  = VFSPath::Parse("/fault.spv").Value();
+        bool              FailRead  = false;
+        bool              ShortRead = false;
+        bool              FailSize  = false;
+        VFSResult<size_t> Read(ArrayView<uint8_t> buffer, uint64_t offset) override
+        {
+            if (FailRead)
+            {
+                return VFSResult<size_t>::Fail(VFSError::IOError);
+            }
+            if (offset)
+            {
+                return VFSResult<size_t>::Ok(0);
+            }
+            const size_t bytes = ShortRead ? sizeof(Words) - 4 : sizeof(Words);
+            Helpers::secure_memcpy(buffer.data(), buffer.size(), Words, bytes);
+            return VFSResult<size_t>::Ok(bytes);
+        }
+        VFSResult<size_t> Write(ArrayView<const uint8_t>, uint64_t) override
+        {
+            return VFSResult<size_t>::Fail(VFSError::Unsupported);
+        }
+        VFSResult<uint64_t> Size() const override
+        {
+            return FailSize ? VFSResult<uint64_t>::Fail(VFSError::IOError) : VFSResult<uint64_t>::Ok(sizeof(Words));
+        }
+        VFSResult<VFSFileStat> Stat() const override
+        {
+            return VFSResult<VFSFileStat>::Ok({.SizeBytes = sizeof(Words)});
+        }
+        VFSResult<void> Flush() override
+        {
+            return VFSResult<void>::Ok();
+        }
+        const VFSPath& Path() const override
+        {
+            return FilePath;
+        }
+        VFSResult<void> Close() override
+        {
+            return VFSResult<void>::Ok();
+        }
+    };
+
+    struct ShaderReadFaultContext : VFSContext
+    {
+        ShaderReadFaultFile  File   = {};
+        uint32_t             Opens  = 0;
+        uint32_t             Closes = 0;
+        VFSResult<IVFSFile*> Open(const VFSPath&, VFSOpenFlags) override
+        {
+            ++Opens;
+            return VFSResult<IVFSFile*>::Ok(&File);
+        }
+        void Close(IVFSFile* file) override
+        {
+            EXPECT_EQ(file, &File);
+            ++Closes;
+        }
+    };
+
     ArrayView<const uint8_t> Bytes(const void* data, size_t size)
     {
         return ArrayView<const uint8_t>(static_cast<const uint8_t*>(data), size);
@@ -59,6 +125,81 @@ TEST_F(VFSMemoryBackendTest, WriteFile_and_Read)
     EXPECT_EQ(0, Helpers::secure_memcmp(buffer, sizeof(buffer), png, sizeof(png), sizeof(png)));
 
     m_backend.Close(file);
+}
+
+TEST_F(VFSMemoryBackendTest, CheckedShaderReadPreservesOutputAndScratchOnRefusalThenRetries)
+{
+    VFSContext context = {};
+    context.Initialize(m_arena);
+    ASSERT_TRUE(context.Mount(&m_backend, VFSPath::Root(), 0).Succeeded());
+    ArenaAllocator scratch = {};
+    scratch.Initialize(ZKilo(64), 0, "CheckedShaderRead");
+    Array<uint32_t> output = {};
+    output.init(&scratch, 1);
+    output.push(42);
+    const auto cursor   = scratch.m_current_offset;
+    auto*      original = output.data();
+    uint32_t   words[]  = {0x07230203, 0x00010000, 0, 1, 0};
+    const auto path     = P("/shader.spv");
+    ASSERT_TRUE(m_backend.WriteFile(path, Bytes(words, sizeof(words))).Succeeded());
+    const auto refused = [&](const char* filename, size_t cap) {
+        EXPECT_FALSE(Rendering::Shaders::ShaderReader::TryReadAsBinary(context, &scratch, filename, cap, &output));
+        EXPECT_EQ(output.data(), original);
+        ASSERT_EQ(output.size(), 1u);
+        EXPECT_EQ(output[0], 42u);
+        EXPECT_EQ(scratch.m_current_offset, cursor);
+    };
+    refused("/missing.spv", sizeof(words));
+    refused("/shader.spv", sizeof(words) - 1);
+    words[0] = 0;
+    ASSERT_TRUE(m_backend.WriteFile(path, Bytes(words, sizeof(words))).Succeeded());
+    refused("/shader.spv", sizeof(words));
+    words[0] = 0x07230203;
+    words[4] = 1;
+    ASSERT_TRUE(m_backend.WriteFile(path, Bytes(words, sizeof(words))).Succeeded());
+    refused("/shader.spv", sizeof(words));
+    words[4] = 0;
+    ASSERT_TRUE(m_backend.WriteFile(path, Bytes(words, sizeof(words) - 1)).Succeeded());
+    refused("/shader.spv", sizeof(words));
+    ASSERT_TRUE(m_backend.WriteFile(path, Bytes(words, sizeof(words))).Succeeded());
+    ASSERT_TRUE(Rendering::Shaders::ShaderReader::TryReadAsBinary(context, &scratch, "/shader.spv", sizeof(words), &output));
+    ASSERT_EQ(output.size(), 5u);
+    EXPECT_EQ(output[0], words[0]);
+    EXPECT_EQ(output[4], 0u);
+    context.Shutdown();
+}
+
+TEST(ShaderReaderAdmissionTest, ExactReadFailureClosesFileAndPreservesOutputAndScratch)
+{
+    ShaderReadFaultContext context = {};
+    ArenaAllocator         scratch = {};
+    scratch.Initialize(ZKilo(64), 0, "ShaderReadFaults");
+    Array<uint32_t> output = {};
+    output.init(&scratch, 1);
+    output.push(42);
+    auto*      previous = output.data();
+    const auto cursor   = scratch.m_current_offset;
+    for (uint32_t fault = 0; fault < 4; ++fault)
+    {
+        context.File.FailSize  = fault == 0;
+        context.File.FailRead  = fault == 1;
+        context.File.ShortRead = fault == 2;
+        const auto capacity    = scratch.m_total_size;
+        if (fault == 3)
+        {
+            scratch.m_total_size = cursor;
+        }
+        EXPECT_FALSE(Rendering::Shaders::ShaderReader::TryReadAsBinary(context, &scratch, "/fault.spv", 20, &output));
+        scratch.m_total_size = capacity;
+        EXPECT_EQ(output.data(), previous);
+        ASSERT_EQ(output.size(), 1u);
+        EXPECT_EQ(output[0], 42u);
+        EXPECT_EQ(scratch.m_current_offset, cursor);
+        EXPECT_EQ(context.Opens, context.Closes);
+    }
+    ASSERT_TRUE(Rendering::Shaders::ShaderReader::TryReadAsBinary(context, &scratch, "/fault.spv", 20, &output));
+    EXPECT_EQ(output.size(), 5u);
+    EXPECT_EQ(context.Opens, context.Closes);
 }
 
 TEST_F(VFSMemoryBackendTest, MemoryMap_ReturnsZeroCopyPointer)

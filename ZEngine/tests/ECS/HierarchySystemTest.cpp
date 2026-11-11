@@ -68,6 +68,58 @@ TEST_F(HierarchySystemTest, RootAndExplicitInvalidParentBothDeriveTheirFullLocal
     EXPECT_TRUE(scene.Hierarchy().Find(detached)->FrameValid);
 }
 
+TEST_F(HierarchySystemTest, StaticForestSkipsDerivationAndRawTrsChangesInvalidateOnlyItsBranch)
+{
+    const auto root      = Entity(1.f);
+    const auto child     = Entity(2.f);
+    const auto unrelated = Entity(10.f);
+    ASSERT_TRUE(scene.SetParent(child, root));
+    Sync();
+    const auto initial = scene.Hierarchy().DerivationCount();
+    EXPECT_EQ(initial, 3u);
+    Sync();
+    EXPECT_EQ(scene.Hierarchy().DerivationCount(), initial);
+    Transform(root).Position.x = 5.f;
+    Sync();
+    EXPECT_EQ(scene.Hierarchy().DerivationCount(), initial + 2);
+    EXPECT_FLOAT_EQ(Transform(child).WorldTransform(0, 3), 7.f);
+    EXPECT_FLOAT_EQ(Transform(unrelated).WorldTransform(0, 3), 10.f);
+}
+
+TEST_F(HierarchySystemTest, CachedFrameRepairsRawDerivedMatrixWritesAndRefreshesDescendants)
+{
+    const auto parent = Entity(4.f);
+    const auto child  = Entity(2.f);
+    ASSERT_TRUE(scene.SetParent(child, parent));
+    Sync();
+    const auto revision                    = scene.Hierarchy().Find(parent)->WorldRevision;
+    Transform(parent).WorldTransform(0, 3) = 999.f;
+    Sync();
+    EXPECT_FLOAT_EQ(Transform(parent).WorldTransform(0, 3), 4.f);
+    EXPECT_FLOAT_EQ(Transform(child).WorldTransform(0, 3), 6.f);
+    EXPECT_GT(scene.Hierarchy().Find(parent)->WorldRevision, revision);
+}
+
+TEST_F(HierarchySystemTest, CachedInvalidFiniteFallbackRecoversAfterRawParentAndTransformRepair)
+{
+    const auto parent = Entity(3.f);
+    const auto child  = Entity(2.f);
+    ASSERT_TRUE(scene.SetParent(child, parent));
+    Transform(parent).Scale.x = std::numeric_limits<float>::infinity();
+    Sync();
+    EXPECT_FALSE(scene.Hierarchy().Find(child)->FrameValid);
+    Sync();
+    EXPECT_FALSE(scene.Hierarchy().Find(child)->FrameValid);
+    Transform(parent).Scale.x = 1.f;
+    Sync();
+    EXPECT_TRUE(scene.Hierarchy().Find(child)->FrameValid);
+    EXPECT_FLOAT_EQ(Transform(child).WorldTransform(0, 3), 5.f);
+    ASSERT_TRUE(scene.SetParent(child, ZEngine::ECS::INVALID_ENTITY));
+    Sync();
+    EXPECT_TRUE(scene.Hierarchy().Find(child)->FrameValid);
+    EXPECT_FLOAT_EQ(Transform(child).WorldTransform(0, 3), 2.f);
+}
+
 TEST_F(HierarchySystemTest, RotationAndScaleChangesUpdateMatrixLanesThatTheOldPartialComparisonMissed)
 {
     const auto child  = Entity();

@@ -7,6 +7,18 @@ using namespace ZEngine::Core::Containers;
 
 namespace ZEngine::Rendering::Renderers::Pipelines
 {
+    void IPipeline::AdoptPreparedPipeline(VkPipeline handle, VkPipelineLayout layout)
+    {
+        Device->PipelineStateCache->PinPipeline(handle);
+        if (Handle != VK_NULL_HANDLE)
+        {
+            Device->PipelineStateCache->UnpinPipeline(Handle);
+        }
+        Handle                = handle;
+        Layout                = layout;
+        BakedShaderGeneration = Shader->Generation;
+    }
+
     void ComputePipeline::Initialize(Hardwares::VulkanDevice* device, cstring shader_name, uint32_t push_constant_size)
     {
         Device                   = device;
@@ -23,25 +35,41 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         Shader = Device->ShaderManager.Access(shader_handle);
     }
 
-    void ComputePipeline::Bake()
+    void ComputePipeline::InitializePrepared(Hardwares::VulkanDevice* device, Shaders::Shader* shader, uint32_t push_constant_size)
+    {
+        Device                   = device;
+        Shader                   = shader;
+        DeclaredPushConstantSize = push_constant_size;
+    }
+
+    PSOPreparationState ComputePipeline::BakeInternal(bool asynchronous)
     {
         if (!Shader)
         {
             ZENGINE_CORE_ERROR("Compute pipeline cannot bake because its shader is unavailable")
-            InvalidateBakedState();
-            return;
+            if (!asynchronous)
+            {
+                InvalidateBakedState();
+            }
+            return PSOPreparationState::Failed;
         }
         if (Shader->ShaderCreateInfos.empty())
         {
             ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because its shader has no compute stage", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
-            InvalidateBakedState();
-            return;
+            if (!asynchronous)
+            {
+                InvalidateBakedState();
+            }
+            return PSOPreparationState::Failed;
         }
         if (Shader->ShaderCreateInfos[0].stage != VK_SHADER_STAGE_COMPUTE_BIT)
         {
             ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because its shader stage is not compute", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
-            InvalidateBakedState();
-            return;
+            if (!asynchronous)
+            {
+                InvalidateBakedState();
+            }
+            return PSOPreparationState::Failed;
         }
 
         // Every command in this engine pushes the callback's declared range at
@@ -83,36 +111,52 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         if (!exact_coverage)
         {
             ZENGINE_CORE_ERROR("Compute pipeline '{}': callback push constants do not exactly match the reflected compute-stage range", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
-            InvalidateBakedState();
-            return;
+            if (!asynchronous)
+            {
+                InvalidateBakedState();
+            }
+            return PSOPreparationState::Failed;
         }
         if (!Device || !Device->PipelineStateCache)
         {
             ZENGINE_CORE_ERROR("Compute pipeline '{}' cannot bake because the PSO cache is unavailable", Shader->m_specification.Name ? Shader->m_specification.Name : "?")
-            InvalidateBakedState();
-            return;
+            if (!asynchronous)
+            {
+                InvalidateBakedState();
+            }
+            return PSOPreparationState::Unavailable;
         }
-        if (Handle != VK_NULL_HANDLE)
-            Device->PipelineStateCache->UnpinPipeline(Handle);
 
-        VkPipelineLayoutCreateInfo layout_ci = {};
-        layout_ci.sType                      = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        layout_ci.setLayoutCount             = (uint32_t) Shader->SetLayouts.size();
-        layout_ci.pSetLayouts                = Shader->SetLayouts.data();
-        layout_ci.pushConstantRangeCount     = (uint32_t) Shader->PushConstants.size();
-        layout_ci.pPushConstantRanges        = Shader->PushConstants.data();
-        Layout                               = Device->PipelineStateCache->GetOrCreatePipelineLayout(layout_ci);
+        if (Shader->SetLayouts.size() > kMaxPSOSetLayouts || Shader->PushConstants.size() > kMaxPSOPushConstantRanges)
+        {
+            return PSOPreparationState::Failed;
+        }
 
-        VkComputePipelineCreateInfo ci       = {};
-        ci.sType                             = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-        ci.stage                             = Shader->ShaderCreateInfos[0];
-        ci.layout                            = Layout;
-        ci.basePipelineIndex                 = -1;
-        const PSOComputePipelineKey key      = Device->PipelineStateCache->MakeComputePipelineKey(ci, Shader->Generation);
-        Handle                               = Device->PipelineStateCache->GetOrCreateComputePipeline(ci, Shader->Generation);
-        Device->PipelineStateCache->PinPipeline(Handle);
-        Device->PipelineStateCache->RecordComputeWarmup(Shader->m_specification.Name, key);
-        BakedShaderGeneration = Shader->Generation;
+        VkPipelineLayoutCreateInfo layout_ci   = {};
+        layout_ci.sType                        = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout_ci.setLayoutCount               = (uint32_t) Shader->SetLayouts.size();
+        layout_ci.pSetLayouts                  = Shader->SetLayouts.data();
+        layout_ci.pushConstantRangeCount       = (uint32_t) Shader->PushConstants.size();
+        layout_ci.pPushConstantRanges          = Shader->PushConstants.data();
+        const VkPipelineLayout prepared_layout = Device->PipelineStateCache->TryGetOrCreatePipelineLayout(layout_ci);
+        if (!prepared_layout)
+        {
+            return PSOPreparationState::Failed;
+        }
+
+        VkComputePipelineCreateInfo ci     = {};
+        ci.sType                           = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        ci.stage                           = Shader->ShaderCreateInfos[0];
+        ci.layout                          = prepared_layout;
+        ci.basePipelineIndex               = -1;
+        const PSOComputePipelineKey key    = Device->PipelineStateCache->MakeComputePipelineKey(ci, Shader->Generation);
+        const auto                  result = asynchronous ? Device->PipelineStateCache->PrepareComputePipelineAsync(ci, Shader->Generation) : PSOPreparationResult{PSOPreparationState::Ready, Device->PipelineStateCache->GetOrCreateComputePipeline(ci, Shader->Generation)};
+        if (result.State == PSOPreparationState::Ready)
+        {
+            AdoptPreparedPipeline(result.Handle, prepared_layout);
+            Device->PipelineStateCache->RecordComputeWarmup(Shader->m_specification.Name, key);
+        }
+        return result.State;
     }
 
     void ComputePipeline::InvalidateBakedState()
@@ -128,6 +172,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
     void ComputePipeline::Dispose()
     {
+        ReleasePreparationGeneration();
         if (Device && Device->PipelineStateCache && Handle != VK_NULL_HANDLE)
             Device->PipelineStateCache->UnpinPipeline(Handle);
 
@@ -156,116 +201,122 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         Shader = Device->ShaderManager.Access(shader_handle);
     }
 
-    void GraphicPipeline::Bake()
+    void GraphicPipeline::InitializePrepared(Hardwares::VulkanDevice* device, Specifications::GraphicsPipelineDesc&& desc, RenderPasses::Attachment* attachment, Shaders::Shader* shader)
     {
+        Device      = device;
+        Description = std::move(desc);
+        Attachment  = attachment;
+        Shader      = shader;
+    }
 
-        ZENGINE_VALIDATE_ASSERT(Device->PipelineStateCache != nullptr, "Graphic pipeline requires the PSO cache")
-        if (Handle != VK_NULL_HANDLE)
-            Device->PipelineStateCache->UnpinPipeline(Handle);
+    PSOPreparationState GraphicPipeline::BakeInternal(bool asynchronous)
+    {
+        if (!Device || !Device->PipelineStateCache)
+        {
+            return PSOPreparationState::Unavailable;
+        }
+        if (!Shader || Shader->ShaderCreateInfos.empty() || Shader->ShaderCreateInfos.size() > kMaxPSOGraphicsShaderStages || Shader->SetLayouts.size() > kMaxPSOSetLayouts || Shader->PushConstants.size() > kMaxPSOPushConstantRanges || !Attachment)
+        {
+            return PSOPreparationState::Failed;
+        }
 
-        auto                             scratch                                = ZGetScratch(Device->Arena);
+        const auto     binding_count    = Description.VertexInputBindingSpecifications.size();
+        const auto     attribute_count  = Description.VertexInputAttributeSpecifications.size();
+        const uint32_t attachment_count = Attachment->GetColorAttachmentCount();
+        if (binding_count > kMaxPSOVertexBindings || attribute_count > kMaxPSOVertexAttributes || attachment_count > kMaxPSOColorBlendAttachments)
+        {
+            return PSOPreparationState::Failed;
+        }
         /*Pipeline fixed states*/
         /*
          * Dynamic State
          */
-        VkDynamicState                   dynamic_state_collection[]             = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-        VkPipelineDynamicStateCreateInfo dynamic_state_create_info              = {};
-        dynamic_state_create_info.sType                                         = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynamic_state_create_info.dynamicStateCount                             = 2;
-        dynamic_state_create_info.pDynamicStates                                = dynamic_state_collection;
+        VkDynamicState                   dynamic_state_collection[]                  = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo dynamic_state_create_info                   = {};
+        dynamic_state_create_info.sType                                              = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamic_state_create_info.dynamicStateCount                                  = 2;
+        dynamic_state_create_info.pDynamicStates                                     = dynamic_state_collection;
         /*
          * Viewports and Scissors
          */
-        VkPipelineViewportStateCreateInfo viewport_state_create_info            = {};
-        viewport_state_create_info.sType                                        = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-        viewport_state_create_info.viewportCount                                = 1;
-        viewport_state_create_info.scissorCount                                 = 1;
+        VkPipelineViewportStateCreateInfo viewport_state_create_info                 = {};
+        viewport_state_create_info.sType                                             = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewport_state_create_info.viewportCount                                     = 1;
+        viewport_state_create_info.scissorCount                                      = 1;
         /*
          * Input Assembly
          */
-        VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info = {};
-        input_assembly_state_create_info.sType                                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        input_assembly_state_create_info.topology                               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        input_assembly_state_create_info.primitiveRestartEnable                 = VK_FALSE;
-        input_assembly_state_create_info.flags                                  = 0;
-        input_assembly_state_create_info.pNext                                  = nullptr;
+        VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info      = {};
+        input_assembly_state_create_info.sType                                       = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        input_assembly_state_create_info.topology                                    = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        input_assembly_state_create_info.primitiveRestartEnable                      = VK_FALSE;
+        input_assembly_state_create_info.flags                                       = 0;
+        input_assembly_state_create_info.pNext                                       = nullptr;
         /*
          * Vertex Input
          */
-        Array<VkVertexInputBindingDescription> vertex_input_bindings            = {};
-        {
-            uint32_t n = Description.VertexInputBindingSpecifications.size();
-            vertex_input_bindings.init(scratch.Arena, n > 0 ? n : 1);
-        }
+        VkVertexInputBindingDescription vertex_input_bindings[kMaxPSOVertexBindings] = {};
         for (unsigned i = 0; i < Description.VertexInputBindingSpecifications.size(); ++i)
         {
-            auto& input = Description.VertexInputBindingSpecifications[i];
-            vertex_input_bindings.push(VkVertexInputBindingDescription{.binding = input.Binding, .stride = input.Stride, .inputRate = (VkVertexInputRate) input.Rate});
+            auto& input              = Description.VertexInputBindingSpecifications[i];
+            vertex_input_bindings[i] = {.binding = input.Binding, .stride = input.Stride, .inputRate = (VkVertexInputRate) input.Rate};
         }
 
-        Array<VkVertexInputAttributeDescription> vertex_input_attributes = {};
-        {
-            uint32_t n = Description.VertexInputAttributeSpecifications.size();
-            vertex_input_attributes.init(scratch.Arena, n > 0 ? n : 1);
-        }
+        VkVertexInputAttributeDescription vertex_input_attributes[kMaxPSOVertexAttributes] = {};
         for (unsigned i = 0; i < Description.VertexInputAttributeSpecifications.size(); ++i)
         {
-            auto& input = Description.VertexInputAttributeSpecifications[i];
-            vertex_input_attributes.push(VkVertexInputAttributeDescription{.location = input.Location, .binding = input.Binding, .format = Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(input.Format)], .offset = input.Offset});
+            auto& input                = Description.VertexInputAttributeSpecifications[i];
+            vertex_input_attributes[i] = {.location = input.Location, .binding = input.Binding, .format = Specifications::ImageFormatMap[VALUE_FROM_SPEC_MAP(input.Format)], .offset = input.Offset};
         }
 
-        VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info   = {};
-        vertex_input_state_create_info.sType                                  = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertex_input_state_create_info.vertexBindingDescriptionCount          = vertex_input_bindings.size();
-        vertex_input_state_create_info.pVertexBindingDescriptions             = vertex_input_bindings.data();
-        vertex_input_state_create_info.vertexAttributeDescriptionCount        = vertex_input_attributes.size();
-        vertex_input_state_create_info.pVertexAttributeDescriptions           = vertex_input_attributes.data();
+        VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info                             = {};
+        vertex_input_state_create_info.sType                                                            = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertex_input_state_create_info.vertexBindingDescriptionCount                                    = binding_count;
+        vertex_input_state_create_info.pVertexBindingDescriptions                                       = vertex_input_bindings;
+        vertex_input_state_create_info.vertexAttributeDescriptionCount                                  = attribute_count;
+        vertex_input_state_create_info.pVertexAttributeDescriptions                                     = vertex_input_attributes;
         /*
          * Rasterizer
          */
-        VkPipelineRasterizationStateCreateInfo rasterization_create_info      = {};
-        rasterization_create_info.sType                                       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rasterization_create_info.depthClampEnable                            = VK_FALSE;
-        rasterization_create_info.rasterizerDiscardEnable                     = VK_FALSE;
-        rasterization_create_info.polygonMode                                 = VK_POLYGON_MODE_FILL;
-        rasterization_create_info.lineWidth                                   = 1.0f;
-        rasterization_create_info.cullMode                                    = (VkCullModeFlagBits) Description.CullMode;
-        rasterization_create_info.frontFace                                   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-        rasterization_create_info.depthBiasEnable                             = VK_FALSE;
-        rasterization_create_info.depthBiasConstantFactor                     = 0.0f; // Optional
-        rasterization_create_info.depthBiasClamp                              = 0.0f; // Optional
-        rasterization_create_info.depthBiasSlopeFactor                        = 0.0f; // Optional
-        rasterization_create_info.pNext                                       = nullptr;
+        VkPipelineRasterizationStateCreateInfo rasterization_create_info                                = {};
+        rasterization_create_info.sType                                                                 = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterization_create_info.depthClampEnable                                                      = VK_FALSE;
+        rasterization_create_info.rasterizerDiscardEnable                                               = VK_FALSE;
+        rasterization_create_info.polygonMode                                                           = VK_POLYGON_MODE_FILL;
+        rasterization_create_info.lineWidth                                                             = 1.0f;
+        rasterization_create_info.cullMode                                                              = (VkCullModeFlagBits) Description.CullMode;
+        rasterization_create_info.frontFace                                                             = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rasterization_create_info.depthBiasEnable                                                       = VK_FALSE;
+        rasterization_create_info.depthBiasConstantFactor                                               = 0.0f; // Optional
+        rasterization_create_info.depthBiasClamp                                                        = 0.0f; // Optional
+        rasterization_create_info.depthBiasSlopeFactor                                                  = 0.0f; // Optional
+        rasterization_create_info.pNext                                                                 = nullptr;
         /*
          * Multisampling
          */
-        VkPipelineMultisampleStateCreateInfo multisample_state_create_info    = {};
-        multisample_state_create_info.sType                                   = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        multisample_state_create_info.sampleShadingEnable                     = VK_FALSE;
-        multisample_state_create_info.rasterizationSamples                    = VK_SAMPLE_COUNT_1_BIT;
-        multisample_state_create_info.minSampleShading                        = 1.0f;
-        multisample_state_create_info.pNext                                   = nullptr;
+        VkPipelineMultisampleStateCreateInfo multisample_state_create_info                              = {};
+        multisample_state_create_info.sType                                                             = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisample_state_create_info.sampleShadingEnable                                               = VK_FALSE;
+        multisample_state_create_info.rasterizationSamples                                              = VK_SAMPLE_COUNT_1_BIT;
+        multisample_state_create_info.minSampleShading                                                  = 1.0f;
+        multisample_state_create_info.pNext                                                             = nullptr;
         /*
          * Depth and Stencil testing
          */
-        VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {};
-        depth_stencil_state_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        depth_stencil_state_create_info.stencilTestEnable                     = Description.EnableStencilTest ? VK_TRUE : VK_FALSE;
-        depth_stencil_state_create_info.front                                 = {};
-        depth_stencil_state_create_info.back                                  = {};
-        depth_stencil_state_create_info.depthTestEnable                       = Description.EnableDepthTest ? VK_TRUE : VK_FALSE;
-        depth_stencil_state_create_info.depthCompareOp                        = VkCompareOp(Description.DepthCompareOp);
-        depth_stencil_state_create_info.depthWriteEnable                      = Description.EnableDepthWrite ? VK_TRUE : VK_FALSE;
-        depth_stencil_state_create_info.minDepthBounds                        = 0.0f;
-        depth_stencil_state_create_info.maxDepthBounds                        = 1.0f;
+        VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info                           = {};
+        depth_stencil_state_create_info.sType                                                           = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depth_stencil_state_create_info.stencilTestEnable                                               = Description.EnableStencilTest ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.front                                                           = {};
+        depth_stencil_state_create_info.back                                                            = {};
+        depth_stencil_state_create_info.depthTestEnable                                                 = Description.EnableDepthTest ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.depthCompareOp                                                  = VkCompareOp(Description.DepthCompareOp);
+        depth_stencil_state_create_info.depthWriteEnable                                                = Description.EnableDepthWrite ? VK_TRUE : VK_FALSE;
+        depth_stencil_state_create_info.minDepthBounds                                                  = 0.0f;
+        depth_stencil_state_create_info.maxDepthBounds                                                  = 1.0f;
         /*
          * Color blend state and attachment
          */
-        ZENGINE_VALIDATE_ASSERT(Attachment, "Attachment can't be null")
-
-        uint32_t                                   attachment_count = Attachment->GetColorAttachmentCount();
-        Array<VkPipelineColorBlendAttachmentState> color_blend_attachment_states{};
-        color_blend_attachment_states.init(scratch.Arena, attachment_count, attachment_count);
+        VkPipelineColorBlendAttachmentState color_blend_attachment_states[kMaxPSOColorBlendAttachments] = {};
         for (uint32_t i = 0; i < attachment_count; ++i)
         {
             color_blend_attachment_states[i].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -300,31 +351,35 @@ namespace ZEngine::Rendering::Renderers::Pipelines
 
         // MoltenVK dereferences pAttachments unconditionally even when attachmentCount == 0,
         // so provide a dummy entry for depth-only pipelines to avoid a null-pointer fault.
-        VkPipelineColorBlendAttachmentState dummy_attachment                                = {};
-        VkPipelineColorBlendStateCreateInfo color_blend_state_create_info                   = {};
-        color_blend_state_create_info.sType                                                 = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        color_blend_state_create_info.logicOpEnable                                         = VK_FALSE;
-        color_blend_state_create_info.logicOp                                               = VK_LOGIC_OP_COPY; // Optional
-        color_blend_state_create_info.attachmentCount                                       = color_blend_attachment_states.size();
-        color_blend_state_create_info.pAttachments                                          = (attachment_count > 0) ? color_blend_attachment_states.data() : &dummy_attachment;
-        color_blend_state_create_info.blendConstants[0]                                     = 0.0f; // Optional
-        color_blend_state_create_info.blendConstants[1]                                     = 0.0f; // Optional
-        color_blend_state_create_info.blendConstants[2]                                     = 0.0f; // Optional
-        color_blend_state_create_info.blendConstants[3]                                     = 0.0f; // Optional
-        color_blend_state_create_info.flags                                                 = 0;
-        color_blend_state_create_info.pNext                                                 = nullptr;
+        VkPipelineColorBlendAttachmentState dummy_attachment              = {};
+        VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {};
+        color_blend_state_create_info.sType                               = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        color_blend_state_create_info.logicOpEnable                       = VK_FALSE;
+        color_blend_state_create_info.logicOp                             = VK_LOGIC_OP_COPY; // Optional
+        color_blend_state_create_info.attachmentCount                     = attachment_count;
+        color_blend_state_create_info.pAttachments                        = (attachment_count > 0) ? color_blend_attachment_states : &dummy_attachment;
+        color_blend_state_create_info.blendConstants[0]                   = 0.0f; // Optional
+        color_blend_state_create_info.blendConstants[1]                   = 0.0f; // Optional
+        color_blend_state_create_info.blendConstants[2]                   = 0.0f; // Optional
+        color_blend_state_create_info.blendConstants[3]                   = 0.0f; // Optional
+        color_blend_state_create_info.flags                               = 0;
+        color_blend_state_create_info.pNext                               = nullptr;
         /*
          * Pipeline layout
          */
-        VkPipelineLayoutCreateInfo pipeline_layout_create_info                              = {};
-        pipeline_layout_create_info.sType                                                   = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipeline_layout_create_info.setLayoutCount                                          = Shader->SetLayouts.size(); // Optional
-        pipeline_layout_create_info.pSetLayouts                                             = Shader->SetLayouts.data(); // Optional
-        pipeline_layout_create_info.pushConstantRangeCount                                  = Shader->PushConstants.size();
-        pipeline_layout_create_info.pPushConstantRanges                                     = Shader->PushConstants.data();
-        pipeline_layout_create_info.flags                                                   = 0;
-        pipeline_layout_create_info.pNext                                                   = nullptr;
-        Layout                                                                              = Device->PipelineStateCache->GetOrCreatePipelineLayout(pipeline_layout_create_info);
+        VkPipelineLayoutCreateInfo pipeline_layout_create_info            = {};
+        pipeline_layout_create_info.sType                                 = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipeline_layout_create_info.setLayoutCount                        = Shader->SetLayouts.size(); // Optional
+        pipeline_layout_create_info.pSetLayouts                           = Shader->SetLayouts.data(); // Optional
+        pipeline_layout_create_info.pushConstantRangeCount                = Shader->PushConstants.size();
+        pipeline_layout_create_info.pPushConstantRanges                   = Shader->PushConstants.data();
+        pipeline_layout_create_info.flags                                 = 0;
+        pipeline_layout_create_info.pNext                                 = nullptr;
+        const VkPipelineLayout prepared_layout                            = Device->PipelineStateCache->TryGetOrCreatePipelineLayout(pipeline_layout_create_info);
+        if (!prepared_layout)
+        {
+            return PSOPreparationState::Failed;
+        }
         PSOCompatibilityRenderPassKey compatibility_key                                     = {};
         VkRenderPass                  compatibility_render_pass                             = VK_NULL_HANDLE;
         VkPipelineRenderingCreateInfo rendering_info                                        = {};
@@ -338,8 +393,15 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         }
         else
         {
-            compatibility_key         = Device->PipelineStateCache->MakeCompatibilityRenderPassKey(*Attachment);
-            compatibility_render_pass = Device->PipelineStateCache->GetOrCreateCompatibilityRenderPass(*Attachment);
+            if (!Device->PipelineStateCache->TryMakeCompatibilityRenderPassKey(*Attachment, &compatibility_key))
+            {
+                return PSOPreparationState::Failed;
+            }
+            compatibility_render_pass = Device->PipelineStateCache->TryGetOrCreateCompatibilityRenderPass(compatibility_key);
+            if (!compatibility_render_pass)
+            {
+                return PSOPreparationState::Failed;
+            }
         }
         /*
          * Graphic Pipeline Creation
@@ -356,7 +418,7 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.pDepthStencilState           = Description.EnableDepthTest ? &(depth_stencil_state_create_info) : nullptr;
         graphic_pipeline_create_info.pColorBlendState             = &(color_blend_state_create_info);
         graphic_pipeline_create_info.pDynamicState                = &(dynamic_state_create_info);
-        graphic_pipeline_create_info.layout                       = Layout;
+        graphic_pipeline_create_info.layout                       = prepared_layout;
         graphic_pipeline_create_info.renderPass                   = compatibility_render_pass;
         graphic_pipeline_create_info.subpass                      = 0;
         graphic_pipeline_create_info.basePipelineHandle           = VK_NULL_HANDLE; // Optional
@@ -364,16 +426,19 @@ namespace ZEngine::Rendering::Renderers::Pipelines
         graphic_pipeline_create_info.flags                        = 0;              // Optional
         graphic_pipeline_create_info.pNext                        = Device->PhysicalDeviceSupportDynamicRendering ? &rendering_info : nullptr;
         const PSOGraphicsPipelineKey pipeline_key                 = Device->PipelineStateCache->MakeGraphicsPipelineKey(graphic_pipeline_create_info, Shader->Generation);
-        Handle                                                    = Device->PipelineStateCache->GetOrCreateGraphicsPipeline(graphic_pipeline_create_info, Shader->Generation);
-        Device->PipelineStateCache->PinPipeline(Handle);
-        Device->PipelineStateCache->RecordGraphicsWarmup(Shader->m_specification.Name, pipeline_key, compatibility_key);
-        BakedShaderGeneration = Shader->Generation;
+        const auto                   result                       = asynchronous ? Device->PipelineStateCache->PrepareGraphicsPipelineAsync(graphic_pipeline_create_info, Shader->Generation) : PSOPreparationResult{PSOPreparationState::Ready, Device->PipelineStateCache->GetOrCreateGraphicsPipeline(graphic_pipeline_create_info, Shader->Generation)};
+        if (result.State == PSOPreparationState::Ready)
+        {
+            AdoptPreparedPipeline(result.Handle, prepared_layout);
+            Device->PipelineStateCache->RecordGraphicsWarmup(Shader->m_specification.Name, pipeline_key, compatibility_key);
+        }
 
-        ZReleaseScratch(scratch);
+        return result.State;
     }
 
     void GraphicPipeline::Dispose()
     {
+        ReleasePreparationGeneration();
         if (Device && Device->PipelineStateCache && Handle != VK_NULL_HANDLE)
             Device->PipelineStateCache->UnpinPipeline(Handle);
 

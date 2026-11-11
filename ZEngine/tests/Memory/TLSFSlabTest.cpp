@@ -1,5 +1,6 @@
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/Memory/SlabAllocationRoute.h>
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <gtest/gtest.h>
 #include <tlsf.h>
@@ -40,6 +41,95 @@ TEST(TLSFSlabTest, InitAndShutdown)
     slab.Shutdown();
     EXPECT_EQ(slab.Pool, nullptr);
     EXPECT_EQ(slab.Backing, nullptr);
+}
+
+TEST(TLSFSlabTest, LiveAccountingCoversAllAllocationRoutesAndPreservesCountersOnRefusedGrowth)
+{
+    Env      env  = {};
+    TLSFSlab slab = {};
+    ASSERT_TRUE(slab.TryInit(env.Arena(), ZMega(1)));
+    const auto initial = slab.GetStatistics();
+    EXPECT_EQ(initial.BackingBytes, ZMega(1));
+    EXPECT_GT(initial.ControlBytes, 0u);
+    EXPECT_EQ(initial.LiveBytes, 0u);
+    EXPECT_EQ(initial.LiveBlocks, 0u);
+    void* first  = slab.Alloc(64);
+    void* second = slab.TryAllocate(257, 256);
+    void* third  = slab.TryRealloc(nullptr, 512);
+    ASSERT_NE(first, nullptr);
+    ASSERT_NE(second, nullptr);
+    ASSERT_NE(third, nullptr);
+    const auto live = slab.GetStatistics();
+    EXPECT_EQ(live.LiveBlocks, 3u);
+    EXPECT_GE(live.LiveBytes, 64u + 257u + 512u);
+    EXPECT_EQ(live.LiveBytes, live.HighWaterLiveBytes);
+    EXPECT_EQ(slab.TryRealloc(first, ZMega(2)), nullptr);
+    EXPECT_EQ(slab.GetStatistics().LiveBytes, live.LiveBytes);
+    EXPECT_EQ(slab.GetStatistics().LiveBlocks, 3u);
+    first = slab.Realloc(first, 2048);
+    ASSERT_NE(first, nullptr);
+    third = slab.TryRealloc(third, 128);
+    ASSERT_NE(third, nullptr);
+    EXPECT_EQ(slab.GetStatistics().LiveBlocks, 3u);
+    const auto peak = slab.GetStatistics().HighWaterLiveBytes;
+    slab.Free(first);
+    slab.Free(second);
+    slab.Free(third);
+    slab.Free(nullptr);
+    EXPECT_EQ(slab.GetStatistics().LiveBytes, 0u);
+    EXPECT_EQ(slab.GetStatistics().LiveBlocks, 0u);
+    EXPECT_EQ(slab.GetStatistics().HighWaterLiveBytes, peak);
+    slab.Shutdown();
+    EXPECT_EQ(slab.GetStatistics().BackingBytes, 0u);
+    EXPECT_EQ(slab.GetStatistics().HighWaterLiveBytes, 0u);
+}
+
+TEST(SlabAllocationRouteTest, BoundedAccountingReallocationAndWorkingStorageShareOneCap)
+{
+    Env                 env   = {};
+    SlabAllocationRoute route = {};
+    EXPECT_EQ(route.Allocate(1), nullptr);
+    const auto offset = env.Arena()->m_current_offset;
+    EXPECT_FALSE(route.Initialize(env.Arena(), 1));
+    EXPECT_EQ(env.Arena()->m_current_offset, offset);
+    ASSERT_TRUE(route.Initialize(env.Arena(), ZKilo(64)));
+    EXPECT_FALSE(route.Initialize(env.Arena(), ZKilo(64)));
+    EXPECT_EQ(route.Capacity(), ZKilo(64));
+    const auto available = route.Capacity() - route.PeakBytes();
+    ASSERT_TRUE(route.WorkingMemoryBudget()->TryReserveWorkingBytes(available));
+    EXPECT_EQ(route.PeakBytes(), route.Capacity());
+    EXPECT_FALSE(route.WorkingMemoryBudget()->TryReserveWorkingBytes(1));
+    EXPECT_EQ(route.Allocate(1), nullptr);
+    route.WorkingMemoryBudget()->ReleaseWorkingBytes(available);
+    EXPECT_EQ(route.Allocate(SIZE_MAX), nullptr);
+    auto* block = static_cast<uint8_t*>(route.Allocate(1024));
+    ASSERT_NE(block, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(block) % alignof(std::max_align_t), 0u);
+    block[0]             = 17;
+    const auto allocated = route.AllocatedBytes();
+    EXPECT_GT(allocated, 1024u);
+    EXPECT_EQ(route.Reallocate(block, 1024, ZKilo(64)), nullptr);
+    EXPECT_EQ(block[0], 17);
+    EXPECT_EQ(route.AllocatedBytes(), allocated);
+    EXPECT_FALSE(route.WorkingMemoryBudget()->TryReserveWorkingBytes(ZKilo(64)));
+    ASSERT_TRUE(route.WorkingMemoryBudget()->TryReserveWorkingBytes(ZKilo(32)));
+    EXPECT_EQ(route.Allocate(ZKilo(32)), nullptr);
+    auto* replacement = static_cast<uint8_t*>(route.Reallocate(block, 1024, 2048));
+    ASSERT_NE(replacement, nullptr);
+    EXPECT_EQ(replacement[0], 17);
+    EXPECT_EQ(route.WorkingBytes(), ZKilo(32));
+    route.WorkingMemoryBudget()->ReleaseWorkingBytes(ZKilo(32));
+    route.Free(replacement);
+    EXPECT_EQ(route.AllocatedBytes(), 0u);
+    EXPECT_EQ(route.WorkingBytes(), 0u);
+    EXPECT_LE(route.PeakBytes(), route.Capacity());
+    // Freed parser/source blocks are reusable, not abandoned monotonic growth.
+    for (uint32_t i = 0; i < 1000; ++i)
+    {
+        void* reused = route.Allocate(ZKilo(32));
+        ASSERT_NE(reused, nullptr);
+        route.Free(reused);
+    }
 }
 
 TEST(TLSFSlabTest, CheckedInitRejectsInvalidSizesWithoutConsumingBacking)

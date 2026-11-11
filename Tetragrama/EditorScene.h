@@ -2,7 +2,9 @@
 #include <ZEngine/Core/VFS/VFSPath.h>
 #include <ZEngine/ECS/ActorManager.h>
 #include <ZEngine/ECS/SceneGridSettings.h>
+#include <ZEngine/ECS/SceneStorage.h>
 #include <ZEngine/Importers/IAssetImporter.h>
+#include <ZEngine/Managers/AssetCacheLease.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 
 namespace Tetragrama::Serializers
@@ -18,6 +20,8 @@ namespace ZEngine
 namespace Tetragrama
 {
     class EditorSession;
+    struct EditorSceneMutationHooks;
+    struct EditorSceneSettingsHooks;
     struct EditorAssetSceneFiles
     {
         ZEngine::Importers::AssetFileType Type     = ZEngine::Importers::AssetFileType::UNKNOWN;
@@ -47,7 +51,6 @@ namespace Tetragrama
 
         ZEngine::Core::Memory::ArenaAllocator                           LocalArenaStorage   = {};
         ZEngine::Core::Memory::ArenaAllocator*                          LocalArena          = nullptr;
-        PaddedAtomic<bool>*                                             DeserializedInUse   = nullptr;
 
         ~EditorScene();
 
@@ -56,6 +59,8 @@ namespace Tetragrama
         bool                   InitializeDeserialized();
         /// @brief Injectable bounded load-slot owner; never creates default entities.
         bool                   InitializeDeserialized(ZEngine::EngineContext& context);
+        /// Non-owning render adapter; the engine scene instance retains storage.
+        bool                   InitializeDeserialized(ZEngine::Core::Memory::ArenaAllocator& storage);
 
         bool                   HasPendingChange() const;
         void                   PushAssetFile(const ZEngine::Importers::AssetImporterOutput&);
@@ -79,31 +84,43 @@ namespace Tetragrama
         /// @brief Standalone compatibility removal. Attached editors must use Session::RequestDelete.
         [[nodiscard]] bool                   DeleteEntity(ZEngine::EngineContext& engine, ZEngine::ECS::EntityID entity);
         void                                 Reset(const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults = {});
-        void                                 ExtractAsync(const EditorScene& scene);
+        /// Arena-owned initial adapters are not automatically destructed by the
+        /// host. Retire CPU ownership explicitly before AssetManager shutdown.
+        void                                 ReleaseSourceAssetPins() noexcept
+        {
+            m_authored_assets.Release();
+        }
+        void                      ExtractAsync(const EditorScene& scene);
 
         /// @brief Assigns a directional actor as the sky's optional sun source.
         /// @return False when @p handle is stale or does not name a directional light.
-        bool                                 SetPrimaryCelestialLight(ZEngine::ECS::ActorHandle handle);
-        void                                 ClearPrimaryCelestialLight();
+        bool                      SetPrimaryCelestialLight(ZEngine::ECS::ActorHandle handle);
+        void                      ClearPrimaryCelestialLight();
 
         /// @brief Creates and selects an empty actor, with a fresh identity, and marks the scene dirty.
-        ZEngine::ECS::ActorHandle            CreateActor(ZEngine::ECS::ActorManager& actors, const char* name);
+        ZEngine::ECS::ActorHandle CreateActor(ZEngine::ECS::ActorManager& actors, const char* name);
         /// @brief Resets local TRS; returns true and marks dirty only when a live actor changes.
-        bool                                 ResetActorTransform(ZEngine::ECS::ActorManager& actors, ZEngine::ECS::ActorHandle handle);
+        bool                      ResetActorTransform(ZEngine::ECS::ActorManager& actors, ZEngine::ECS::ActorHandle handle);
         /// @brief Reads the hierarchy system's computed world-space position, without traversing parents.
-        static bool                          TryGetActorWorldPosition(const ZEngine::ECS::ActorManager& actors, ZEngine::ECS::ActorHandle handle, ZEngine::Core::Maths::Vec3f& position);
+        static bool               TryGetActorWorldPosition(const ZEngine::ECS::ActorManager& actors, ZEngine::ECS::ActorHandle handle, ZEngine::Core::Maths::Vec3f& position);
 
         // Create a fully wired Actor: registers with RenderScene and adds
         // UUID + Name + Transform + Mesh in the exclusive session mutation phase.
         // This untracked structural edit restores previews and invalidates history.
-        [[nodiscard]] bool                   CanSpawnMeshActor(const ZEngine::EngineContext& engine) const;
-        ZEngine::ECS::ActorHandle            SpawnMeshActor(ZEngine::EngineContext& engine, const uuids::uuid& mesh_uuid, const char* name);
+        [[nodiscard]] bool        CanSpawnMeshActor(const ZEngine::EngineContext& engine) const;
+        ZEngine::ECS::ActorHandle SpawnMeshActor(ZEngine::EngineContext& engine, const uuids::uuid& mesh_uuid, const char* name);
 
     private:
-        PaddedAtomic<uint64_t>  m_external_revision = {};
-        ZEngine::EngineContext* SessionEngine       = nullptr;
-        bool                    DeleteEntityAtMutationPoint(ZEngine::EngineContext& engine, ZEngine::ECS::EntityID entity);
-        void                    ReleaseDeserializedArena();
+        friend struct Editor;
+        [[nodiscard]] EditorSceneMutationHooks MutationHooks();
+        [[nodiscard]] EditorSceneSettingsHooks SettingsHooks();
+        void                                   CommitSessionAttachment(EditorSession& session, ZEngine::EngineContext& engine) noexcept;
+        ZEngine::ECS::SceneStorageLease        m_deserialized_storage = {};
+        ZEngine::Managers::AssetCacheLease     m_authored_assets      = {};
+        PaddedAtomic<uint64_t>                 m_external_revision    = {};
+        ZEngine::EngineContext*                SessionEngine          = nullptr;
+        bool                                   DeleteEntityAtMutationPoint(ZEngine::EngineContext& engine, ZEngine::ECS::EntityID entity);
+        void                                   ReleaseDeserializedArena();
     };
     ZDEFINE_PTR(EditorScene);
 

@@ -12,11 +12,17 @@ namespace ZEngine::ECS
     class SceneMigrationRegistry
     {
     public:
-        static constexpr uint32_t                         MaxMigrations = 256;
-        static constexpr uint32_t                         MaxSteps      = 32;
+        static constexpr uint32_t MaxMigrations = 256;
+        static constexpr uint32_t MaxSteps      = 32;
 
-        [[nodiscard]] bool                                Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity = 32);
-        [[nodiscard]] bool                                IsInitialized() const;
+        [[nodiscard]] bool        Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity = 32);
+        [[nodiscard]] bool        IsInitialized() const;
+        /// Startup/main-thread freeze before handing the immutable registry to workers.
+        [[nodiscard]] bool        Freeze();
+        [[nodiscard]] bool        Frozen() const noexcept
+        {
+            return m_frozen;
+        }
         [[nodiscard]] bool                                RegisterDocumentMigration(uint32_t from, uint32_t to, void* context, SceneMigrationFn migrate, SceneDiagnostics* diagnostics);
         [[nodiscard]] bool                                RegisterComponentMigration(cstring key, uint32_t from, uint32_t to, void* context, SceneMigrationFn migrate, SceneDiagnostics* diagnostics);
         [[nodiscard]] uint32_t                            Count() const;
@@ -41,6 +47,7 @@ namespace ZEngine::ECS
         };
         Core::Containers::Array<Entry> m_entries  = {};
         uint32_t                       m_capacity = 0;
+        bool                           m_frozen   = false;
         [[nodiscard]] bool             Register(cstring key, uint32_t from, uint32_t to, void* context, SceneMigrationFn migrate, SceneDiagnostics* diagnostics);
         [[nodiscard]] const Entry*     Find(cstring key, uint32_t from) const;
         [[nodiscard]] bool             Apply(cstring key, uint32_t from, uint32_t to, const SceneYAML::Node& source, SceneYAML::Node* out, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits, Core::Memory::IAllocationRoute* allocation_route) const;

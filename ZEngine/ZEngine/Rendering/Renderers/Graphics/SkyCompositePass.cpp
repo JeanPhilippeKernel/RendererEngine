@@ -1,6 +1,7 @@
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
 #include <ZEngine/Rendering/Renderers/Graphics/SkyCompositePass.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
+#include <ZEngine/Rendering/Renderers/SceneRenderTargets.h>
 
 using namespace ZEngine::Rendering::Specifications;
 
@@ -8,28 +9,8 @@ namespace ZEngine::Rendering::Renderers
 {
     namespace
     {
-        constexpr float      kAerialMaxDistance = 96.0f;
+        constexpr float kAerialMaxDistance = 96.0f;
 
-        TextureSpecification MakeCompositionSpecification(uint32_t width, uint32_t height)
-        {
-            TextureSpecification specification  = {};
-            specification.IsUsageSampled        = true;
-            specification.IsUsageStorage        = false;
-            specification.IsUsageTransfert      = false;
-            specification.IsUsageTransferSource = false;
-            specification.IsRenderTargetSized   = true;
-            specification.Width                 = width;
-            specification.Height                = height;
-            specification.Depth                 = 1;
-            specification.BytePerPixel          = sizeof(uint16_t) * 4;
-            specification.Format                = ImageFormat::R16G16B16A16_SFLOAT;
-            specification.LoadOp                = LoadOperation::CLEAR;
-            specification.ClearColor[0]         = 0.0f;
-            specification.ClearColor[1]         = 0.0f;
-            specification.ClearColor[2]         = 0.0f;
-            specification.ClearColor[3]         = 1.0f;
-            return specification;
-        }
     } // namespace
 
     void SkyCompositePass::SetEnvironment(const Scenes::SkyEnvironmentSnapshot* snapshot, const Scenes::SkyConfig& presentation)
@@ -81,19 +62,25 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadTexture(RendererResourceName::FrameAerialInscatterName, "AerialInscatter");
         res_builder->ReadTexture(RendererResourceName::FrameAerialTransmittanceName, "AerialTransmittance");
         res_builder->ReadTexture(res_builder->ImportTexture("SkyCompositeTransmittance", m_atmosphere.Transmittance, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), "AtmosphereTransmittance");
-        res_builder->WriteColorAttachment(RendererResourceName::FrameHdrCompositedRenderTargetName, MakeCompositionSpecification(frame_context.RenderWidth, frame_context.RenderHeight));
+        const auto target = DescribeSceneTarget(SceneRenderTarget::HdrComposited, frame_context.RenderWidth, frame_context.RenderHeight);
+        res_builder->WriteColorAttachment(target.Name, target.Spec);
         return true;
     }
 
-    GraphicsPipelineDesc SkyCompositePass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
+    bool SkyCompositePass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         GraphicsPipelineDesc description          = {};
         description.DebugName                     = "Sky-Composite-Pipeline";
         description.EnableDepthTest               = false;
         description.EnableDepthWrite              = false;
         description.EnableBlending                = false;
         description.ShaderSpecificationValue.Name = "sky_atmosphere_composite";
-        return description;
+        *out                                      = std::move(description);
+        return true;
     }
 
     void SkyCompositePass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr const res_inspector, RenderPasses::RenderPass* const pass)

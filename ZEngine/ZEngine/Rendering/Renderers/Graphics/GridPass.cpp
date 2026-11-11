@@ -45,8 +45,12 @@ namespace ZEngine::Rendering::Renderers
         m_push.Controls[1] = reverse_z ? 1u : 0u;
     }
 
-    Specifications::GraphicsPipelineDesc GridPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator*) const
+    bool GridPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         Specifications::GraphicsPipelineDesc desc = {};
         desc.DebugName                            = "Infinite-Grid-Pipeline";
         // Scene depth is sampled explicitly, so one immutable PSO works for
@@ -56,7 +60,8 @@ namespace ZEngine::Rendering::Renderers
         desc.EnableBlending                       = true;
         desc.CullMode                             = VK_CULL_MODE_NONE;
         desc.ShaderSpecificationValue.Name        = "infinite_grid";
-        return desc;
+        *out                                      = std::move(desc);
+        return true;
     }
 
     bool GridPass::Register(Hardwares::VulkanDevicePtr, cstring, const RenderGraphFrameContext& context, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr)

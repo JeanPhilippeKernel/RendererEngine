@@ -33,5 +33,6 @@ namespace ZEngine::Rendering::Primitives
     private:
         SemaphoreState m_semaphore_state{SemaphoreState::Idle};
         VkSemaphore    m_handle{VK_NULL_HANDLE};
+        uint64_t       m_retirement_reservation = 0;
     };
 } // namespace ZEngine::Rendering::Primitives

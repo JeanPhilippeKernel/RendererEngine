@@ -20,17 +20,23 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadBuffer(RendererBufferName::Material, "MatSB");
         res_builder->ReadBindless();
         res_builder->ReadIndirectBuffer(RendererBufferName::CulledIndirect);
-        res_builder->WriteDepthAttachment(RendererResourceName::FrameDepthRenderTargetName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::DEPTH_STENCIL_FROM_DEVICE});
+        const auto target = DescribeSceneTarget(SceneRenderTarget::Depth, w, h);
+        res_builder->WriteDepthAttachment(target.Name, target.Spec);
         return true;
     }
 
-    Specifications::GraphicsPipelineDesc DepthPrePass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
+    bool DepthPrePass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         Specifications::GraphicsPipelineDesc desc = {};
         desc.DebugName                            = "Depth-Prepass-Pipeline";
         desc.EnableDepthTest                      = true;
         desc.ShaderSpecificationValue.Name        = "depth_prepass_scene";
-        return desc;
+        *out                                      = std::move(desc);
+        return true;
     }
 
     void DepthPrePass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
@@ -69,7 +75,7 @@ namespace ZEngine::Rendering::Renderers
         command_buffer->BindPipeline(gp->Pipeline);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
         if (scene->OpaqueIndirectCommandCount)
-            command_buffer->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->OpaqueIndirectCommandCount);
+            command_buffer->DrawIndirect(scene->GetCulledIndirectBuffer(device->SwapchainPtr->CurrentFrame->Index).Handle, 0, scene->OpaqueIndirectCommandCount);
         return true;
     }
 } // namespace ZEngine::Rendering::Renderers

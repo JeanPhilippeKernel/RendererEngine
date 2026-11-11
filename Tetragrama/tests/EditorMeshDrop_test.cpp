@@ -60,6 +60,7 @@ protected:
         Engine->ActorManager = &Actors;
         Engine->VFS          = &VFS;
         Owner.Name           = "Drop test";
+        Owner.LocalArena     = &Memory.MainArena;
         Owner.UUID           = *uuids::uuid::from_string("22222222-2222-4222-8222-222222222222");
         Owner.Instances.init(&Memory.MainArena, 4);
         App->CurrentScene = &Owner;
@@ -112,7 +113,10 @@ protected:
         World.Shutdown();
         VFS.Shutdown();
         if (ProductionBinding)
+        {
+            Owner.ReleaseSourceAssetPins();
             ZEngine::Managers::AssetManager::Shutdown();
+        }
     }
     EditorMeshDropServices Services()
     {
@@ -255,6 +259,7 @@ TEST_F(EditorMeshDropTest, ProductionDropReusesFreshThumbnailBindingAfterDeleteA
     Start();
     RunQueued();
     ASSERT_TRUE(Process());
+    EXPECT_EQ(assets->TrimCpuCache(), 0u); // The placed actor owns its CPU source.
     EXPECT_EQ(Actors.Count(), 1u);
     EXPECT_EQ(assets->Meshes.size(), 1u);
     EXPECT_FLOAT_EQ(assets->GetMeshAsset(MeshID)->Vertices[8], 11.f);

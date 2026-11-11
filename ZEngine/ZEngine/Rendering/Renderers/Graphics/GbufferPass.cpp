@@ -21,9 +21,11 @@ namespace ZEngine::Rendering::Renderers
         res_builder->ReadIndirectBuffer(RendererBufferName::CulledIndirect);
         res_builder->ReadBindless();
         res_builder->ReadDepth(RendererResourceName::FrameDepthRenderTargetName);
-        res_builder->WriteColorAttachment(RendererResourceName::GBufferAlbedoAOName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
-        res_builder->WriteColorAttachment(RendererResourceName::GBufferNormalRoughnessName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R16G16B16A16_SFLOAT});
-        res_builder->WriteColorAttachment(RendererResourceName::GBufferMetallicEmissiveName, {.IsRenderTargetSized = true, .Width = w, .Height = h, .Format = Specifications::ImageFormat::R8G8B8A8_UNORM});
+        for (const auto kind : {SceneRenderTarget::AlbedoAO, SceneRenderTarget::NormalRoughness, SceneRenderTarget::MetallicEmissive})
+        {
+            const auto target = DescribeSceneTarget(kind, w, h);
+            res_builder->WriteColorAttachment(target.Name, target.Spec);
+        }
         return true;
     }
 
@@ -59,14 +61,19 @@ namespace ZEngine::Rendering::Renderers
         m_object_id_pick_count = 0;
     }
 
-    Specifications::GraphicsPipelineDesc GbufferPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
+    bool GbufferPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         Specifications::GraphicsPipelineDesc desc = {};
         desc.DebugName                            = "GBuffer-Pipeline";
         desc.EnableDepthTest                      = true;
         desc.EnableDepthWrite                     = false;
         desc.ShaderSpecificationValue.Name        = "g_buffer";
-        return desc;
+        *out                                      = std::move(desc);
+        return true;
     }
 
     void GbufferPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)
@@ -106,7 +113,7 @@ namespace ZEngine::Rendering::Renderers
             command_buffer->BindPipeline(gp->Pipeline);
             command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index, &scene->CameraHeapOffset, 1u);
             if (scene->OpaqueIndirectCommandCount)
-                command_buffer->DrawIndirect(scene->CulledIndirectBuffers[device->SwapchainPtr->CurrentFrame->Index].Handle, 0, scene->OpaqueIndirectCommandCount);
+                command_buffer->DrawIndirect(scene->GetCulledIndirectBuffer(device->SwapchainPtr->CurrentFrame->Index).Handle, 0, scene->OpaqueIndirectCommandCount);
         }
         return true;
     }

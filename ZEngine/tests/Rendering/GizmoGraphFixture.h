@@ -65,11 +65,11 @@ namespace
 
     struct GizmoGraphClearPass final : Renderers::IRenderGraphCallbackPass
     {
-        Renderers::GizmoPass*       Template = nullptr;
+        Renderers::GizmoPass* Template = nullptr;
 
-        Specs::GraphicsPipelineDesc BuildGraphicsPipelineDescription(ArenaAllocator* arena) const override
+        bool                  TryBuildGraphicsPipelineDescription(ArenaAllocator* arena, Specs::GraphicsPipelineDesc* out) const override
         {
-            return Template->BuildGraphicsPipelineDescription(arena);
+            return Template->TryBuildGraphicsPipelineDescription(arena, out);
         }
 
         bool Register(ZEngine::Hardwares::VulkanDevice*, cstring, const Renderers::RenderGraphFrameContext& context, Renderers::RenderGraphResourceBuilder* builder, Renderers::RenderGraphResourceInspector*) override
@@ -105,14 +105,22 @@ namespace
 
     struct GizmoGraphRecordingProbe final : Renderers::IRenderGraphCallbackPass
     {
-        Renderers::GizmoPass*       Pass            = nullptr;
-        uint32_t                    PrimaryCalls    = 0;
-        uint32_t                    BodyCalls       = 0;
-        std::thread::id             RecordingThread = {};
-
-        Specs::GraphicsPipelineDesc BuildGraphicsPipelineDescription(ArenaAllocator* arena) const override
+        enum class DescriptorFault : uint8_t
         {
-            return Pass->BuildGraphicsPipelineDescription(arena);
+            None,
+            Omit,
+            InvalidRange,
+            WrongType,
+        };
+        DescriptorFault       PreparationFault = DescriptorFault::None;
+        Renderers::GizmoPass* Pass             = nullptr;
+        uint32_t              PrimaryCalls     = 0;
+        uint32_t              BodyCalls        = 0;
+        std::thread::id       RecordingThread  = {};
+
+        bool                  TryBuildGraphicsPipelineDescription(ArenaAllocator* arena, Specs::GraphicsPipelineDesc* out) const override
+        {
+            return Pass->TryBuildGraphicsPipelineDescription(arena, out);
         }
         bool Register(ZEngine::Hardwares::VulkanDevice* device, cstring name, const Renderers::RenderGraphFrameContext& context, Renderers::RenderGraphResourceBuilder* builder, Renderers::RenderGraphResourceInspector* inspector) override
         {
@@ -120,6 +128,20 @@ namespace
         }
         void Prepare(ZEngine::Hardwares::VulkanDevice* device, ZEngine::Rendering::Scenes::SceneData* scene, Renderers::RenderGraphResourceInspector* inspector, Renderers::RenderPasses::RenderPass* pass) override
         {
+            if (PreparationFault == DescriptorFault::Omit)
+            {
+                return;
+            }
+            auto* backend = static_cast<Renderers::RenderPasses::GraphicPass*>(pass);
+            if (PreparationFault == DescriptorFault::InvalidRange)
+            {
+                backend->SetDynamicUniform("UBCamera", 0);
+            }
+            else if (PreparationFault == DescriptorFault::WrongType)
+            {
+                ZEngine::Core::Memory::BufferView buffer = {.Handle = device->FrameHeaps[0].Backing.Handle};
+                backend->SetStorageBuffer("UBCamera", &buffer);
+            }
             Pass->Prepare(device, scene, inspector, pass);
         }
         bool SupportsSecondaryRecording() const override
@@ -184,35 +206,19 @@ namespace
                 vkDeviceWaitIdle(Vulkan.Device);
             if (GraphReady)
             {
+                Manager->FinishResourceFrame();
+                Manager->PollFrameResources();
                 // Retire framebuffer handles before the graph's views/images.
                 for (auto& pass : Graph->PersistentPasses)
                     if (pass.Framebuffer)
                         pass.Framebuffer->Dispose();
                 Graph->Dispose();
-                for (auto& pass : Graph->PersistentPasses)
-                    if (pass.Handle)
-                    {
-                        // The graph, not GraphicPass::Dispose's legacy path,
-                        // owns these texture handles.
-                        pass.Handle->Specification.ExternalOutputs.clear();
-                        static_cast<Renderers::RenderPasses::GraphicPass*>(pass.Handle)->~GraphicPass();
-                        pass.Handle = nullptr;
-                    }
+                RRMUploadBatchTestHelper::FlushTextureReleases(*Manager);
                 // Match the device's shutdown drain without bootstrapping a
                 // surface, presentation timeline or unrelated shader lifecycle.
                 // DestroyTexture queues texture handles; PendingFree alone does
                 // not consume that queue.
-                ZEngine::Hardwares::TextureDisposeEntry entry = {};
-                while (Device->TextureHandleToDispose.pop(entry))
-                {
-                    auto* texture = Device->GlobalTextures.Access(entry.Handle);
-                    if (!texture)
-                        continue;
-                    if (auto* image = Device->ImageBufferManager.Access(texture->BufferHandle))
-                        image->Dispose();
-                    Device->ImageBufferManager.Remove(texture->BufferHandle);
-                    Device->GlobalTextures.Remove(entry.Handle);
-                }
+                DrainRetiredTextures();
                 Device->PendingFree.Drain(&Device->GpuMem, Vulkan.Device, UINT64_MAX);
                 EXPECT_EQ(Device->GlobalTextures.Size(), 0u);
                 EXPECT_EQ(Device->ImageBufferManager.Size(), 0u);
@@ -222,12 +228,35 @@ namespace
             Device->CommandBufferMgr = nullptr;
         }
 
+        // Only call after the fixture's submission fence or device idle. This
+        // mirrors the swapchain's completed-frame texture-disposal service.
+        void DrainRetiredTextures()
+        {
+            ZEngine::Hardwares::TextureDisposeEntry entry = {};
+            while (Device->TextureHandleToDispose.pop(entry))
+            {
+                auto* texture = Device->GlobalTextures.Access(entry.Handle);
+                if (!texture)
+                {
+                    continue;
+                }
+                if (auto* image = Device->ImageBufferManager.Access(texture->BufferHandle))
+                {
+                    image->Dispose();
+                }
+                Device->ImageBufferManager.Remove(texture->BufferHandle);
+                Device->GlobalTextures.Remove(entry.Handle);
+            }
+        }
+
         struct GraphRecipe
         {
-            Renderers::IRenderGraphCallbackPass* Clear       = nullptr;
-            Renderers::IRenderGraphCallbackPass* Draw        = nullptr;
-            cstring                              DrawName    = "Gizmo Pass";
-            bool                                 LabelShader = false;
+            Renderers::IRenderGraphCallbackPass* Clear                = nullptr;
+            Renderers::IRenderGraphCallbackPass* Draw                 = nullptr;
+            cstring                              DrawName             = "Gizmo Pass";
+            bool                                 LabelShader          = false;
+            bool                                 AsynchronousPipeline = false;
+            uint32_t                             ShaderCapacity       = 1;
         };
 
         void InitializeGraph(Renderers::GizmoPass& pass, const std::vector<uint32_t> (&binaries)[2])
@@ -237,7 +266,7 @@ namespace
 
         void InitializeGraph(Renderers::GizmoPass& pass, const std::vector<uint32_t> (&binaries)[2], const GraphRecipe& recipe)
         {
-            ASSERT_NO_FATAL_FAILURE(Initialize(pass, binaries, true, recipe.LabelShader));
+            ASSERT_NO_FATAL_FAILURE(Initialize(pass, binaries, true, recipe.LabelShader, recipe.AsynchronousPipeline, recipe.ShaderCapacity));
             Device->GlobalTextures.Initialize(&Arena, 8);
             Device->ImageBufferManager.Initialize(&Arena, 8);
             Device->ImageViewCacheSlab.Init(&Arena, ZKilo(64));
@@ -329,6 +358,8 @@ namespace
             const auto  texture_handle = Graph->ResourceInspector->GetTextureHandle(Sink.Input);
             const auto* texture        = Device->GlobalTextures.Access(texture_handle);
             ASSERT_NE(texture, nullptr);
+            ASSERT_EQ(texture->Width, width);
+            ASSERT_EQ(texture->Height, height);
             auto* image = Device->ImageBufferManager.Access(texture->BufferHandle);
             ASSERT_NE(image, nullptr);
             const auto                    native_image = image->GetBuffer().Handle;
@@ -356,6 +387,10 @@ namespace
             ASSERT_EQ(vkResetFences(Vulkan.Device, 1, &Fence), VK_SUCCESS);
             ASSERT_EQ(vkResetCommandBuffer(command, 0), VK_SUCCESS);
             Commands->SetState(ZEngine::Hardwares::CommandBufferState::Idle);
+            Manager->FinishResourceFrame();
+            Manager->PollFrameResources();
+            RRMUploadBatchTestHelper::FlushTextureReleases(*Manager);
+            DrainRetiredTextures();
             Device->PendingFree.Drain(&Device->GpuMem, Vulkan.Device, UINT64_MAX);
             EXPECT_EQ(Vulkan.ValidationErrors.load(std::memory_order_relaxed), 0u);
         }

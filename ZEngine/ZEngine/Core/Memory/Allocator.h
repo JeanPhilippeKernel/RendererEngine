@@ -68,6 +68,10 @@ namespace ZEngine::Core::Memory
     // per-frame, per-task, or lifetime-scoped data.
     //
     // LIFETIME CONTRACT — all users must observe:
+    //   Distinct sibling arenas may allocate concurrently under exclusive owners;
+    //   shared root page tracking is synchronized. One arena's cursor is NOT thread-safe.
+    //   Reserve child ranges before transfer; do not move/reset/destroy an arena while
+    //   another thread uses it, or destroy a root before all child owners have joined.
     //   1. Any PoolAllocator carved from this arena via PoolAllocator::Initialize() must
     //      not be accessed after this arena's Clear() or Shutdown() is called. Clear()
     //      rewinds the bump pointer but does NOT notify carved pools — the pool's memory
@@ -142,6 +146,8 @@ namespace ZEngine::Core::Memory
         void                                        Clear();
 
         void                                        CreateSubArena(size_t size, ArenaAllocator* out_arena, cstring owner_name = "UnnamedSubArena");
+        /// Failure preserves both storage views and their cursors.
+        [[nodiscard]] bool                          TryCreateSubArena(size_t size, ArenaAllocator* out_arena, cstring owner_name = "UnnamedSubArena");
 
         [[nodiscard]] const ArenaAllocationFailure& LastFailure() const
         {

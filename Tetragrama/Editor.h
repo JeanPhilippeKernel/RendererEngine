@@ -10,6 +10,7 @@
 #include <ZEngine/Core/Containers/FixedArray.h>
 #include <ZEngine/Core/Memory/Allocator.h>
 #include <ZEngine/Core/VFS/VFSDiskBackend.h>
+#include <ZEngine/ECS/SceneLoadCoordinator.h>
 #include <ZEngine/Helpers/IntrusivePtr.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIKey.h>
@@ -169,7 +170,9 @@ namespace Tetragrama
         /// replaces the world inline. Dispatch captures project/service identities;
         /// stale work retires before preview cancellation or candidate publication.
         void               OpenScene(const char* path);
-        [[nodiscard]] bool RequestSceneOpen(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch);
+        /// Optional output retains a pollable engine result until the caller
+        /// acknowledges it. Without output, the editor releases it after cleanup.
+        [[nodiscard]] bool RequestSceneOpen(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch, ZEngine::ECS::SceneRequestId* request = nullptr);
         [[nodiscard]] bool ProcessSceneOpen(ZEngine::EngineContext& engine);
         [[nodiscard]] bool SceneOpenPending() const;
         /// Copies a drop intent with its original scene epoch; no I/O or authored write.
@@ -178,9 +181,13 @@ namespace Tetragrama
         [[nodiscard]] bool RequestImportedMesh(const ZEngine::EngineContext& engine, const ZEngine::Core::VFS::VFSPath& path, std::string_view name, const uuids::uuid& scene, uint64_t expected_epoch);
         /// Complete, unpublished candidate only. Must run in the mutation phase;
         /// rejection preserves both the candidate and current committed content.
-        [[nodiscard]] bool PublishSceneCandidate(ZEngine::EngineContext& engine, ZEngine::Helpers::Scope<EditorSceneCandidate>& candidate, uint64_t expected_epoch);
+        /// Async callers supply the captured activation generation. Zero is only
+        /// a synchronous caller's request to use the current generation.
+        [[nodiscard]] bool PublishSceneCandidate(ZEngine::EngineContext& engine, ZEngine::Helpers::Scope<EditorSceneCandidate>& candidate, uint64_t expected_epoch, uint64_t expected_generation = 0, ZEngine::ECS::SceneRequestId request = {});
 
     private:
+        ZEngine::Rendering::Renderers::GridLabelFontSnapshot CaptureGridLabelFont() const;
+
         enum class ObjectPickPhase : uint32_t
         {
             Free      = 0,
@@ -308,21 +315,28 @@ namespace Tetragrama
         SceneFileOwner                      m_editor_close_owner      = {};
         bool                                m_editor_close_pending    = false;
         struct SceneOpenWork;
-        SceneFileRequest                              m_scene_open              = {};
-        ZEngine::Windows::FileDialogRequest           m_scene_open_picker       = {};
-        SceneFileOwner                                m_scene_open_picker_owner = {};
+        SceneFileRequest                              m_scene_open               = {};
+        ZEngine::ECS::SceneRequestId                  m_scene_open_request       = {};
+        ZEngine::EngineContext*                       m_scene_load_engine        = nullptr;
+        bool                                          m_scene_open_retain_result = false;
+        ZEngine::Windows::FileDialogRequest           m_scene_open_picker        = {};
+        SceneFileOwner                                m_scene_open_picker_owner  = {};
         ZEngine::Helpers::Scope<SceneOpenWork>        m_scene_open_work;
-        ZEngine::Helpers::Scope<EditorSceneCandidate> m_loaded_scene       = {};
-        ZEngine::ECS::Scene*                          m_original_world     = nullptr;
-        ZEngine::ECS::ActorManager*                   m_original_actors    = nullptr;
-        bool                                          m_closing            = false;
+        ZEngine::Helpers::Scope<EditorSceneCandidate> m_loaded_scene          = {};
+        ZEngine::ECS::Scene*                          m_original_world        = nullptr;
+        ZEngine::ECS::ActorManager*                   m_original_actors       = nullptr;
+        ZEngine::ECS::WorldCommands*                  m_original_commands     = nullptr;
+        ZEngine::ECS::WorldTick*                      m_original_tick         = nullptr;
+        bool                                          m_publishing_scene      = false;
+        bool                                          m_processing_scene_open = false;
+        bool                                          m_closing               = false;
         // A rapid native loss/regain still cancels at the next safe mutation point.
-        bool                                          m_focus_lost_pending = false;
-        bool                                          m_gizmo_focused      = true;
-        EditorSceneChange                             m_scene_change       = {};
-        uint64_t                                      m_scene_prompt_focus = 0;
-        ObjectPickFrame                               m_object_pick        = {};
-        ObjectPickFrame                               m_hover_pick         = {};
+        bool                                          m_focus_lost_pending    = false;
+        bool                                          m_gizmo_focused         = true;
+        EditorSceneChange                             m_scene_change          = {};
+        uint64_t                                      m_scene_prompt_focus    = 0;
+        ObjectPickFrame                               m_object_pick           = {};
+        ObjectPickFrame                               m_hover_pick            = {};
         static_assert(sizeof(ObjectPickFrame) * 2 <= 160 * 1024);
         ZEngine::Rendering::Cameras::CameraFrameData m_last_pick_camera       = {};
         uint64_t                                     m_camera_revision        = 1;
@@ -332,6 +346,8 @@ namespace Tetragrama
         [[nodiscard]] SceneChangeGate                GateSceneChange(SceneChangeKind kind);
         void                                         ProcessSceneChangeInput(ZEngine::UI::ZUIContext* ctx, bool focused);
         void                                         CancelSceneOpen();
+        void                                         ReleaseSceneOpenWaiting();
+        void                                         ReleaseSceneOpenWork(); // Only after Ready or worker join.
     };
     ZDEFINE_PTR(Editor);
 

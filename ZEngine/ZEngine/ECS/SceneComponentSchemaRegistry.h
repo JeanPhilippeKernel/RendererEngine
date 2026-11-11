@@ -99,24 +99,28 @@ namespace ZEngine::ECS
 
     struct SceneComponentSchemaDesc
     {
-        cstring                 Key         = nullptr;
-        uint32_t                Version     = 0;
-        ComponentTypeID         RuntimeType = {};
-        const SceneFieldSchema* Fields      = nullptr;
-        uint32_t                FieldCount  = 0;
-        SceneComponentCodecFns  Codecs      = {};
-        SceneReferenceFns       References  = {};
+        cstring                 Key                = nullptr;
+        uint32_t                Version            = 0;
+        ComponentTypeID         RuntimeType        = {};
+        const SceneFieldSchema* Fields             = nullptr;
+        uint32_t                FieldCount         = 0;
+        SceneComponentCodecFns  Codecs             = {};
+        SceneReferenceFns       References         = {};
+        // Explicit opt-in for every codec/reference callback, including source
+        // parse validation. Context must stay immutable/alive until readers join.
+        bool                    PureCandidateLocal = false;
     };
 
     struct SceneComponentSchema
     {
-        cstring                 Key         = nullptr;
-        uint32_t                Version     = 0;
-        ComponentTypeID         RuntimeType = {};
-        const SceneFieldSchema* Fields      = nullptr;
-        uint32_t                FieldCount  = 0;
-        SceneComponentCodecFns  Codecs      = {};
-        SceneReferenceFns       References  = {};
+        cstring                 Key                = nullptr;
+        uint32_t                Version            = 0;
+        ComponentTypeID         RuntimeType        = {};
+        const SceneFieldSchema* Fields             = nullptr;
+        uint32_t                FieldCount         = 0;
+        SceneComponentCodecFns  Codecs             = {};
+        SceneReferenceFns       References         = {};
+        bool                    PureCandidateLocal = false;
     };
 
     using SceneSchemaVisitorFn = void (*)(void* ctx, const SceneComponentSchema& schema);
@@ -124,11 +128,19 @@ namespace ZEngine::ECS
     class SceneComponentSchemaRegistry
     {
     public:
-        void                                              Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity = 64);
-        [[nodiscard]] bool                                IsInitialized() const;
+        void               Initialize(Core::Memory::ArenaAllocator* arena, uint32_t capacity = 64);
+        [[nodiscard]] bool IsInitialized() const;
 
         // Copies Key and every field key into the registry arena
-        [[nodiscard]] bool                                Register(const SceneComponentSchemaDesc& schema, SceneDiagnostics* diagnostics);
+        [[nodiscard]] bool Register(const SceneComponentSchemaDesc& schema, SceneDiagnostics* diagnostics);
+        /// Startup/main-thread operation before dispatch. Conservative registry-wide
+        /// admission: unused custom schemas also need explicit pure-codec opt-in.
+        /// Failure neither freezes registration nor executes any callback.
+        [[nodiscard]] bool FreezeForWorker(SceneDiagnostics* diagnostics);
+        [[nodiscard]] bool Frozen() const noexcept
+        {
+            return m_frozen;
+        }
 
         const SceneComponentSchema*                       FindByKey(cstring key) const;
         const SceneComponentSchema*                       FindByRuntimeType(ComponentTypeID type) const;
@@ -149,5 +161,6 @@ namespace ZEngine::ECS
         Core::Containers::Array<SceneComponentSchema> m_schemas   = {};
         Core::Containers::Array<uint32_t>             m_canonical = {};
         Core::Memory::ArenaAllocator*                 m_arena     = nullptr;
+        bool                                          m_frozen    = false;
     };
 } // namespace ZEngine::ECS

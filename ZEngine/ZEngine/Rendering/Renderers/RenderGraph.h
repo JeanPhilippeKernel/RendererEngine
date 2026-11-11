@@ -9,6 +9,8 @@
 #include <ZEngine/Rendering/Primitives/Semaphore.h>
 #include <ZEngine/Rendering/Renderers/Base/RenderPass.h>
 #include <ZEngine/Rendering/Renderers/Readback/RGReadbackRing.h>
+#include <ZEngine/Rendering/Renderers/ScenePipelinePreparation.h>
+#include <ZEngine/Rendering/Renderers/SceneRenderTargets.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <ZEngine/Rendering/Specifications/TextureSpecification.h>
 #include <ZEngine/Rendering/Textures/Texture.h>
@@ -27,33 +29,6 @@ namespace ZEngine::Rendering::Renderers
     ZDEFINE_PTR(RenderGraphResourceInspector);
     ZDEFINE_PTR(RenderGraph);
     ZDEFINE_PTR(IRenderGraphCallbackPass);
-
-    /// @brief Names of the shared virtual resources in the default frame graph.
-    struct RendererResourceName
-    {
-        inline static cstring FrameDepthRenderTargetName         = "g_frame_depth_render_target";
-        inline static cstring FrameSharedRenderTargetName        = "g_frame_shared_render_target";
-        inline static cstring FrameHdrColorRenderTargetName      = "g_frame_hdr_color_render_target";
-        /// @brief Opaque HDR scene after per-view atmosphere composition.
-        /// @details This remains distinct from FrameHdrColorRenderTargetName so
-        /// the composition pass never samples its active color attachment.
-        inline static cstring FrameHdrCompositedRenderTargetName = "g_frame_hdr_composited_render_target";
-        inline static cstring FrameColorRenderTargetName         = "g_frame_color_render_target";
-
-        /// @brief Per-render-view atmosphere resources. They are transient and
-        /// are intentionally unrelated to the revision-owned SkyEnvironment LUTs.
-        inline static cstring FrameSkyViewLutName                = "g_frame_sky_view_lut";
-        inline static cstring FrameAerialInscatterName           = "g_frame_aerial_inscatter";
-        inline static cstring FrameAerialTransmittanceName       = "g_frame_aerial_transmittance";
-
-        inline static cstring GBufferAlbedoAOName                = "g_gbuffer_albedo_ao";
-        inline static cstring GBufferNormalRoughnessName         = "g_gbuffer_normal_roughness";
-        inline static cstring GBufferMetallicEmissiveName        = "g_gbuffer_metallic_emissive";
-        /// Discrete per-frame object pick token. Never sampled by lighting.
-        inline static cstring GBufferObjectIdName                = "g_gbuffer_object_id";
-
-        inline static cstring SceneCameraBufferName              = "SceneCamera";
-    };
 
     // Typed index into RenderGraph::Resources[]. No string on the execute hot path.
     struct RGResourceHandle
@@ -306,6 +281,9 @@ namespace ZEngine::Rendering::Renderers
     /// Materialize a transition, including ordering recycled transient storage.
     VkImageMemoryBarrier2 BuildRGImageBarrier(const RGImageBarrierPlan& plan, const RGResourceState& source, VkImage image);
 
+    /// Repeat the producer's layout transition only for a queue-family acquire.
+    VkImageMemoryBarrier2 BuildRGStreamingAcquireBarrier(const Hardwares::StreamingUploadTicket& ticket, const RGResourceState& destination, uint32_t consumer_family, VkImage image, const RGSubresourceRange& range);
+
     struct RGBufferBarrierPlan
     {
         uint32_t        ResourceIndex    = UINT32_MAX;
@@ -493,19 +471,67 @@ namespace ZEngine::Rendering::Renderers
         uint32_t         PassIndex = UINT32_MAX;
     };
 
+    struct RGSceneAttachmentTarget
+    {
+        SceneRenderTarget             Target    = SceneRenderTarget::Count;
+        Specifications::LoadOperation Load      = Specifications::LoadOperation::LOAD;
+        bool                          DepthRead = false;
+        constexpr RGSceneAttachmentTarget()     = default;
+        constexpr RGSceneAttachmentTarget(SceneRenderTarget target, Specifications::LoadOperation load = Specifications::LoadOperation::LOAD, bool depth_read = false) : Target(target), Load(load), DepthRead(depth_read) {}
+    };
+
+    struct RGScenePipelineProfile
+    {
+        static constexpr uint32_t       MaxAttachments                    = 8;
+
+        RGScenePipelineUsage            Usage                             = RGScenePipelineUsage::None;
+        /// Backend attachment order, including depth, not just color locations.
+        Specifications::ImageFormat     Formats[MaxAttachments]           = {};
+        uint32_t                        AttachmentCount                   = 0;
+        RGSceneDescriptorProfile        Descriptors                       = RGSceneDescriptorProfile::None;
+        uint32_t                        Targets                           = 0;
+        RGSceneAttachmentTarget         AttachmentTargets[MaxAttachments] = {};
+        bool                            CompositedHdrAttachment           = false;
+
+        [[nodiscard]] bool              Matches(const Specifications::AttachmentSpecification& specification) const;
+        [[nodiscard]] SceneRenderTarget ResolveAttachmentTarget(uint32_t index, bool composited) const;
+    };
+
+    struct RGPreparedSceneAttachments
+    {
+        VkImageView Views[RGScenePipelineProfile::MaxAttachments] = {};
+        uint32_t    Count                                         = 0;
+        uint32_t    Width                                         = 0;
+        uint32_t    Height                                        = 0;
+        uint32_t    Layers                                        = 0;
+        bool        Ready                                         = false;
+    };
+
     /// @brief State retained while individual frame graphs are rebuilt.
     struct RGPersistentPass
     {
-        cstring                    Name                  = nullptr;
-        IRenderGraphCallbackPass*  Callback              = nullptr;
-        RenderPasses::RenderPass*  Handle                = nullptr;
-        Buffers::FramebufferVNext* Framebuffer           = nullptr;
-        VkRenderPass               FramebufferRenderPass = VK_NULL_HANDLE;
-        VkImageView                FramebufferViews[16]  = {};
-        uint32_t                   FramebufferViewCount  = 0;
-        uint32_t                   FramebufferWidth      = 0;
-        uint32_t                   FramebufferHeight     = 0;
-        uint32_t                   FramebufferLayers     = 0;
+        cstring                               Name                         = nullptr;
+        IRenderGraphCallbackPass*             Callback                     = nullptr;
+        RenderPasses::RenderPass*             Handle                       = nullptr;
+        Buffers::FramebufferVNext*            Framebuffer                  = nullptr;
+        VkRenderPass                          FramebufferRenderPass        = VK_NULL_HANDLE;
+        VkImageView                           FramebufferViews[16]         = {};
+        uint32_t                              FramebufferViewCount         = 0;
+        uint32_t                              FramebufferWidth             = 0;
+        uint32_t                              FramebufferHeight            = 0;
+        uint32_t                              FramebufferLayers            = 0;
+        RGScenePipelineProfile                ScenePipelineProfile         = {};
+        Pipelines::IPipeline*                 PreparedScenePipeline        = nullptr;
+        RenderPasses::Attachment*             PreparedSceneAttachment      = nullptr;
+        Pipelines::PSOPreparationState        ScenePipelineState           = Pipelines::PSOPreparationState::Unavailable;
+        RenderPasses::PreparedDescriptorPass* PreparedSceneDescriptors     = nullptr;
+        uint32_t                              PreparedSceneDescriptorFrame = 0;
+        bool                                  SceneDescriptorsAdopted      = false;
+        Buffers::FramebufferVNext*            PreparedFramebuffer          = nullptr;
+        RGPreparedSceneAttachments            PreparedSceneAttachments     = {};
+        bool                                  SceneAttachmentsAdopted      = false;
+        RenderPasses::RenderPass*             PreparedSceneBackend         = nullptr;
+        bool                                  SceneBackendReady            = false;
     };
 
     /// @brief Externally owned resource rebound into every frame graph.
@@ -558,7 +584,7 @@ namespace ZEngine::Rendering::Renderers
         void                                     Initialize(Core::Memory::ArenaAllocator* arena);
         void                                     BeginFrame();
         Textures::TextureHandle                  TryAlias(const Specifications::TextureSpecification& spec, uint32_t first_pass);
-        void                                     Register(Textures::TextureHandle handle, const Specifications::TextureSpecification& spec, uint32_t last_pass);
+        RGTransientSlot*                         Register(Textures::TextureHandle handle, const Specifications::TextureSpecification& spec, uint32_t last_pass);
         void                                     MarkInUse(Textures::TextureHandle handle, uint32_t last_pass);
         Textures::TextureHandle                  FindNamedAlias(cstring name, const Specifications::TextureSpecification& spec, uint32_t first_pass, uint32_t last_pass);
         RGTransientSlot*                         FindAliasingSlot(const Specifications::TextureSpecification& spec, uint32_t first_pass, uint32_t last_pass);
@@ -676,9 +702,18 @@ namespace ZEngine::Rendering::Renderers
         /// @brief Builds static graphics-PSO state when the graph creates this pass.
         /// @details The graph owns attachment compatibility. Implementations must
         /// not include per-frame descriptors, viewport dimensions, or resources.
-        virtual Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
+        /// Checked candidate admission. Failure preserves output and any exclusive
+        /// recipe-arena cursor. Custom passes must implement this contract; an
+        /// unchecked legacy builder is not implicitly candidate-qualified.
+        virtual bool TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/, Specifications::GraphicsPipelineDesc* /*out*/) const
         {
-            return {};
+            return false;
+        }
+        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const
+        {
+            Specifications::GraphicsPipelineDesc description = {};
+            ZENGINE_VALIDATE_ASSERT(TryBuildGraphicsPipelineDescription(arena, &description), "Failed to build graphics pipeline description")
+            return description;
         }
         /// @brief Returns the compute shader used when GetPipelineType() is COMPUTE.
         virtual cstring GetComputeShaderName() const
@@ -727,12 +762,14 @@ namespace ZEngine::Rendering::Renderers
         virtual void Deinitialize(Hardwares::VulkanDevicePtr const device) {}
     };
 
-    struct RenderGraph
+    struct RenderGraph : IScenePipelinePreparation
     {
         friend struct RenderGraphTestAccess;
 
+        static constexpr uint32_t MaxScenePipelineVariants                     = 32;
+
         RenderGraph()                                                          = default;
-        ~RenderGraph()                                                         = default;
+        ~RenderGraph() override                                                = default;
 
         Hardwares::VulkanDevicePtr                                Device       = nullptr;
         Scenes::SceneDataPtr                                      SceneData    = nullptr;
@@ -787,7 +824,25 @@ namespace ZEngine::Rendering::Renderers
         /// @brief Initializes graph-owned pools, frame storage, and the selected device.
         void                                                      Initialize(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr data = nullptr);
         /// @brief Adds a persistent callback pass that is registered every graph frame.
-        void                                                      AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const cb);
+        void                                                      AddCallbackPass(cstring pass_name, IRenderGraphCallbackPass* const cb, RGScenePipelineProfile scene_pipeline = {});
+        /// @brief Starts one render-owner preparation transaction, capped at 32 variants.
+        /// Recipes are initialized once per persistent pass; no per-load arena is created.
+        bool                                                      BeginScenePipelinePreparation(RGScenePipelineUsage usage) override;
+        /// @brief Polls at most max_variants exact variants without synchronous PSO fallback.
+        RGScenePipelinePreparationState                           PollScenePipelinePreparation(uint32_t max_variants = 1) override;
+        RGScenePipelinePreparationState                           PollSceneDescriptorPreparation(const Scenes::PreparedSceneFrame& frame, uint32_t max_frames = 1, const SceneDescriptorEnvironment& environment = {}) override;
+        bool                                                      ActivateSceneDescriptors() override;
+        bool                                                      HasPreparedSceneTargets(uint32_t width, uint32_t height) const;
+        const RenderResourceManager::TextureVersionPin*           GetPreparedSceneTarget(SceneRenderTarget target) const;
+        /// @brief Releases generation leases after cancellation or the first recorded handoff.
+        /// Cached PSO borrows remain bounded by the host's declared profile set.
+        void                                                      EndScenePipelinePreparation() override;
+        /// Borrowed render-owner inputs selected only after candidate activation.
+        /// Clear before releasing the candidate's pins. Pass writes clone leases.
+        void                                                      SetSceneTextureSources(std::span<const RenderResourceManager::TextureVersionPin> sources);
+        /// Shutdown-only, after render readers/recorders have joined. Accepted
+        /// submissions retain their independent resource and deferred-pool gates.
+        void                                                      ReleaseDescriptorStorageAfterReadersJoined();
         /// @brief Rebuilds this frame's virtual pass and resource declarations.
         void                                                      Register(const RenderGraphFrameContext& frame_context = {});
         /// @brief Registers the initial graph frame.
@@ -795,9 +850,11 @@ namespace ZEngine::Rendering::Renderers
         /// @brief Compiles topology, transient resources, barriers, and queue batches.
         void                                                      Compile();
         /// @brief Records and submits the compiled graph using `cb` as the graphics primary.
+        /// @return Null when compilation rejects required state. The caller still
+        /// owns its open primary buffer and must complete the presentation bridge.
         Hardwares::CommandBuffer*                                 Execute(Hardwares::CommandBufferPtr const cb);
         /// @brief Invalidates graph state after an output-dimension change.
-        void                                                      Resize(uint32_t width, uint32_t height);
+        bool                                                      Resize(uint32_t width, uint32_t height);
         /// @brief Releases graph-owned resources and persistent callback state.
         void                                                      Dispose();
 
@@ -824,40 +881,71 @@ namespace ZEngine::Rendering::Renderers
         RGPass*                                                   GetPass(cstring name);
 
     private:
-        void                                    InitializeFrameStorage();
-        void                                    AddImportedResourceToFrame(const RGImportedResource& resource);
-        RGResourceHandle                        SetImportedResource(const RGImportedResource& resource);
-        Specifications::RenderPassSpecification BuildRenderPassSpecification(const RGPass& pass) const;
-        void                                    SynchronizeCompiledPassResources(RGPass& pass);
-        void                                    BindDeclaredResources(RGPass& pass);
-        void                                    BuildLifetimes();
-        void                                    AllocateTransientResources();
-        void                                    BuildAliasingBarriers();
-        void                                    UpdateTransientStatistics();
-        void                                    InitializeTimestampFrames();
-        void                                    DisposeTimestampFrames();
-        void                                    DisposeQueryPools();
-        RGTimestampFrame*                       PrepareTimestampFrame();
-        uint32_t                                AllocateTimestampPair(RGTimestampFrame& frame, cstring pass_name, Rendering::QueueType queue);
-        void                                    BuildBarriers();
-        void                                    BuildQueueSchedule();
-        void                                    AddReadbackPasses();
-        void                                    AddQueryReadbackPasses();
-        bool                                    PrepareReadbacks();
-        bool                                    PrepareQueryReadbacks();
-        void                                    SubmitReadbacks(uint32_t first_pass_order, uint32_t pass_count, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
-        void                                    CancelUnsubmittedReadbacks(bool preserve_recorded = false);
-        void                                    MarkQueryWritesRecorded(const RGPass& pass);
-        void                                    BuildStreamingAcquirePlans();
-        void                                    AcknowledgeStreamingAcquires(uint32_t first_pass_order, uint32_t pass_count);
-        static void                             OnRenderWorkSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
-        static void                             OnRenderWorkCancelled(void* context);
+        struct PreparedTarget
+        {
+            SceneRenderTarget                        Kind        = SceneRenderTarget::Count;
+            SceneTargetDeclaration                   Declaration = {};
+            Textures::TextureHandle                  Handle      = {};
+            RenderResourceManager::TextureVersionPin Pin         = {};
+        };
+        static constexpr uint32_t                                 SceneTargetCapacity                     = static_cast<uint32_t>(SceneRenderTarget::Count);
+        PreparedTarget                                            m_prepared_targets[SceneTargetCapacity] = {};
+        Scenes::SceneInitialView                                  m_prepared_target_view                  = {};
+        uint32_t                                                  m_prepared_target_mask                  = 0;
+        uint32_t                                                  m_prepared_target_cursor                = 0;
+        uint32_t                                                  m_prepared_target_count                 = 0;
+        bool                                                      m_prepared_targets_ready                = false;
+        bool                                                      m_prepared_targets_adopted              = false;
+        uint32_t                                                  m_prepared_attachment_cursor            = 0;
+        bool                                                      m_prepared_attachments_ready            = false;
+        bool                                                      m_prepared_use_composited               = false;
+        uint32_t                                                  m_prepared_backend_cursor               = 0;
+        bool                                                      m_prepared_backends_ready               = false;
+        RGScenePipelinePreparationState                           PollSceneTargetPreparation(const Scenes::PreparedSceneFrame& frame, uint32_t max_operations);
+        RGScenePipelinePreparationState                           PollSceneAttachmentPreparation(uint32_t max_operations, const SceneDescriptorEnvironment& environment);
+        RGScenePipelinePreparationState                           PollSceneBackendPreparation(uint32_t max_operations);
+        bool                                                      AdoptPreparedSceneTargets();
+        void                                                      ReleasePreparedSceneTargets();
+        std::span<const RenderResourceManager::TextureVersionPin> m_scene_texture_sources       = {};
+        RGScenePipelineUsage                                      m_scene_pipeline_usage        = RGScenePipelineUsage::None;
+        RGScenePipelinePreparationState                           m_scene_pipeline_state        = RGScenePipelinePreparationState::Idle;
+        uint32_t                                                  m_scene_pipeline_cursor       = 0;
+        RGScenePipelinePreparationState                           m_scene_descriptor_state      = RGScenePipelinePreparationState::Idle;
+        bool                                                      m_scene_descriptors_activated = false;
+        void                                                      InitializeFrameStorage();
+        void                                                      AddImportedResourceToFrame(const RGImportedResource& resource);
+        RGResourceHandle                                          SetImportedResource(const RGImportedResource& resource);
+        Specifications::RenderPassSpecification                   BuildRenderPassSpecification(const RGPass& pass) const;
+        void                                                      SynchronizeCompiledPassResources(RGPass& pass);
+        void                                                      BindDeclaredResources(RGPass& pass);
+        void                                                      BuildLifetimes();
+        void                                                      AllocateTransientResources();
+        void                                                      BuildAliasingBarriers();
+        void                                                      UpdateTransientStatistics();
+        void                                                      InitializeTimestampFrames();
+        void                                                      DisposeTimestampFrames();
+        void                                                      DisposeQueryPools();
+        RGTimestampFrame*                                         PrepareTimestampFrame();
+        uint32_t                                                  AllocateTimestampPair(RGTimestampFrame& frame, cstring pass_name, Rendering::QueueType queue);
+        void                                                      BuildBarriers();
+        void                                                      BuildQueueSchedule();
+        void                                                      AddReadbackPasses();
+        void                                                      AddQueryReadbackPasses();
+        bool                                                      PrepareReadbacks();
+        bool                                                      PrepareQueryReadbacks();
+        void                                                      SubmitReadbacks(uint32_t first_pass_order, uint32_t pass_count, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
+        void                                                      CancelUnsubmittedReadbacks(bool preserve_recorded = false);
+        void                                                      MarkQueryWritesRecorded(const RGPass& pass);
+        void                                                      BuildStreamingAcquirePlans();
+        void                                                      AcknowledgeStreamingAcquires(uint32_t first_pass_order, uint32_t pass_count);
+        static void                                               OnRenderWorkSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
+        static void                                               OnRenderWorkCancelled(void* context);
         // Returns false when the enabled subgraph has a dependency cycle. A cycle
         // has no valid execution order and therefore makes this compile invalid.
-        bool                                    BuildTopology();
-        void                                    AllocateFramebuffers();
-        bool                                    ValidateDeclarations();
-        bool                                    ValidateCallbackContracts() const;
+        bool                                                      BuildTopology();
+        bool                                                      AllocateFramebuffers();
+        bool                                                      ValidateDeclarations();
+        bool                                                      ValidateCallbackContracts() const;
     };
 
     /// @brief Pass-facing resource declaration API used during Register().

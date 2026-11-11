@@ -10,6 +10,10 @@
 #include <ZEngine/ECS/Scene.h>
 #include <ZEngine/ECS/SceneCompatibility.h>
 #include <ZEngine/ECS/SceneComponentSchemaRegistry.h>
+#include <ZEngine/ECS/SceneDocument.h>
+#include <ZEngine/ECS/SceneLoadCoordinator.h>
+#include <ZEngine/ECS/ScenePublication.h>
+#include <ZEngine/ECS/SceneStorage.h>
 #include <ZEngine/ECS/WorldCommands.h>
 #include <ZEngine/ECS/WorldTick.h>
 #include <ZEngine/EngineConfiguration.h>
@@ -39,42 +43,63 @@ namespace ZEngine
         // VFS backend for engine-owned assets (Shaders/, Settings/).
         // Mounted at /ZodiacEngine with priority -1 so the workspace backend
         // (priority 0) takes precedence for any overlapping paths.
-        Core::VFS::VFSDiskBackend          EngineAssetsBackend             = {};
-        char*                              EngineAssetsNativeRoot          = nullptr;
+        Core::VFS::VFSDiskBackend         EngineAssetsBackend        = {};
+        char*                             EngineAssetsNativeRoot     = nullptr;
 
         // Writable project-owned backend mounted specifically at /cache/pso.
         // It resolves to <WorkingSpacePath>/.zodiacengine/cache/pso and is distinct
         // from packaged engine assets, which may be read-only.
-        Core::VFS::VFSDiskBackend          PipelineCacheBackend            = {};
+        Core::VFS::VFSDiskBackend         PipelineCacheBackend       = {};
 
         // Project-wide directory listing cache and async tree walker — populates
         // AssetRegistry from disk once at startup (VFSContext::ScanProject) and
         // backs the file watcher's rescan-on-change.
-        Core::VFS::VFSDirectoryCache       VFSDirectoryCache               = {};
-        Core::VFS::VFSScanner              VFSScanner                      = {};
+        Core::VFS::VFSDirectoryCache      VFSDirectoryCache          = {};
+        Core::VFS::VFSScanner             VFSScanner                 = {};
 
         // Import pipeline — registered with ImportCoordinator; each carves its own
         // sub-arena from ImportPipelineArena.
-        Importers::GltfImporter            GltfImporter                    = {};
-        Importers::FbxImporter             FbxImporter                     = {};
-        Importers::AssimpImporter          AssimpImporter                  = {};
-        Importers::EnvironmentMapImporter  EnvironmentMapImporter          = {};
-        Importers::TextureImporter         TextureImporter                 = {};
+        Importers::GltfImporter           GltfImporter               = {};
+        Importers::FbxImporter            FbxImporter                = {};
+        Importers::AssimpImporter         AssimpImporter             = {};
+        Importers::EnvironmentMapImporter EnvironmentMapImporter     = {};
+        Importers::TextureImporter        TextureImporter            = {};
 
         // Sub-arenas (large structs — grouped together to avoid pointer/arena interleaving)
-        Core::Memory::ArenaAllocator       VFSArena                        = {};
-        Core::Memory::ArenaAllocator       AssetArena                      = {};
-        Core::Memory::ArenaAllocator       InputArena                      = {};
-        Core::Memory::ArenaAllocator       ECSArena                        = {};
-        Core::Memory::ArenaAllocator       ImportPipelineArena             = {};
-        Core::Memory::ArenaAllocator       UIContextArena                  = {};
-        Core::Memory::ArenaAllocator       VulkanDeviceArena               = {};
-        // Leased by EditorScene deserialization. Slots are independent so a loaded
-        // scene stays valid while a serializer worker prepares its replacement.
-        Core::Memory::ArenaAllocator       EditorSceneLoadArenaA           = {};
-        Core::Memory::ArenaAllocator       EditorSceneLoadArenaB           = {};
-        PaddedAtomic<bool>                 EditorSceneLoadArenaAInUse      = {};
-        PaddedAtomic<bool>                 EditorSceneLoadArenaBInUse      = {};
+        Core::Memory::ArenaAllocator      VFSArena                   = {};
+        Core::Memory::ArenaAllocator      AssetArena                 = {};
+        Core::Memory::ArenaAllocator      InputArena                 = {};
+        Core::Memory::ArenaAllocator      ECSArena                   = {};
+        Core::Memory::ArenaAllocator      ImportPipelineArena        = {};
+        Core::Memory::ArenaAllocator      UIContextArena             = {};
+        Core::Memory::ArenaAllocator      VulkanDeviceArena          = {};
+        // Engine-owned scene storage, currently budgeted by the editor-load
+        // profile. Independent leases keep a loaded world alive during replacement.
+        Core::Memory::ArenaAllocator      EditorSceneLoadArenaA      = {};
+        Core::Memory::ArenaAllocator      EditorSceneLoadArenaB      = {};
+        PaddedAtomic<bool>                EditorSceneLoadArenaAInUse = {};
+        PaddedAtomic<bool>                EditorSceneLoadArenaBInUse = {};
+        ECS::ScenePublication             ScenePublication           = {};
+        ECS::SceneLoadCoordinator         SceneLoads                 = {};
+        // Aggregate input/parser/document working cap, carved inside the scene
+        // slot rather than added to its reservation. Profile calibration pending.
+        size_t                            SceneDocumentWorkingBytes  = ECS::SceneDocumentLimits{}.MaxDecodedBytes;
+
+        /// Main-thread reservation of an existing bounded scene-load slot. The
+        /// resulting lease may transfer to an exclusive candidate worker owner.
+        [[nodiscard]] bool                TryAcquireSceneStorage(ECS::SceneStorageLease* out)
+        {
+            return AdmitSceneStorage(out) == ECS::SceneStorageAdmission::Acquired;
+        }
+
+        [[nodiscard]] ECS::SceneStorageAdmission AdmitSceneStorage(ECS::SceneStorageLease* out, size_t minimum_bytes = ECS::SceneStorageLease::MinimumBytes)
+        {
+            const ECS::SceneStorageSlot slots[] = {
+                {&EditorSceneLoadArenaA, &EditorSceneLoadArenaAInUse},
+                {&EditorSceneLoadArenaB, &EditorSceneLoadArenaBInUse},
+            };
+            return ECS::SceneStorageLease::Admit({slots, 2}, out, minimum_bytes);
+        }
 
         // Pointers (8 bytes each — grouped to pack cleanly)
         Hardwares::VulkanDevicePtr         Device                          = nullptr;

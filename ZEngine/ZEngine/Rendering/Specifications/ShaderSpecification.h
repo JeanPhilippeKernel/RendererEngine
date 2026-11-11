@@ -39,17 +39,17 @@ namespace ZEngine::Rendering::Specifications
         uint32_t         Set{0xFFFFFFFF};
         uint32_t         Binding{0xFFFFFFFF};
         uint32_t         Count{1};
-        cstring          Name;
-        DescriptorType   DescriptorTypeValue;
-        ShaderStageFlags Flags;
+        cstring          Name                = nullptr;
+        DescriptorType   DescriptorTypeValue = DescriptorType::SAMPLER;
+        ShaderStageFlags Flags               = ShaderStageFlags::VERTEX;
     };
 
     struct PushConstantSpecification
     {
-        cstring          Name;
-        uint32_t         Size;
-        uint32_t         Offset;
-        ShaderStageFlags Flags;
+        cstring          Name   = nullptr;
+        uint32_t         Size   = 0;
+        uint32_t         Offset = 0;
+        ShaderStageFlags Flags  = ShaderStageFlags::VERTEX;
     };
 
     struct ShaderSpecification

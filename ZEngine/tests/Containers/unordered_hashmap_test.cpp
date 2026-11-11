@@ -73,6 +73,29 @@ TEST_F(HashMapTest, CheckedInitializationRoundsCapacityAndReplacesPreviousEntrie
     }
 }
 
+TEST_F(HashMapTest, CheckedInitializationConstructsNestedArenaViewsWithoutRelocation)
+{
+    UnorderedHashMap<uint32_t, Array<uint32_t>> map = {};
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 16));
+    auto& values = map[7];
+    EXPECT_EQ(values.data(), nullptr);
+    EXPECT_TRUE(values.empty());
+    values.m_allocator = &manager.MainArena;
+    ASSERT_TRUE(values.try_push(42));
+    auto*      storage = values.data();
+    const auto cursor  = manager.MainArena.m_current_offset;
+    EXPECT_FALSE(map.try_init(nullptr));
+    EXPECT_FALSE(map.try_init(&manager.MainArena, SIZE_MAX));
+    EXPECT_EQ(manager.MainArena.m_current_offset, cursor);
+    ASSERT_NE(map.find(7), nullptr);
+    EXPECT_EQ(map.at(7).data(), storage);
+    ASSERT_EQ(map.at(7).size(), 1u);
+    EXPECT_EQ(map.at(7)[0], 42u);
+    ASSERT_TRUE(map.try_init(&manager.MainArena, 16));
+    EXPECT_TRUE(map.empty());
+    EXPECT_EQ(map[7].data(), nullptr);
+}
+
 TEST_F(HashMapTest, CapacityAlwaysPowerOfTwo)
 {
     for (int req : {1, 2, 3, 5, 7, 10, 17, 100, 906})

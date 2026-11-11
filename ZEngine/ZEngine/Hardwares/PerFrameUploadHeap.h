@@ -7,45 +7,42 @@ namespace ZEngine::Hardwares
 {
     struct PerFrameHeapAlloc
     {
-        uint32_t Offset;
-        uint32_t Size;
+        uint32_t Offset = 0;
+        uint32_t Size   = 0;
     };
 
     struct PerFrameUploadHeap
     {
-        static constexpr uint32_t kCapacity  = static_cast<uint32_t>(Core::Memory::UniformBytes); // 64 MB per frame
+        static constexpr uint32_t kCapacity = static_cast<uint32_t>(Core::Memory::UniformBytes); // 64 MB per frame
 
-        VkBuffer                  Handle     = VK_NULL_HANDLE;
-        VmaAllocation             Allocation = nullptr;
-        void*                     MappedPtr  = nullptr;
-        uint32_t                  WritePos   = 0;
-        bool                      Coherent   = false;
+        Core::Memory::BufferView  Backing   = {};
+        void*                     MappedPtr = nullptr;
+        uint32_t                  WritePos  = 0;
+        bool                      Coherent  = false;
 
         void                      Initialize(Core::Memory::GpuAllocator* alloc, const char* debug_name)
         {
-            Core::Memory::BufferView view = alloc->AllocateBuffer(kCapacity, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, debug_name);
-            Handle                        = view.Handle;
-            Allocation                    = view.Allocation;
-            MappedPtr                     = nullptr;
+            ZENGINE_VALIDATE_ASSERT(!Backing, "Upload heap already owns backing")
+            Backing                = alloc->AllocateBuffer(kCapacity, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, Core::Memory::GpuMemoryDomain::HostUniform, debug_name);
+            MappedPtr              = nullptr;
 
-            VmaAllocationInfo info        = {};
-            vmaGetAllocationInfo(alloc->Allocator, Allocation, &info);
+            VmaAllocationInfo info = {};
+            vmaGetAllocationInfo(alloc->Allocator, Backing.Allocation, &info);
             MappedPtr                       = info.pMappedData;
 
             VkMemoryPropertyFlags mem_flags = 0;
-            vmaGetAllocationMemoryProperties(alloc->Allocator, Allocation, &mem_flags);
+            vmaGetAllocationMemoryProperties(alloc->Allocator, Backing.Allocation, &mem_flags);
             Coherent = (mem_flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
         }
 
         void Shutdown(Core::Memory::GpuAllocator* alloc)
         {
-            Core::Memory::BufferView view = {};
-            view.Handle                   = Handle;
-            view.Allocation               = Allocation;
-            alloc->FreeBuffer(view);
-            Handle     = VK_NULL_HANDLE;
-            Allocation = nullptr;
-            MappedPtr  = nullptr;
+            // Preserve the complete allocation/retirement owner. Reconstructing a
+            // view from just VkBuffer/VmaAllocation loses both admission credits.
+            alloc->FreeBuffer(Backing);
+            MappedPtr = nullptr;
+            WritePos  = 0;
+            Coherent  = false;
         }
 
         void Reset()
@@ -65,7 +62,9 @@ namespace ZEngine::Hardwares
         void Flush(Core::Memory::GpuAllocator* alloc)
         {
             if (!Coherent && WritePos > 0)
-                vmaFlushAllocation(alloc->Allocator, Allocation, 0, WritePos);
+            {
+                vmaFlushAllocation(alloc->Allocator, Backing.Allocation, 0, WritePos);
+            }
         }
     };
 

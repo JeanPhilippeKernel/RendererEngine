@@ -1,8 +1,12 @@
 #pragma once
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Rendering/Cameras/Camera.h>
+#include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/IRenderer.h>
 #include <ZEngine/Rendering/Scenes/SkyEnvironment.h>
+#include <array>
+
+struct RRMTestHelper;
 
 namespace ZEngine::Rendering::Renderers
 {
@@ -74,9 +78,15 @@ namespace ZEngine::Rendering::Renderers
 
         void                                   Initialize(Hardwares::VulkanDevicePtr device) override;
         void                                   Deinitialize() override;
-        Hardwares::CommandBuffer*              DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, const Cameras::CameraFrameData& camera);
+        /// Release explicit CPU binding owners before RRM shutdown, after the
+        /// render thread has joined. Does not discard accepted GPU use gates.
+        void                                   ReleaseSceneResourceBindingsAfterReadersJoined();
+        Hardwares::CommandBuffer*              DrawScene(uint8_t frame_index, uint8_t thread_index, Hardwares::CommandBufferPtr const cb, const Cameras::CameraFrameData& camera, const Scenes::PreparedSceneFrame* initial_frame = nullptr);
         /// @brief Accepts an immutable main-thread sky snapshot carried by the frame mailbox.
-        void                                   ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision);
+        bool                                   HasPreparedSceneTargets(RenderResourceManager::SceneResourcePreparationId resources, uint32_t width, uint32_t height) const;
+        bool                                   ApplySkyConfig(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision, uint64_t scene_generation = 0, RenderResourceManager::SceneResourcePreparationId resources = {});
+        /// @brief Nonblocking render-owner pump, including skipped/minimized frames.
+        void                                   PollSceneEnvironmentPreparations();
         /// @brief Pins the published environment and selects it for this immutable camera frame.
         void                                   BeginSkyFrame(const Cameras::CameraFrameData& camera);
         void                                   ApplyGridConfig(const Scenes::SceneGridRenderSnapshot& cfg);
@@ -96,79 +106,108 @@ namespace ZEngine::Rendering::Renderers
         }
 
     private:
-        void                                            PublishFrameOutput(Textures::TextureHandle output);
-        void                                            StartPendingSkyBake();
-        void                                            PollSkyBake();
-        void                                            CollectRetiredSkySnapshots();
-        void                                            DiscardSkyTexture(Textures::TextureHandle texture);
-        void                                            DiscardSkyResources(const Scenes::SkyEnvironmentResources& resources);
-        void                                            PublishMemoryStatistics();
+        friend struct ::RRMTestHelper;
+        bool SubmitSkySnapshot(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision, Scenes::SkyEnvironmentPublication publication);
+        void ReleaseSceneEnvironmentPreparation();
+        void EndScenePipelinePreparation();
+        enum class SceneTextureSourceState : uint8_t
+        {
+            Pending,
+            Ready,
+            Failed,
+        };
+        SceneTextureSourceState                                 PrepareSceneGridLabelFont(const Scenes::PreparedSceneFrame& frame, bool* enabled);
+        SceneTextureSourceState                                 PrepareSceneTextureSources(const Scenes::SkyEnvironmentSnapshot& snapshot, const Scenes::SkyConfig& config);
+        void                                                    FinishSkyFrameRecording(bool recorded);
+        void                                                    PublishFrameOutput(Textures::TextureHandle output);
+        void                                                    StartPendingSkyBake();
+        void                                                    PollSkyBake();
+        void                                                    CollectRetiredSkySnapshots();
+        void                                                    DiscardSkyTexture(Textures::TextureHandle texture);
+        void                                                    DiscardSkyResources(const Scenes::SkyEnvironmentResources& resources);
+        void                                                    PublishMemoryStatistics();
         /// @brief Verifies the shared RGBA16F cubemap contract used by IBL.
-        [[nodiscard]] bool                              SupportsEnvironmentLightingResources(const EnvironmentLightingBakeSettings& bake_settings, cstring* out_reason = nullptr) const;
+        [[nodiscard]] bool                                      SupportsEnvironmentLightingResources(const EnvironmentLightingBakeSettings& bake_settings, cstring* out_reason = nullptr) const;
         /// @brief Verifies the additional LUT and source-radiance requirements of atmosphere baking.
-        [[nodiscard]] bool                              SupportsAtmosphereBakeResources(const EnvironmentLightingBakeSettings& bake_settings, cstring* out_reason = nullptr) const;
+        [[nodiscard]] bool                                      SupportsAtmosphereBakeResources(const EnvironmentLightingBakeSettings& bake_settings, cstring* out_reason = nullptr) const;
         /// @brief Verifies the transient 2D/3D atmosphere-view resource contract.
-        [[nodiscard]] bool                              SupportsAtmosphereViewResources(cstring* out_reason = nullptr) const;
+        [[nodiscard]] bool                                      SupportsAtmosphereViewResources(cstring* out_reason = nullptr) const;
         /// @brief Verifies that one cooked RGBA32F HDRI can be mip-generated on this device.
-        [[nodiscard]] bool                              SupportsHDRISourceResources(uint32_t face_resolution, cstring* out_reason = nullptr) const;
-        [[nodiscard]] Scenes::AtmosphereStaticResources CreateAtmosphereStaticResources();
-        [[nodiscard]] Textures::TextureHandle           CreateAtmosphereSourceRadiance(const EnvironmentLightingBakeSettings& bake_settings);
-        EnvironmentLightingResources                    CreateSkyLightingResources(const EnvironmentLightingBakeSettings& bake_settings);
-        static void                                     OnSkyFrameSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
-        static void                                     OnSkyFrameCancelled(void* context);
-        static void                                     OnSkyBakeStageSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
+        [[nodiscard]] bool                                      SupportsHDRISourceResources(uint32_t face_resolution, cstring* out_reason = nullptr) const;
+        [[nodiscard]] Scenes::AtmosphereStaticResources         CreateAtmosphereStaticResources();
+        [[nodiscard]] Textures::TextureHandle                   CreateAtmosphereSourceRadiance(const EnvironmentLightingBakeSettings& bake_settings);
+        EnvironmentLightingResources                            CreateSkyLightingResources(const EnvironmentLightingBakeSettings& bake_settings);
+        static void                                             OnSkyFrameSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
+        static void                                             OnSkyFrameCancelled(void* context);
+        static void                                             OnSkyBakeStageSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
 
         // The main thread reads this handle to build the next UI payload while
         // the render thread publishes it after compiling the current graph.
         // Sequence-guard the two 64-bit handle fields so readers never observe
         // a mixed index/generation pair.
-        PaddedAtomic<uint64_t>                          m_frame_output_sequence                    = {};
-        PaddedAtomic<uint64_t>                          m_frame_output_index                       = {.value = UINT64_MAX};
-        PaddedAtomic<uint64_t>                          m_frame_output_generation                  = {};
-        PaddedAtomic<uint64_t>                          m_memory_statistics_sequence               = {};
-        PaddedAtomic<uint64_t>                          m_vma_allocation_bytes                     = {};
-        PaddedAtomic<uint64_t>                          m_vma_block_bytes                          = {};
-        PaddedAtomic<uint64_t>                          m_vma_heap_usage_bytes                     = {};
-        PaddedAtomic<uint64_t>                          m_vma_heap_budget_bytes                    = {};
-        PaddedAtomic<uint64_t>                          m_vma_heap_count                           = {};
-        PaddedAtomic<uint64_t>                          m_vma_uses_driver_budget                   = {};
-        PaddedAtomic<uint64_t>                          m_environment_reserved_bytes               = {};
-        PaddedAtomic<uint64_t>                          m_environment_budget_bytes                 = {};
-        PaddedAtomic<uint64_t>                          m_transient_virtual_image_bytes            = {};
-        PaddedAtomic<uint64_t>                          m_transient_physical_image_bytes           = {};
-        PaddedAtomic<uint64_t>                          m_transient_virtual_buffer_bytes           = {};
-        PaddedAtomic<uint64_t>                          m_transient_physical_buffer_bytes          = {};
-        PaddedAtomic<uint64_t>                          m_transient_image_backing_count            = {};
-        PaddedAtomic<uint64_t>                          m_transient_buffer_backing_count           = {};
-        Scenes::SkyEnvironment                          m_sky_environment                          = {};
-        ObjectIdPass*                                   m_object_id_pass                           = nullptr;
-        LightingPass*                                   m_lighting_pass                            = nullptr;
-        TransparentPass*                                m_transparent_pass                         = nullptr;
-        GridPass*                                       m_grid_pass                                = nullptr;
-        GridLabelPass*                                  m_grid_label_pass                          = nullptr;
-        GizmoPass*                                      m_gizmo_pass                               = nullptr;
-        AssetPreviewPass*                               m_asset_preview_pass                       = nullptr;
-        EnvironmentBackgroundPass*                      m_environment_background_pass              = nullptr;
-        SkySpherePass*                                  m_sky_sphere_pass                          = nullptr;
-        SkyViewLutPass*                                 m_sky_view_lut_pass                        = nullptr;
-        AerialPerspectivePass*                          m_aerial_perspective_pass                  = nullptr;
-        SkyCompositePass*                               m_sky_composite_pass                       = nullptr;
-        ToneMappingPass*                                m_tone_mapping_pass                        = nullptr;
-        SelectionOutlinePass*                           m_selection_outline_pass                   = nullptr;
-        SkyAtmosphereTransmittancePass*                 m_sky_atmosphere_transmittance_pass        = nullptr;
-        SkyAtmosphereMultiscatteringPass*               m_sky_atmosphere_multiscattering_pass      = nullptr;
-        SkyAtmosphereSourceRadiancePass*                m_sky_atmosphere_source_radiance_pass      = nullptr;
-        SkyEnvironmentMipGenerationPass*                m_sky_hdri_mip_generation_pass             = nullptr;
-        SkyEnvironmentMipGenerationPass*                m_sky_atmosphere_mip_generation_pass       = nullptr;
-        SkyEnvironmentDiffuseIrradiancePass*            m_sky_diffuse_irradiance_pass              = nullptr;
-        SkyEnvironmentSpecularPrefilterPass*            m_sky_specular_prefilter_pass              = nullptr;
-        bool                                            m_environment_lighting_resources_supported = false;
-        bool                                            m_atmosphere_bake_resources_supported      = false;
-        bool                                            m_atmosphere_view_resources_supported      = false;
-        cstring                                         m_environment_lighting_unavailable_reason  = "not evaluated";
-        cstring                                         m_atmosphere_bake_unavailable_reason       = "not evaluated";
-        cstring                                         m_atmosphere_view_unavailable_reason       = "not evaluated";
-        Scenes::AtmosphereViewClass                     m_last_atmosphere_view_class               = Scenes::AtmosphereViewClass::Invalid;
+        PaddedAtomic<uint64_t>                                  m_frame_output_sequence                    = {};
+        PaddedAtomic<uint64_t>                                  m_frame_output_index                       = {.value = UINT64_MAX};
+        PaddedAtomic<uint64_t>                                  m_frame_output_generation                  = {};
+        PaddedAtomic<uint64_t>                                  m_memory_statistics_sequence               = {};
+        PaddedAtomic<uint64_t>                                  m_vma_allocation_bytes                     = {};
+        PaddedAtomic<uint64_t>                                  m_vma_block_bytes                          = {};
+        PaddedAtomic<uint64_t>                                  m_vma_heap_usage_bytes                     = {};
+        PaddedAtomic<uint64_t>                                  m_vma_heap_budget_bytes                    = {};
+        PaddedAtomic<uint64_t>                                  m_vma_heap_count                           = {};
+        PaddedAtomic<uint64_t>                                  m_vma_uses_driver_budget                   = {};
+        PaddedAtomic<uint64_t>                                  m_environment_reserved_bytes               = {};
+        PaddedAtomic<uint64_t>                                  m_environment_budget_bytes                 = {};
+        PaddedAtomic<uint64_t>                                  m_transient_virtual_image_bytes            = {};
+        PaddedAtomic<uint64_t>                                  m_transient_physical_image_bytes           = {};
+        PaddedAtomic<uint64_t>                                  m_transient_virtual_buffer_bytes           = {};
+        PaddedAtomic<uint64_t>                                  m_transient_physical_buffer_bytes          = {};
+        PaddedAtomic<uint64_t>                                  m_transient_image_backing_count            = {};
+        PaddedAtomic<uint64_t>                                  m_transient_buffer_backing_count           = {};
+        Scenes::SkyEnvironment                                  m_sky_environment                          = {};
+        IScenePipelinePreparation*                              m_scene_pipeline_preparation               = nullptr;
+        RGScenePipelinePreparationState                         m_scene_pipeline_state                     = RGScenePipelinePreparationState::Idle;
+        uint64_t                                                m_scene_pipeline_generation                = 0;
+        bool                                                    m_scene_pipeline_active                    = false;
+        std::array<RenderResourceManager::TextureVersionPin, 6> m_scene_texture_sources                    = {};
+        bool                                                    m_scene_texture_sources_ready              = false;
+        RenderResourceManager::TextureVersionPin                m_scene_grid_font_source                   = {};
+        RenderResourceManager::SceneResourceLease               m_scene_sky_lease                          = {};
+        RenderResourceManager::SceneResourcePreparationId       m_scene_sky_id                             = {};
+        uint64_t                                                m_scene_sky_revision                       = 0;
+        uint64_t                                                m_sky_revision_sequence                    = 0;
+        uint64_t                                                m_presented_scene_generation               = 0;
+        uint64_t                                                m_presented_sky_revision                   = 0;
+        uint64_t                                                m_presented_render_sky_revision            = 0;
+        bool                                                    m_scene_sky_cancelled                      = false;
+        bool                                                    m_sky_frame_acquired                       = false;
+        ObjectIdPass*                                           m_object_id_pass                           = nullptr;
+        LightingPass*                                           m_lighting_pass                            = nullptr;
+        TransparentPass*                                        m_transparent_pass                         = nullptr;
+        GridPass*                                               m_grid_pass                                = nullptr;
+        GridLabelPass*                                          m_grid_label_pass                          = nullptr;
+        GizmoPass*                                              m_gizmo_pass                               = nullptr;
+        AssetPreviewPass*                                       m_asset_preview_pass                       = nullptr;
+        EnvironmentBackgroundPass*                              m_environment_background_pass              = nullptr;
+        SkySpherePass*                                          m_sky_sphere_pass                          = nullptr;
+        SkyViewLutPass*                                         m_sky_view_lut_pass                        = nullptr;
+        AerialPerspectivePass*                                  m_aerial_perspective_pass                  = nullptr;
+        SkyCompositePass*                                       m_sky_composite_pass                       = nullptr;
+        ToneMappingPass*                                        m_tone_mapping_pass                        = nullptr;
+        SelectionOutlinePass*                                   m_selection_outline_pass                   = nullptr;
+        SkyAtmosphereTransmittancePass*                         m_sky_atmosphere_transmittance_pass        = nullptr;
+        SkyAtmosphereMultiscatteringPass*                       m_sky_atmosphere_multiscattering_pass      = nullptr;
+        SkyAtmosphereSourceRadiancePass*                        m_sky_atmosphere_source_radiance_pass      = nullptr;
+        SkyEnvironmentMipGenerationPass*                        m_sky_hdri_mip_generation_pass             = nullptr;
+        SkyEnvironmentMipGenerationPass*                        m_sky_atmosphere_mip_generation_pass       = nullptr;
+        SkyEnvironmentDiffuseIrradiancePass*                    m_sky_diffuse_irradiance_pass              = nullptr;
+        SkyEnvironmentSpecularPrefilterPass*                    m_sky_specular_prefilter_pass              = nullptr;
+        bool                                                    m_environment_lighting_resources_supported = false;
+        bool                                                    m_atmosphere_bake_resources_supported      = false;
+        bool                                                    m_atmosphere_view_resources_supported      = false;
+        cstring                                                 m_environment_lighting_unavailable_reason  = "not evaluated";
+        cstring                                                 m_atmosphere_bake_unavailable_reason       = "not evaluated";
+        cstring                                                 m_atmosphere_view_unavailable_reason       = "not evaluated";
+        Scenes::AtmosphereViewClass                             m_last_atmosphere_view_class               = Scenes::AtmosphereViewClass::Invalid;
     };
     ZDEFINE_PTR(GraphicRenderer);
 } // namespace ZEngine::Rendering::Renderers

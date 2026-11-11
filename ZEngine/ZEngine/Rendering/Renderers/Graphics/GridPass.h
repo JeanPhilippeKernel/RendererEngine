@@ -26,16 +26,16 @@ namespace ZEngine::Rendering::Renderers
     {
         GridPass();
         /// Invalid/disabled snapshots retire the pass; they never draw the last valid plane.
-        void                                 SetConfig(const Scenes::SceneGridRenderSnapshot& config);
-        void                                 SetCameraDepthConvention(bool reverse_z);
+        void                      SetConfig(const Scenes::SceneGridRenderSnapshot& config);
+        void                      SetCameraDepthConvention(bool reverse_z);
         /// Pure, bounded packing. Invalid input preserves the entire output.
-        [[nodiscard]] static bool            Pack(const Scenes::SceneGridRenderSnapshot& config, bool reverse_z, GridPushConstantData& output);
-        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const override;
-        bool                                 Register(Hardwares::VulkanDevicePtr device, cstring name, const RenderGraphFrameContext& context, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr inspector) override;
-        void                                 Prepare(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr scene, RenderGraphResourceInspectorPtr inspector, RenderPasses::RenderPass* pass) override;
-        void                                 Execute(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
-        bool                                 RecordDraw(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
-        bool                                 SupportsSecondaryRecording() const override
+        [[nodiscard]] static bool Pack(const Scenes::SceneGridRenderSnapshot& config, bool reverse_z, GridPushConstantData& output);
+        bool                      TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const override;
+        bool                      Register(Hardwares::VulkanDevicePtr device, cstring name, const RenderGraphFrameContext& context, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr inspector) override;
+        void                      Prepare(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr scene, RenderGraphResourceInspectorPtr inspector, RenderPasses::RenderPass* pass) override;
+        void                      Execute(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
+        bool                      RecordDraw(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
+        bool                      SupportsSecondaryRecording() const override
         {
             return true;
         }

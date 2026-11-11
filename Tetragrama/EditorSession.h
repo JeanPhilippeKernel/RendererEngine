@@ -108,6 +108,22 @@ namespace Tetragrama
     class EditorSession
     {
     public:
+        class PreparedSceneBinding final
+        {
+        public:
+            PreparedSceneBinding() = default;
+
+        private:
+            friend class EditorSession;
+            EditorSession*           Owner     = nullptr;
+            ZEngine::ECS::Scene*     Previous  = nullptr;
+            ZEngine::ECS::Scene*     Next      = nullptr;
+            EditorSceneMutationHooks Mutations = {};
+            EditorSceneSettingsHooks Settings  = {};
+            uint64_t                 Epoch     = 0;
+            uint64_t                 Revision  = 0;
+        };
+
         [[nodiscard]] bool     Initialize(ZEngine::Core::Memory::ArenaAllocator* arena, const EditorSessionConfig& config = {});
         void                   Shutdown();
         [[nodiscard]] bool     BeginMutationPhase(bool editable = true);
@@ -328,7 +344,7 @@ namespace Tetragrama
         }
         [[nodiscard]] bool OnOwnerThread() const
         {
-            return m_owner == std::this_thread::get_id() && m_initialized;
+            return m_owner == std::this_thread::get_id() && m_initialized && !m_replacing;
         }
         [[nodiscard]] bool InMutationPhase() const
         {
@@ -336,7 +352,7 @@ namespace Tetragrama
         }
         [[nodiscard]] bool Editable() const
         {
-            return m_initialized && m_editable && m_scene;
+            return m_initialized && !m_replacing && m_editable && m_scene;
         }
         [[nodiscard]] bool CanUndo() const
         {
@@ -367,6 +383,15 @@ namespace Tetragrama
         }
 
     private:
+        friend struct Editor;
+        /// Only the publication adapter may release the replacement seal; actor
+        /// and history callbacks must not reopen session mutation during retirement.
+        [[nodiscard]] bool PrepareSceneReplacement(ZEngine::ECS::Scene& scene, const EditorSceneMutationHooks& mutations, const EditorSceneSettingsHooks& settings, PreparedSceneBinding* out);
+        [[nodiscard]] bool CanCommitSceneReplacement(const PreparedSceneBinding& prepared) const;
+        void               CommitSceneReplacement(PreparedSceneBinding& prepared) noexcept;
+        void               RetireSceneHistory();
+        void               FinishSceneReplacement();
+
         enum class Interaction : uint8_t
         {
             None,
@@ -477,6 +502,7 @@ namespace Tetragrama
         bool                                                                                    BeginControlRequest(const PendingRequest& request);
         bool                                                                                    DiscardEditRequests(bool include_untracked);
         bool                                                                                    Allowed() const;
+        void                                                                                    ApplySceneBinding(ZEngine::ECS::Scene* scene, bool saved) noexcept;
         bool                                                                                    Reject(cstring message);
         bool                                                                                    ValidateActive();
         bool                                                                                    BeginGizmoTransform(const Gizmo::TargetFrame& frame, Gizmo::Operation operation);
@@ -547,6 +573,8 @@ namespace Tetragrama
         bool                                                                                    m_editable                  = true;
         bool                                                                                    m_preview_changed           = false;
         bool                                                                                    m_hierarchy_pending         = false;
+        bool                                                                                    m_replacing                 = false;
+        bool                                                                                    m_finishing_replacement     = false;
         EditorControlDrag                                                                       m_control                   = {};
         Gizmo::TranslationInteraction                                                           m_translation               = {};
         Gizmo::RotationInteraction                                                              m_rotation                  = {};

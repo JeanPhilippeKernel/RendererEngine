@@ -1,5 +1,6 @@
 #include <ZEngine/Rendering/Renderers/Compute/SkyAtmosphereViewPass.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
+#include <ZEngine/Rendering/Renderers/SceneRenderTargets.h>
 
 using namespace ZEngine::Rendering::Specifications;
 
@@ -7,9 +8,6 @@ namespace ZEngine::Rendering::Renderers
 {
     namespace
     {
-        constexpr uint32_t kSkyViewWidth     = 192;
-        constexpr uint32_t kSkyViewHeight    = 108;
-        constexpr uint32_t kAerialResolution = 32;
         constexpr uint32_t kLocalSize2D      = 8;
         constexpr uint32_t kLocalSizeAerialZ = 4;
 
@@ -24,36 +22,6 @@ namespace ZEngine::Rendering::Renderers
             return range;
         }
 
-        TextureSpecification MakeSkyViewSpecification()
-        {
-            TextureSpecification specification  = {};
-            specification.IsUsageSampled        = true;
-            specification.IsUsageStorage        = true;
-            specification.IsUsageTransfert      = false;
-            specification.IsUsageTransferSource = false;
-            specification.Width                 = kSkyViewWidth;
-            specification.Height                = kSkyViewHeight;
-            specification.Depth                 = 1;
-            specification.BytePerPixel          = sizeof(uint16_t) * 4;
-            specification.Format                = ImageFormat::R16G16B16A16_SFLOAT;
-            return specification;
-        }
-
-        TextureSpecification MakeAerialSpecification()
-        {
-            TextureSpecification specification  = {};
-            specification.IsUsageSampled        = true;
-            specification.IsUsageStorage        = true;
-            specification.IsUsageTransfert      = false;
-            specification.IsUsageTransferSource = false;
-            specification.Is3D                  = true;
-            specification.Width                 = kAerialResolution;
-            specification.Height                = kAerialResolution;
-            specification.Depth                 = kAerialResolution;
-            specification.BytePerPixel          = sizeof(uint16_t) * 4;
-            specification.Format                = ImageFormat::R16G16B16A16_SFLOAT;
-            return specification;
-        }
     } // namespace
 
     void SkyAtmosphereViewPass::SetEnvironment(const Scenes::SkyEnvironmentSnapshot* snapshot, const Scenes::SkyConfig& presentation)
@@ -169,7 +137,8 @@ namespace ZEngine::Rendering::Renderers
         const RGSubresourceRange range = MakeColorSubresourceRange();
         res_builder->ReadTexture(res_builder->ImportTexture("SkyViewTransmittance", m_atmosphere.Transmittance, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), "Transmittance", range);
         res_builder->ReadTexture(res_builder->ImportTexture("SkyViewMultiscattering", m_atmosphere.Multiscattering, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), "Multiscattering", range);
-        res_builder->WriteStorageImage(RendererResourceName::FrameSkyViewLutName, MakeSkyViewSpecification(), "Destination", range);
+        const auto target = DescribeSceneTarget(SceneRenderTarget::SkyViewLut, 0, 0);
+        res_builder->WriteStorageImage(target.Name, target.Spec, "Destination", range);
     }
 
     void SkyViewLutPass::ExecuteCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr /*scene*/, VkPipeline /*pipeline*/, VkPipelineLayout /*layout*/, Hardwares::CommandBufferPtr const command_buffer)
@@ -180,7 +149,7 @@ namespace ZEngine::Rendering::Renderers
         const AtmosphereViewPushConstants push = MakePushConstants(false);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-        command_buffer->Dispatch((kSkyViewWidth + kLocalSize2D - 1) / kLocalSize2D, (kSkyViewHeight + kLocalSize2D - 1) / kLocalSize2D, 1);
+        command_buffer->Dispatch((SceneSkyViewWidth + kLocalSize2D - 1) / kLocalSize2D, (SceneSkyViewHeight + kLocalSize2D - 1) / kLocalSize2D, 1);
     }
 
     cstring AerialPerspectivePass::GetShaderName() const
@@ -203,8 +172,10 @@ namespace ZEngine::Rendering::Renderers
         const RGSubresourceRange range = MakeColorSubresourceRange();
         res_builder->ReadTexture(res_builder->ImportTexture("AerialTransmittanceStatic", m_atmosphere.Transmittance, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), "Transmittance", range);
         res_builder->ReadTexture(res_builder->ImportTexture("AerialMultiscatteringStatic", m_atmosphere.Multiscattering, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL), "Multiscattering", range);
-        res_builder->WriteStorageImage(RendererResourceName::FrameAerialInscatterName, MakeAerialSpecification(), "InscatterDestination", range);
-        res_builder->WriteStorageImage(RendererResourceName::FrameAerialTransmittanceName, MakeAerialSpecification(), "TransmittanceDestination", range);
+        const auto inscatter     = DescribeSceneTarget(SceneRenderTarget::AerialInscatter, 0, 0);
+        const auto transmittance = DescribeSceneTarget(SceneRenderTarget::AerialTransmittance, 0, 0);
+        res_builder->WriteStorageImage(inscatter.Name, inscatter.Spec, "InscatterDestination", range);
+        res_builder->WriteStorageImage(transmittance.Name, transmittance.Spec, "TransmittanceDestination", range);
     }
 
     void AerialPerspectivePass::ExecuteCompute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr /*res_inspector*/, Rendering::Scenes::SceneDataPtr /*scene*/, VkPipeline /*pipeline*/, VkPipelineLayout /*layout*/, Hardwares::CommandBufferPtr const command_buffer)
@@ -215,6 +186,6 @@ namespace ZEngine::Rendering::Renderers
         const AtmosphereViewPushConstants push = MakePushConstants(true);
         command_buffer->BindDescriptorSets(device->SwapchainPtr->CurrentFrame->Index);
         command_buffer->PushConstants(VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), &push);
-        command_buffer->Dispatch((kAerialResolution + kLocalSize2D - 1) / kLocalSize2D, (kAerialResolution + kLocalSize2D - 1) / kLocalSize2D, (kAerialResolution + kLocalSizeAerialZ - 1) / kLocalSizeAerialZ);
+        command_buffer->Dispatch((SceneAerialResolution + kLocalSize2D - 1) / kLocalSize2D, (SceneAerialResolution + kLocalSize2D - 1) / kLocalSize2D, (SceneAerialResolution + kLocalSizeAerialZ - 1) / kLocalSizeAerialZ);
     }
 } // namespace ZEngine::Rendering::Renderers

@@ -47,41 +47,41 @@ namespace ZEngine::Rendering::Renderers
     struct ZUIPass final : public IRenderGraphCallbackPass
     {
         /// @brief Number of frame-local upload-buffer slots owned by the pass.
-        static constexpr uint32_t            FRAMES_IN_FLIGHT              = 3;
-        static constexpr uint32_t            VertexCapacity                = UI::ZUIDrawList::VertexLimit;
+        static constexpr uint32_t  FRAMES_IN_FLIGHT              = 3;
+        static constexpr uint32_t  VertexCapacity                = UI::ZUIDrawList::VertexLimit;
         // uint16_t bounds vertex addresses, not the number of indices. AA
         // strokes/fills reuse each vertex several times (up to 4.5 indices/vertex).
-        static constexpr uint32_t            IndexCapacity                 = UI::ZUIDrawList::IndexLimit;
+        static constexpr uint32_t  IndexCapacity                 = UI::ZUIDrawList::IndexLimit;
 
         /// @brief Graphics-pass state used to render the current ZUI payload.
-        RenderPasses::GraphicPass*           DrawPass                      = nullptr;
+        RenderPasses::GraphicPass* DrawPass                      = nullptr;
 
         /// @brief Per-frame vertex upload buffers.
-        Core::Memory::BufferView             VtxBHandles[FRAMES_IN_FLIGHT] = {};
+        Core::Memory::BufferView   VtxBHandles[FRAMES_IN_FLIGHT] = {};
         /// @brief Per-frame index upload buffers.
-        Core::Memory::BufferView             IdxBHandles[FRAMES_IN_FLIGHT] = {};
+        Core::Memory::BufferView   IdxBHandles[FRAMES_IN_FLIGHT] = {};
 
         /// @brief Allocates the frame-local geometry buffers used by the pass.
-        void                                 Initialize(Hardwares::VulkanDevicePtr device);
+        void                       Initialize(Hardwares::VulkanDevicePtr device);
 
         /// @brief Translates the ZUI box tree into a flat draw payload.
-        void                                 PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena);
+        void                       PreparePayload(UI::ZUIContext* ctx, ZUIRenderPayload* out, Core::Memory::ArenaAllocator* payload_arena);
 
         /// @brief Selects the payload recorded by the graph in the current frame.
-        void                                 SetPayload(const ZUIRenderPayload* payload);
+        void                       SetPayload(const ZUIRenderPayload* payload);
 
         /// @brief Declares ZUI resources and uploads for the current graph frame.
-        bool                                 Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
+        bool                       Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
         /// @brief Builds the static PSO recipe for ZUI geometry.
-        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const override;
+        bool                       TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const override;
         /// @brief Refreshes frame-local ZUI descriptor bindings.
-        void                                 Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass) override;
+        void                       Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const scene, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass) override;
         /// @brief Executes ZUI draw commands on the graph-selected command buffer.
-        void                                 Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        void                       Execute(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
         /// @brief Records the body-only ZUI draw commands for graph-managed rendering.
-        bool                                 RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
+        bool                       RecordDraw(Hardwares::VulkanDevicePtr const device, RenderGraphResourceInspectorPtr res_inspector, Rendering::Scenes::SceneDataPtr const scene, RenderPasses::RenderPass* const pass, Buffers::FramebufferVNext* const framebuffer, Hardwares::CommandBufferPtr const command_buffer) override;
         /// @brief Allows graph-managed secondary command-buffer recording.
-        bool                                 SupportsSecondaryRecording() const override
+        bool                       SupportsSecondaryRecording() const override
         {
             return true;
         }

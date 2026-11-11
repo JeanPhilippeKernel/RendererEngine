@@ -27,14 +27,14 @@ namespace ZEngine::Rendering::Renderers
         using MeshVisible = bool (*)(void*, const uuids::uuid&);
         /// Missing residency service omits mesh-bound decorations, not handles.
         /// The callback is synchronous, once per live group, and never retained.
-        [[nodiscard]] static bool            Pack(const GizmoFrameData& frame, GizmoGPUInstance* output, uint32_t capacity, uint32_t* count, MeshVisible visible = nullptr, void* context = nullptr);
+        [[nodiscard]] static bool Pack(const GizmoFrameData& frame, GizmoGPUInstance* output, uint32_t capacity, uint32_t* count, MeshVisible visible = nullptr, void* context = nullptr);
 
-        Specifications::GraphicsPipelineDesc BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const override;
-        bool                                 Register(Hardwares::VulkanDevicePtr device, cstring name, const RenderGraphFrameContext& context, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr inspector) override;
-        void                                 Prepare(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr scene, RenderGraphResourceInspectorPtr inspector, RenderPasses::RenderPass* pass) override;
-        void                                 Execute(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
-        bool                                 RecordDraw(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
-        bool                                 SupportsSecondaryRecording() const override
+        bool                      TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const override;
+        bool                      Register(Hardwares::VulkanDevicePtr device, cstring name, const RenderGraphFrameContext& context, RenderGraphResourceBuilderPtr builder, RenderGraphResourceInspectorPtr inspector) override;
+        void                      Prepare(Hardwares::VulkanDevicePtr device, Scenes::SceneDataPtr scene, RenderGraphResourceInspectorPtr inspector, RenderPasses::RenderPass* pass) override;
+        void                      Execute(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
+        bool                      RecordDraw(Hardwares::VulkanDevicePtr device, RenderGraphResourceInspectorPtr inspector, Scenes::SceneDataPtr scene, RenderPasses::RenderPass* pass, Buffers::FramebufferVNext* framebuffer, Hardwares::CommandBufferPtr command_buffer) override;
+        bool                      SupportsSecondaryRecording() const override
         {
             return true;
         }

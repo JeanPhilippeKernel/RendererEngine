@@ -19,32 +19,51 @@ namespace ZEngine::Hardwares
     {
         if (!m_jobs.push(job))
         {
+            if (job.OnRejected)
+            {
+                job.OnRejected(job.SubmissionContext, job.StreamingTicket);
+            }
             ZENGINE_CORE_WARN("[AsyncUploadQueue] Queue full ({} jobs) — dropping upload job", CAPACITY)
         }
     }
 
     void AsyncUploadQueue::SubmitAll()
     {
-        AsyncUploadJob job;
+        AsyncUploadJob job = {};
         while (m_jobs.pop(job))
         {
             // Stop draining once the device is lost rather than keep submitting every
             // remaining job — those would just add misleading cascade errors on top of the
             // real failure, and the device may already be unsafe to keep calling into.
             if (!m_device->QueueSubmit(job.Buffer, job.Timeline, job.WaitFlag, job.SignalValue, job.WaitValue, job.WaitTimeline))
+            {
+                if (job.OnRejected)
+                {
+                    job.OnRejected(job.SubmissionContext, job.StreamingTicket);
+                }
+                Clear();
                 break;
+            }
             if (job.OnSubmitted)
+            {
                 job.OnSubmitted(job.SubmissionContext, job.StreamingTicket);
+            }
             if (job.ExposeToFrameWait)
+            {
                 m_device->EnqueueDeferredAsyncGPUOperation({job.WaitFlag, job.SignalValue, job.Timeline});
+            }
         }
     }
 
     void AsyncUploadQueue::Clear()
     {
-        AsyncUploadJob job;
+        AsyncUploadJob job = {};
         while (m_jobs.pop(job))
         {
+            if (job.OnRejected)
+            {
+                job.OnRejected(job.SubmissionContext, job.StreamingTicket);
+            }
         }
     }
 } // namespace ZEngine::Hardwares

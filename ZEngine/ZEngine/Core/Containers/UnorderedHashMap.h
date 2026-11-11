@@ -21,6 +21,12 @@
 
 namespace ZEngine::Core::Containers
 {
+    template <typename T>
+    inline constexpr bool IsArenaArrayHashValue = false;
+
+    template <typename T>
+    inline constexpr bool IsArenaArrayHashValue<Array<T>> = std::is_trivially_copyable_v<T>;
+
     template <typename K, typename V>
     struct HashEntry
     {
@@ -116,14 +122,27 @@ namespace ZEngine::Core::Containers
             m_size = 0;
         }
 
-        /// Checked initialization for value-like entries. Failure preserves this
-        /// map; callers can roll back an exclusive temporary arena transaction.
+        /// Checked initialization for non-owning entries, including arena Array
+        /// views. No entry copying or relocation occurs here. Failure preserves
+        /// this map; rehash still requires trivially copyable entries.
         [[nodiscard]] bool try_init(Memory::ArenaAllocator* arena, size_type slot_capacity = 16)
         {
-            static_assert(std::is_trivially_copyable_v<Entry>);
+            static_assert(std::is_nothrow_default_constructible_v<Entry> && (std::is_trivially_copyable_v<Entry> || (std::is_trivially_copyable_v<K> && IsArenaArrayHashValue<V>) ));
             if (!arena || slot_capacity > (size_type(1) << (sizeof(size_type) * 8 - 1)))
             {
                 return false;
+            }
+            if constexpr (IsArenaArrayHashValue<V>)
+            {
+                // This operation drops only non-owning arena views. Slab-backed
+                // nested arrays require element destruction and are not admitted.
+                for (const auto& entry : m_entries)
+                {
+                    if (entry.value.m_slab)
+                    {
+                        return false;
+                    }
+                }
             }
             const size_type cap     = next_pow2(slot_capacity < 16 ? 16 : slot_capacity);
             Array<Entry>    entries = {};

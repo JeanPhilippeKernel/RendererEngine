@@ -94,6 +94,37 @@ protected:
     }
 };
 
+TEST_F(SchemaRegistryFixture, WorkerAdmissionRequiresExplicitPureCallbacksAndDoesNotFreezeOnRejection)
+{
+    SceneComponentSchemaRegistry uninitialized = {};
+    EXPECT_FALSE(uninitialized.FreezeForWorker(&m_diag));
+    ASSERT_TRUE(m_registry.Register(Desc("Unqualified", 0), &m_diag));
+    m_diag.Clear();
+    EXPECT_FALSE(m_registry.FreezeForWorker(&m_diag));
+    EXPECT_TRUE(m_diag.HasError(SceneDiagnosticCode::UnsupportedCapability));
+    EXPECT_FALSE(m_registry.Frozen());
+    auto pure               = Desc("Qualified", 1);
+    pure.PureCandidateLocal = true;
+    EXPECT_TRUE(m_registry.Register(pure, &m_diag));
+    EXPECT_FALSE(m_registry.FindByKey("Unqualified")->PureCandidateLocal);
+    EXPECT_TRUE(m_registry.FindByKey("Qualified")->PureCandidateLocal);
+}
+
+TEST_F(SchemaRegistryFixture, WorkerAdmissionFreezesSchemaStorageBeforeDispatchAndRejectsLaterMutation)
+{
+    auto pure               = Desc("Qualified", 0);
+    pure.PureCandidateLocal = true;
+    ASSERT_TRUE(m_registry.Register(pure, &m_diag));
+    const auto used = m_manager.MainArena.m_current_offset;
+    ASSERT_TRUE(m_registry.FreezeForWorker(&m_diag));
+    EXPECT_TRUE(m_registry.Frozen());
+    EXPECT_TRUE(m_registry.FreezeForWorker(&m_diag));
+    EXPECT_FALSE(m_registry.Register(Desc("Late", 1), &m_diag));
+    EXPECT_EQ(m_registry.Count(), 1u);
+    EXPECT_EQ(m_manager.MainArena.m_current_offset, used);
+    EXPECT_EQ(m_registry.FindByKey("Late"), nullptr);
+}
+
 TEST_F(SchemaRegistryFixture, IsUnusableUntilInitialized)
 {
     SceneComponentSchemaRegistry fresh;

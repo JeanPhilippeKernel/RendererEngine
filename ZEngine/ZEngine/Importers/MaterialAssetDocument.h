@@ -22,6 +22,14 @@ namespace ZEngine::Importers::AssetCodec
 
     [[nodiscard]] cstring MaterialTextureSlotKey(MaterialTextureSlot) noexcept;
 
+    enum class MaterialReadPolicy : uint8_t
+    {
+        Strict = 0,
+        // Legacy authoring files may omit optional fields and add metadata.
+        // Identity, finite values, bounds and texture path safety still apply.
+        SourceCompatible,
+    };
+
     struct MaterialTextureReference
     {
         uuids::uuid UUID                          = {};
@@ -68,14 +76,15 @@ namespace ZEngine::Importers::AssetCodec
         MaterialAssetReader()                                                                                  = default;
         MaterialAssetReader(const MaterialAssetReader&)                                                        = delete;
         MaterialAssetReader&                                             operator=(const MaterialAssetReader&) = delete;
-        [[nodiscard]] Core::VFS::VFSResult<const MaterialAssetDocument*> Read(Core::Containers::ArrayView<const uint8_t>, const uuids::uuid& expected_uuid = {}, uint64_t maximum_file_bytes = ZMega(1));
+        [[nodiscard]] Core::VFS::VFSResult<const MaterialAssetDocument*> Read(Core::Containers::ArrayView<const uint8_t>, const uuids::uuid& expected_uuid = {}, uint64_t maximum_file_bytes = ZMega(1), MaterialReadPolicy policy = MaterialReadPolicy::Strict);
 
     private:
-        MaterialAssetDocument                  m_document = {};
-        Core::Serialization::JSONReader        m_reader{{}};
-        Core::Containers::FixedArray<char, 37> m_text          = {};
-        uuids::uuid                            m_expected_uuid = {};
-        bool                                   m_document_used = false;
+        MaterialAssetDocument                    m_document = {};
+        Core::Serialization::JSONReader          m_reader{{}};
+        Core::Containers::FixedArray<char, 37>   m_text          = {};
+        Core::Containers::FixedArray<char, 4097> m_key           = {};
+        uuids::uuid                              m_expected_uuid = {};
+        bool                                     m_document_used = false;
     };
 
     // Closed current-version schema, canonical UUIDs, all slots/numeric fields

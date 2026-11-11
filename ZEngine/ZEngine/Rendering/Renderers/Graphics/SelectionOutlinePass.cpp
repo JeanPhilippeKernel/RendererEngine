@@ -17,8 +17,12 @@ namespace ZEngine::Rendering::Renderers
         return true;
     }
 
-    GraphicsPipelineDesc SelectionOutlinePass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* /*arena*/) const
+    bool SelectionOutlinePass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
+        if (!out)
+        {
+            return false;
+        }
         GraphicsPipelineDesc description          = {};
         description.DebugName                     = "Selection-Outline-Pipeline";
         description.EnableDepthTest               = false;
@@ -26,7 +30,8 @@ namespace ZEngine::Rendering::Renderers
         description.EnableBlending                = true;
         description.CullMode                      = VK_CULL_MODE_NONE;
         description.ShaderSpecificationValue.Name = "selection_outline";
-        return description;
+        *out                                      = std::move(description);
+        return true;
     }
 
     void SelectionOutlinePass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderGraphResourceInspectorPtr res_inspector, RenderPasses::RenderPass* const pass)

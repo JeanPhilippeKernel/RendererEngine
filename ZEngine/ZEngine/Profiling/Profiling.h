@@ -22,7 +22,7 @@
 #if ZENGINE_PROFILING && ZENGINE_TRACY
 #define ZENGINE_PROFILE_VALUE(name, value) TracyPlot(name, static_cast<double>(value))
 #elif ZENGINE_PROFILING
-#define ZENGINE_PROFILE_VALUE(name, value) ZEngine::Profiling::ProfilerBuffer::RecordValue(name, static_cast<float>(value))
+#define ZENGINE_PROFILE_VALUE(name, value) ZEngine::Profiling::ProfilerBuffer::RecordValue(name, static_cast<double>(value))
 #else
 #define ZENGINE_PROFILE_VALUE(name, value)
 #endif

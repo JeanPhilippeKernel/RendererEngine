@@ -3,7 +3,10 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <gtest/gtest.h>
+#include <array>
+#include <atomic>
 #include <new>
+#include <thread>
 
 #if defined(__linux__)
 #include <spawn.h>
@@ -26,6 +29,138 @@ TEST(AllocatorTest, ArenaInit)
     MemoryManager manager{};
     manager.Initialize(200, {});
     manager.Shutdown();
+}
+
+TEST(AllocatorTest, TypedArenaHelpersHonorOverAlignedTypesAfterOddSizedAllocations)
+{
+    struct alignas(256) Payload
+    {
+        uint64_t Value = 7;
+        Payload()      = default;
+        explicit Payload(uint64_t value) : Value(value) {}
+    };
+    alignas(256) std::array<std::byte, 4096> storage = {};
+    ArenaAllocator                           arena   = {};
+    // Borrowed views need absolute address alignment too, not just aligned
+    // cursors relative to an assumed page-aligned arena origin.
+    ASSERT_TRUE(arena.InitializeBorrowed(storage.data() + 1, storage.size() - 1));
+    ASSERT_NE(arena.AllocateNoZero(1, 1), nullptr);
+    auto* constructed = ZPushStructCtor<Payload>(&arena);
+    ASSERT_NE(constructed, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(constructed) % alignof(Payload), 0u);
+    EXPECT_EQ(constructed->Value, 7u);
+    ASSERT_NE(arena.AllocateNoZero(1, 1), nullptr);
+    auto* arguments = ZPushStructCtorArgs<Payload>(&arena, uint64_t(41));
+    ASSERT_NE(arguments, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(arguments) % alignof(Payload), 0u);
+    EXPECT_EQ(arguments->Value, 41u);
+    auto* array = ZPushArray<Payload>(&arena, 3);
+    ASSERT_NE(array, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(array) % alignof(Payload), 0u);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(&array[2]) % alignof(Payload), 0u);
+}
+
+TEST(AllocatorTest, CheckedChildAdmissionPreservesCursorsAndOutputUntilExactCapRetry)
+{
+    ArenaAllocator root = {}, child = {}, unavailable = {};
+    EXPECT_FALSE(unavailable.TryCreateSubArena(1, &child));
+    root.Initialize(ZMega(1), 0, "CheckedChildAdmission");
+    const auto initial  = root.m_current_offset;
+    const auto previous = root.m_previous_offset;
+    for (const auto bytes : {size_t(0), SIZE_MAX, root.m_total_size + 1})
+    {
+        EXPECT_FALSE(root.TryCreateSubArena(bytes, &child));
+        EXPECT_EQ(root.m_current_offset, initial);
+        EXPECT_EQ(root.m_previous_offset, previous);
+        EXPECT_EQ(child.m_memory, nullptr);
+        EXPECT_EQ(child.m_total_size, 0u);
+    }
+    EXPECT_FALSE(root.TryCreateSubArena(1, nullptr));
+    EXPECT_FALSE(root.TryCreateSubArena(1, &root));
+    ASSERT_TRUE(root.TryCreateSubArena(root.m_total_size, &child));
+    EXPECT_EQ(root.m_current_offset, root.m_total_size);
+    const auto storage = child.m_memory;
+    EXPECT_FALSE(root.TryCreateSubArena(1, &child));
+    EXPECT_EQ(child.m_memory, storage);
+    EXPECT_EQ(child.m_total_size, root.m_total_size);
+    EXPECT_FALSE(root.TryCreateSubArena(1, &unavailable));
+    EXPECT_EQ(unavailable.m_memory, nullptr);
+}
+
+TEST(AllocatorTest, CheckedChildAdmissionChargesPageRoundingBeforeFollowingParentAllocation)
+{
+    ArenaAllocator root = {}, child = {};
+    root.Initialize(ZMega(1), 0, "CheckedChildPageRounding");
+    ASSERT_NE(root.AllocateNoZero(1, 1), nullptr);
+    const auto page = root.m_mem_page_size;
+    ASSERT_TRUE(root.TryCreateSubArena(page + 1, &child));
+    EXPECT_EQ(child.m_total_size, page + 1);
+    EXPECT_EQ(child.m_reserved_size, 2 * page);
+    EXPECT_EQ(root.m_current_offset, 3 * page);
+    auto* following = static_cast<uint8_t*>(root.AllocateNoZero(1, 1));
+    ASSERT_NE(following, nullptr);
+    EXPECT_EQ(following, child.m_memory + child.m_reserved_size);
+}
+
+TEST(AllocatorTest, ExclusiveSiblingOwnersCommitConcurrentlyWithConsistentRootAccounting)
+{
+    constexpr size_t                    workers = 4, pages_per_worker = 128;
+    ArenaAllocator                      root     = {};
+    std::array<ArenaAllocator, workers> children = {};
+    root.Initialize(ZMega(32), 0, "ConcurrentSiblingRoot");
+    const auto page = root.m_mem_page_size;
+    for (auto& child : children)
+    {
+        root.CreateSubArena(page * pages_per_worker, &child);
+    }
+    std::atomic<bool>                start{false};
+    std::atomic<size_t>              finished{0};
+    std::array<std::thread, workers> threads = {};
+    for (size_t i = 0; i < workers; ++i)
+    {
+        threads[i] = std::thread([&, i] {
+            while (!start.load(std::memory_order_acquire))
+            {
+                std::this_thread::yield();
+            }
+            for (size_t allocation = 0; allocation < pages_per_worker; ++allocation)
+            {
+                auto* bytes = static_cast<uint8_t*>(children[i].AllocateNoZero(page, 1));
+                if (!bytes)
+                {
+                    ADD_FAILURE() << "Sibling arena allocation failed";
+                    break;
+                }
+                bytes[0]        = static_cast<uint8_t>(i);
+                bytes[page - 1] = static_cast<uint8_t>(allocation);
+                EXPECT_TRUE(root.RetainsStorage(bytes, page));
+            }
+            finished.fetch_add(1, std::memory_order_release);
+        });
+    }
+    start.store(true, std::memory_order_release);
+    size_t previous = 0;
+    while (finished.load(std::memory_order_acquire) != workers)
+    {
+        ArenaRetainedStorage snapshot = {};
+        EXPECT_TRUE(root.RetainedStorage(&snapshot));
+        EXPECT_GE(snapshot.CommittedBytes, previous);
+        EXPECT_LE(snapshot.CommittedBytes, workers * pages_per_worker * page);
+        previous = snapshot.CommittedBytes;
+        std::this_thread::yield();
+    }
+    for (auto& thread : threads)
+    {
+        thread.join();
+    }
+    ArenaRetainedStorage final = {};
+    ASSERT_TRUE(root.RetainedStorage(&final));
+    EXPECT_EQ(final.CommittedBytes, workers * pages_per_worker * page);
+    for (auto& child : children)
+    {
+        EXPECT_EQ(child.m_committed_size, pages_per_worker * page);
+        EXPECT_EQ(child.m_current_offset, pages_per_worker * page);
+    }
 }
 
 TEST(AllocatorTest, TrackerStorageIsPageRoundedAndChargedOnlyByItsOwningRoot)

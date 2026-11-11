@@ -132,20 +132,33 @@ namespace ZEngine::Rendering::Renderers
         return true;
     }
 
-    Specifications::GraphicsPipelineDesc ZUIPass::BuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena) const
+    bool ZUIPass::TryBuildGraphicsPipelineDescription(Core::Memory::ArenaAllocator* arena, Specifications::GraphicsPipelineDesc* out) const
     {
-        Specifications::GraphicsPipelineDesc desc = {};
-        desc.DebugName                            = "ZUI-Draw-Pipeline";
-        desc.EnableBlending                       = true;
-        desc.ShaderSpecificationValue.Name        = "zui_draw";
+        if (!arena || !out)
+        {
+            return false;
+        }
+        Core::Memory::ArenaCheckpoint        checkpoint(arena);
+        Specifications::GraphicsPipelineDesc desc           = {};
+        desc.DebugName                                      = "ZUI-Draw-Pipeline";
+        desc.EnableBlending                                 = true;
+        desc.ShaderSpecificationValue.Name                  = "zui_draw";
 
-        desc.VertexInputBindingSpecifications.init(arena, 1, 1);
-        desc.VertexInputBindingSpecifications[0] = {.Stride = static_cast<uint32_t>(sizeof(ZUIDrawVtx)), .Rate = VK_VERTEX_INPUT_RATE_VERTEX, .Binding = 0};
-        desc.VertexInputAttributeSpecifications.init(arena, 3, 3);
-        desc.VertexInputAttributeSpecifications[0] = {.Location = 0, .Binding = 0, .Offset = static_cast<uint32_t>(offsetof(ZUIDrawVtx, x)), .Format = ImageFormat::R32G32_SFLOAT};
-        desc.VertexInputAttributeSpecifications[1] = {.Location = 1, .Binding = 0, .Offset = static_cast<uint32_t>(offsetof(ZUIDrawVtx, u)), .Format = ImageFormat::R32G32_SFLOAT};
-        desc.VertexInputAttributeSpecifications[2] = {.Location = 2, .Binding = 0, .Offset = static_cast<uint32_t>(offsetof(ZUIDrawVtx, col)), .Format = ImageFormat::R8G8B8A8_UNORM};
-        return desc;
+        desc.VertexInputBindingSpecifications.m_allocator   = arena;
+        desc.VertexInputAttributeSpecifications.m_allocator = arena;
+        if (!desc.VertexInputBindingSpecifications.try_reserve(1) || !desc.VertexInputAttributeSpecifications.try_reserve(3))
+        {
+            return false;
+        }
+        desc.VertexInputBindingSpecifications.m_size   = 1;
+        desc.VertexInputAttributeSpecifications.m_size = 3;
+        desc.VertexInputBindingSpecifications[0]       = {.Stride = static_cast<uint32_t>(sizeof(ZUIDrawVtx)), .Rate = VK_VERTEX_INPUT_RATE_VERTEX, .Binding = 0};
+        desc.VertexInputAttributeSpecifications[0]     = {.Location = 0, .Binding = 0, .Offset = static_cast<uint32_t>(offsetof(ZUIDrawVtx, x)), .Format = ImageFormat::R32G32_SFLOAT};
+        desc.VertexInputAttributeSpecifications[1]     = {.Location = 1, .Binding = 0, .Offset = static_cast<uint32_t>(offsetof(ZUIDrawVtx, u)), .Format = ImageFormat::R32G32_SFLOAT};
+        desc.VertexInputAttributeSpecifications[2]     = {.Location = 2, .Binding = 0, .Offset = static_cast<uint32_t>(offsetof(ZUIDrawVtx, col)), .Format = ImageFormat::R8G8B8A8_UNORM};
+        *out                                           = std::move(desc);
+        checkpoint.Commit();
+        return true;
     }
 
     void ZUIPass::Prepare(Hardwares::VulkanDevicePtr const device, Rendering::Scenes::SceneDataPtr const /*scene*/, RenderGraphResourceInspectorPtr /*res_inspector*/, RenderPasses::RenderPass* const pass)

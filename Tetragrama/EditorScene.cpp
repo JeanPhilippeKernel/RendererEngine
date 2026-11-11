@@ -31,6 +31,7 @@ namespace Tetragrama
 
     EditorScene::~EditorScene()
     {
+        m_authored_assets.Release();
         // InstanceArena is carved from LocalArena. Tear it down while its
         // parent is still alive; base-class destruction happens afterwards.
         InstanceArena.Shutdown();
@@ -110,64 +111,43 @@ namespace Tetragrama
 
     bool EditorScene::InitializeDeserialized(ZEngine::EngineContext& context)
     {
-        // Includes instance storage and the minimum ECS/actor-manager workspace.
-        // Reject small/missing slots before legacy container initialization can fail.
-        constexpr size_t minimum_slot_bytes = ZMega(8);
-        if (LocalArena || DeserializedInUse)
+        if (LocalArena || m_deserialized_storage.Arena())
         {
             return false;
         }
-
-        struct SceneLoadSlot
+        if (!context.TryAcquireSceneStorage(&m_deserialized_storage))
         {
-            ZEngine::Core::Memory::ArenaAllocator* Arena = nullptr;
-            PaddedAtomic<bool>*                    InUse = nullptr;
-        };
-        const SceneLoadSlot slots[] = {
-            {&context.EditorSceneLoadArenaA, &context.EditorSceneLoadArenaAInUse},
-            {&context.EditorSceneLoadArenaB, &context.EditorSceneLoadArenaBInUse},
-        };
-
-        for (const SceneLoadSlot& slot : slots)
-        {
-            bool available = false;
-            if (!slot.Arena->m_memory || slot.Arena->m_total_size < minimum_slot_bytes || !slot.InUse->value.compare_exchange_strong(available, true, std::memory_order_acq_rel))
-            {
-                continue;
-            }
-
-            LocalArena        = slot.Arena;
-            DeserializedInUse = slot.InUse;
-            LocalArena->Clear();
-            LocalArena->CreateSubArena(ZMega(4), &InstanceArena, "EditorSceneLoad/Instances");
-            if (!InstanceArena.m_memory)
-            {
-                ReleaseDeserializedArena();
-                return false;
-            }
-
-            AssetFiles.init(LocalArena, 500);
-            HashToAssetFile.init(LocalArena, 500);
-            Instances.init(&InstanceArena, 64);
-            UUID = GenerateEntityUUID();
-            return true;
+            return false;
         }
+        if (!InitializeDeserialized(*m_deserialized_storage.Arena()))
+        {
+            m_deserialized_storage.Reset();
+            return false;
+        }
+        return true;
+    }
 
-        ZENGINE_CORE_WARN("[EditorScene] Both bounded deserialization slots are in use")
-        return false;
+    bool EditorScene::InitializeDeserialized(ZEngine::Core::Memory::ArenaAllocator& storage)
+    {
+        // Reserve room for page alignment, the 4 MiB instance arena, and bounded
+        // editor asset metadata before calling legacy infallible initializers.
+        if (LocalArena || !storage.m_memory || storage.m_current_offset > storage.m_total_size || storage.m_total_size - storage.m_current_offset < ZMega(5))
+        {
+            return false;
+        }
+        LocalArena = &storage;
+        LocalArena->CreateSubArena(ZMega(4), &InstanceArena, "SceneInstance/EditorInstances");
+        AssetFiles.init(LocalArena, 500);
+        HashToAssetFile.init(LocalArena, 500);
+        Instances.init(&InstanceArena, 64);
+        UUID = GenerateEntityUUID();
+        return true;
     }
 
     void EditorScene::ReleaseDeserializedArena()
     {
-        if (!DeserializedInUse)
-        {
-            return;
-        }
-
-        LocalArena->Clear();
-        DeserializedInUse->value.store(false, std::memory_order_release);
-        DeserializedInUse = nullptr;
-        LocalArena        = nullptr;
+        m_deserialized_storage.Reset();
+        LocalArena = nullptr;
     }
 
     bool EditorScene::HasPendingChange() const
@@ -286,7 +266,17 @@ namespace Tetragrama
         {
             return false;
         }
-        const EditorSceneMutationHooks hooks = {
+        if (!session.SetSceneSettingsHooks(SettingsHooks()) || !session.SetSceneMutationHooks(MutationHooks()))
+        {
+            return false;
+        }
+        CommitSessionAttachment(session, engine);
+        return true;
+    }
+
+    EditorSceneMutationHooks EditorScene::MutationHooks()
+    {
+        return {
             .Context = this,
             .Validate =
                 [](void* context, const ZEngine::ECS::Scene& ecs, EditorSceneMutation kind, ZEngine::ECS::EntityID entity) {
@@ -315,7 +305,11 @@ namespace Tetragrama
                     }
                 },
         };
-        const EditorSceneSettingsHooks settings = {
+    }
+
+    EditorSceneSettingsHooks EditorScene::SettingsHooks()
+    {
+        return {
             .Context = this,
             .ReadGrid =
                 [](void* context, const ZEngine::ECS::Scene& ecs, EditorGridView& output) {
@@ -336,13 +330,12 @@ namespace Tetragrama
                     // turn undoable Grid edits into sticky legacy external revisions.
                 },
         };
-        if (!session.SetSceneSettingsHooks(settings) || !session.SetSceneMutationHooks(hooks))
-        {
-            return false;
-        }
+    }
+
+    void EditorScene::CommitSessionAttachment(EditorSession& session, ZEngine::EngineContext& engine) noexcept
+    {
         SessionEngine = &engine;
         Session       = &session;
-        return true;
     }
 
     bool EditorScene::DeleteEntity(ZEngine::EngineContext& engine, ZEngine::ECS::EntityID entity)
@@ -459,6 +452,7 @@ namespace Tetragrama
 
     void EditorScene::Reset(const ZEngine::Rendering::Scenes::SkyConfig& sky_defaults)
     {
+        m_authored_assets.Reset();
         UUID                = GenerateEntityUUID();
         AuthoredGrid        = {};
         SourcePath          = {};
@@ -646,6 +640,13 @@ namespace Tetragrama
         if (identity.is_nil())
         {
             return {};
+        }
+        if (auto* assets = AssetManager::Instance())
+        {
+            if (!m_authored_assets.Initialize(LocalArena) || !assets->RetainMeshAssets(mesh_uuid, m_authored_assets))
+            {
+                return {};
+            }
         }
         Session->InvalidateForExternalMutation(); // Restore before any entity/instance is added.
         const auto handle = engine.ActorManager->Create();

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <type_traits>
 
@@ -301,7 +302,7 @@ namespace Tetragrama
     {
         // Owner identity is stable for the initialized lifetime. Reject other
         // threads before reading the main-thread-only mutable phase flag.
-        return m_owner == std::this_thread::get_id() && m_initialized && m_in_phase;
+        return m_owner == std::this_thread::get_id() && m_initialized && m_in_phase && !m_replacing;
     }
 
     EntityTarget EditorSession::TargetFor(EntityID entity)
@@ -327,7 +328,7 @@ namespace Tetragrama
 
     bool EditorSession::Enqueue(const PendingRequest& request)
     {
-        if (!m_initialized || m_owner != std::this_thread::get_id())
+        if (!m_initialized || m_owner != std::this_thread::get_id() || m_replacing)
         {
             return false;
         }
@@ -1017,7 +1018,7 @@ namespace Tetragrama
 
     void EditorSession::Shutdown()
     {
-        if (!m_initialized || m_owner != std::this_thread::get_id())
+        if (!m_initialized || m_owner != std::this_thread::get_id() || m_replacing)
         {
             return;
         }
@@ -1049,7 +1050,7 @@ namespace Tetragrama
 
     bool EditorSession::BeginMutationPhase(bool editable)
     {
-        if (!m_initialized || m_in_phase || m_owner != std::this_thread::get_id())
+        if (!m_initialized || m_in_phase || m_owner != std::this_thread::get_id() || m_replacing)
         {
             return false;
         }
@@ -1105,6 +1106,13 @@ namespace Tetragrama
             SynchronizeHierarchy();
         }
         m_history.Reset(saved);
+        ApplySceneBinding(scene, saved);
+        SynchronizeHierarchy();
+        return true;
+    }
+
+    void EditorSession::ApplySceneBinding(ZEngine::ECS::Scene* scene, bool saved) noexcept
+    {
         m_content_digest      = {};
         m_saved_digest        = {};
         m_saved_content_known = saved;
@@ -1112,15 +1120,74 @@ namespace Tetragrama
         m_request_first = m_request_count = 0;
         m_selected_roots.Invalidate();
         m_selection_requests.clear();
-        m_scene           = scene;
-        m_scene_mutations = {};
-        m_scene_settings  = {};
-        m_grid            = {};
-        SynchronizeHierarchy();
+        m_scene             = scene;
+        m_scene_mutations   = {};
+        m_scene_settings    = {};
+        m_grid              = {};
+        m_hierarchy_pending = false;
         ++m_epoch;
         m_targets.Bind(scene, m_epoch);
         ++m_document_revision;
+    }
+
+    bool EditorSession::PrepareSceneReplacement(ZEngine::ECS::Scene& scene, const EditorSceneMutationHooks& mutations, const EditorSceneSettingsHooks& settings, PreparedSceneBinding* out)
+    {
+        if (!Allowed() || !out || !m_scene || m_scene == &scene || Active() || m_request_count || !mutations.Validate || !mutations.Apply || !settings.ReadGrid || !settings.ApplyGrid || !m_history.CanResetDeferred() || m_epoch == std::numeric_limits<uint64_t>::max() || m_document_revision == std::numeric_limits<uint64_t>::max())
+        {
+            return false;
+        }
+        if (m_hierarchy_pending)
+        {
+            SynchronizeHierarchy();
+        }
+        (void) ClearCustomPivot();
+        scene.SynchronizeHierarchy();
+        out->Owner     = this;
+        out->Previous  = m_scene;
+        out->Next      = &scene;
+        out->Mutations = mutations;
+        out->Settings  = settings;
+        out->Epoch     = m_epoch;
+        out->Revision  = m_document_revision;
         return true;
+    }
+
+    bool EditorSession::CanCommitSceneReplacement(const PreparedSceneBinding& prepared) const
+    {
+        return Allowed() && !Active() && !m_request_count && !m_hierarchy_pending && prepared.Owner == this && prepared.Previous == m_scene && prepared.Next && prepared.Epoch == m_epoch && prepared.Revision == m_document_revision && m_history.CanResetDeferred();
+    }
+
+    void EditorSession::CommitSceneReplacement(PreparedSceneBinding& prepared) noexcept
+    {
+        ZENGINE_VALIDATE_ASSERT(CanCommitSceneReplacement(prepared), "Unprepared scene session replacement")
+        m_history.ResetDeferred();
+        ApplySceneBinding(prepared.Next, true);
+        m_scene_mutations = prepared.Mutations;
+        m_scene_settings  = prepared.Settings;
+        prepared          = {};
+        m_replacing       = true;
+    }
+
+    void EditorSession::FinishSceneReplacement()
+    {
+        if (m_owner != std::this_thread::get_id() || !m_replacing || m_finishing_replacement)
+        {
+            return;
+        }
+        m_finishing_replacement = true;
+        m_history.DrainRetired();
+        m_finishing_replacement = false;
+        m_replacing             = false;
+    }
+
+    void EditorSession::RetireSceneHistory()
+    {
+        if (m_owner == std::this_thread::get_id() && m_replacing && !m_finishing_replacement)
+        {
+            m_finishing_replacement = true;
+            m_history.DrainRetired();
+            m_finishing_replacement = false;
+        }
     }
 
     bool EditorSession::SetSceneMutationHooks(const EditorSceneMutationHooks& hooks)

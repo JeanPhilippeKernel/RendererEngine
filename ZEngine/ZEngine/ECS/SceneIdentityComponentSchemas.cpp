@@ -365,6 +365,7 @@ namespace ZEngine::ECS
             desc.Fields                   = Codec::Fields.data();
             desc.FieldCount               = static_cast<uint32_t>(Codec::Fields.size());
             desc.Codecs                   = {.Capture = Fns::Capture, .PopulateCandidate = Fns::Populate, .EncodeBinary = Fns::Encode, .DecodeBinary = Fns::Decode, .EncodeYAML = Fns::EncodeYAML, .DecodeYAML = Fns::DecodeYAML, .CandidateMemoryBound = Fns::CandidateMemoryBound};
+            desc.PureCandidateLocal       = true;
             if constexpr (Codec::IsReference)
             {
                 desc.References = {.Enumerate = Fns::Enumerate, .Remap = Fns::Remap};

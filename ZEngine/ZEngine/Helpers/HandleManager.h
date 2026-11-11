@@ -18,8 +18,10 @@ namespace ZEngine::Helpers
     template <typename T>
     struct Handle
     {
-        uint64_t Index      = UINT64_MAX;
-        uint64_t Generation = 0u;
+        uint64_t Index                           = UINT64_MAX;
+        uint64_t Generation                      = 0u;
+
+        bool     operator==(const Handle&) const = default;
 
         bool     Valid() const
         {

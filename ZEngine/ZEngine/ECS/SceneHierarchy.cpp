@@ -17,26 +17,44 @@ namespace ZEngine::ECS
         bool Finite(const Mat4f& matrix)
         {
             for (uint32_t column = 0; column < 4; ++column)
+            {
                 for (uint32_t row = 0; row < 4; ++row)
+                {
                     if (!std::isfinite(matrix(row, column)))
+                    {
                         return false;
+                    }
+                }
+            }
             return true;
         }
 
         bool Same(const Mat4f& a, const Mat4f& b)
         {
             for (uint32_t column = 0; column < 4; ++column)
+            {
                 for (uint32_t row = 0; row < 4; ++row)
+                {
                     if (a(row, column) != b(row, column))
+                    {
                         return false;
+                    }
+                }
+            }
             return true;
+        }
+        bool Same(const Vec3f& a, const Vec3f& b)
+        {
+            return a.x == b.x && a.y == b.y && a.z == b.z;
         }
     } // namespace
 
     bool SceneHierarchy::Initialize(Core::Memory::ArenaAllocator* arena)
     {
         if (!arena || m_nodes || m_lookup || m_order)
+        {
             return false;
+        }
         constexpr uint32_t capacity = EntityRegistry::MAX_ENTITIES;
         m_arena                     = arena;
         m_lookup                    = static_cast<uint32_t*>(arena->AllocateNoZero(sizeof(uint32_t) * capacity, alignof(uint32_t)));
@@ -55,15 +73,21 @@ namespace ZEngine::ECS
     bool SceneHierarchy::Reserve(uint32_t entities)
     {
         if (!m_arena || entities > EntityRegistry::MAX_ENTITIES)
+        {
             return false;
+        }
         if (entities <= m_capacity)
+        {
             return true;
+        }
         const uint32_t capacity = std::min(EntityRegistry::MAX_ENTITIES, std::max(entities, m_capacity ? m_capacity * 2 : 256u));
         // One allocation makes growth failure atomic. Arena-backed geometric
         // growth is bounded by twice peak workspace; only initialized entries copy.
         auto*          storage  = static_cast<std::byte*>(m_arena->AllocateNoZero((sizeof(Node) + sizeof(uint32_t)) * capacity, alignof(Node)));
         if (!storage)
+        {
             return false;
+        }
         auto* nodes = reinterpret_cast<Node*>(storage);
         auto* order = reinterpret_cast<uint32_t*>(storage + sizeof(Node) * capacity);
         if (m_count)
@@ -81,7 +105,9 @@ namespace ZEngine::ECS
     {
         ZENGINE_VALIDATE_ASSERT(entities <= EntityRegistry::MAX_ENTITIES, "Hierarchy reservation exceeds entity capacity")
         if (entities <= m_capacity)
+        {
             return 0;
+        }
         const uint32_t capacity = std::min(EntityRegistry::MAX_ENTITIES, std::max(entities, m_capacity ? m_capacity * 2 : 256u));
         return (sizeof(Node) + sizeof(uint32_t)) * capacity + alignof(Node) - 1;
     }
@@ -106,7 +132,9 @@ namespace ZEngine::ECS
     uint32_t SceneHierarchy::IndexOf(EntityID entity) const
     {
         if (!m_lookup || !m_nodes || !entity.IsValid() || entity.Index >= EntityRegistry::MAX_ENTITIES)
+        {
             return NoIndex;
+        }
         const uint32_t index = m_lookup[entity.Index];
         return index < m_count && m_nodes[index].Entity == entity ? index : NoIndex;
     }
@@ -150,12 +178,16 @@ namespace ZEngine::ECS
                 {
                     m_nodes[i].Parent = value;
                     if (!m_dirty)
+                    {
                         Invalidate();
+                    }
                 }
             }
         }
         if (!m_dirty && m_structural_revision == scene.StructuralRevision())
+        {
             return;
+        }
         BuildOrder();
         m_structural_revision = scene.StructuralRevision();
         m_dirty               = false;
@@ -177,7 +209,9 @@ namespace ZEngine::ECS
         {
             auto& node = m_nodes[i];
             if (node.ParentIndex == NoIndex)
+            {
                 m_order[count++] = i;
+            }
             else
             {
                 node.NextSibling                     = m_nodes[node.ParentIndex].FirstChild;
@@ -197,24 +231,30 @@ namespace ZEngine::ECS
                 node.ParentTransform = parent.HasTransform ? node.ParentIndex : parent.ParentTransform;
             }
             for (uint32_t child = node.FirstChild; child != NoIndex; child = m_nodes[child].NextSibling)
+            {
                 m_order[count++] = child;
+            }
         }
         // Cycles and their descendants cannot enter the queue. Keep them visible
         // at finite local fallback poses, but never expose a valid editable frame.
         // Authored Parent/TRS values are not repaired or overwritten silently.
         for (uint32_t i = 0; i < m_count; ++i)
+        {
             if (!m_nodes[i].Ordered)
             {
                 m_nodes[i].TopologyValid   = false;
                 m_nodes[i].ParentTransform = NoIndex;
                 m_order[count++]           = i;
             }
+        }
     }
 
     void SceneHierarchy::Synchronize(Scene& scene)
     {
         if (!m_nodes)
+        {
             return;
+        }
         RefreshTopology(scene);
         for (uint32_t order = 0; order < m_count; ++order)
         {
@@ -227,7 +267,20 @@ namespace ZEngine::ECS
                 node.WorldRevision = node.ParentTransform != NoIndex ? m_nodes[node.ParentTransform].WorldRevision : 0;
                 continue;
             }
-            auto*      component    = scene.GetComponent<TransformComponent>(node.Entity);
+            auto*      component       = scene.GetComponent<TransformComponent>(node.Entity);
+            const auto parent_revision = node.ParentTransform != NoIndex ? m_nodes[node.ParentTransform].WorldRevision : 0;
+            if (node.Cached && Same(component->Position, node.CachedPosition) && Same(component->Rotation, node.CachedRotation) && Same(component->Scale, node.CachedScale) && node.CachedParentRevision == parent_revision && node.FrameValid == (valid && node.CachedLocalValid))
+            {
+                // Raw local TRS and Parent writes remain supported. A raw write
+                // to the derived matrix must still be repaired, as before.
+                if (!Same(component->WorldTransform, node.CachedWorld))
+                {
+                    component->WorldTransform = node.CachedWorld;
+                    node.WorldRevision        = ++m_world_revision;
+                }
+                continue;
+            }
+            ++m_derivation_count;
             auto       local        = ComposeTransformMatrix(component->Position, component->Rotation, component->Scale);
             const bool finite_local = Finite(local);
             valid                   = valid && finite_local;
@@ -238,12 +291,23 @@ namespace ZEngine::ECS
                 const Mat4f candidate = parent->WorldTransform * local;
                 valid                 = Finite(candidate);
                 if (valid)
+                {
                     world = candidate;
+                }
             }
             if (!node.WorldRevision || node.FrameValid != valid || !Same(component->WorldTransform, world))
+            {
                 node.WorldRevision = ++m_world_revision;
+            }
             component->WorldTransform = world;
             node.FrameValid           = valid;
+            node.CachedPosition       = component->Position;
+            node.CachedRotation       = component->Rotation;
+            node.CachedScale          = component->Scale;
+            node.CachedWorld          = world;
+            node.CachedParentRevision = parent_revision;
+            node.CachedLocalValid     = finite_local;
+            node.Cached               = true;
         }
     }
 } // namespace ZEngine::ECS
