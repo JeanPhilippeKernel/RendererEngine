@@ -31,10 +31,13 @@ FetchContent_Declare(
     )
 
 
+# ImageCodec uses stb_image's internal per-format decoder API. Pin the exact
+# revision tested by the bounded probe/decode path; upstream changes can alter
+# those private signatures or remove supported formats without notice.
 FetchContent_Declare(
   stb
   GIT_REPOSITORY https://github.com/nothings/stb.git
-  GIT_SHALLOW TRUE
+  GIT_TAG 003501f6d7a8668ce8b6d875e34dd97ad0d5d5b5
   SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/stb
   )
 
