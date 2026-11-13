@@ -1,4 +1,5 @@
 #include <ZEngine/Core/Memory/TLSFSlab.h>
+#include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/ZEngineDef.h>
 #include <tlsf.h>
 #include <algorithm>
@@ -98,6 +99,57 @@ namespace ZEngine::Core::Memory
         }
         ReleaseLock();
         return result;
+    }
+
+    void* TLSFSlab::TryReallocAligned(void* ptr, size_t old_size, size_t new_size, size_t alignment)
+    {
+        if (!Pool || !AllocationFootprintBound(new_size, alignment) || (!ptr && old_size))
+        {
+            return nullptr;
+        }
+        AcquireLock();
+        const bool   had_block     = ptr != nullptr;
+        const size_t previous_size = had_block ? tlsf_block_size(ptr) : 0;
+        if (old_size > previous_size)
+        {
+            ReleaseLock();
+            return nullptr;
+        }
+        if (alignment <= tlsf_align_size())
+        {
+            void* result = had_block ? tlsf_realloc(Pool, ptr, new_size) : tlsf_malloc(Pool, new_size);
+            if (result)
+            {
+                RecordAllocationChange(had_block ? previous_size + tlsf_alloc_overhead() : 0, tlsf_block_size(result) + tlsf_alloc_overhead());
+            }
+            ReleaseLock();
+            return result;
+        }
+        if (ptr && reinterpret_cast<uintptr_t>(ptr) % alignment == 0 && new_size <= previous_size)
+        {
+            ReleaseLock();
+            return ptr;
+        }
+        void* replacement = tlsf_memalign(Pool, alignment, new_size);
+        if (!replacement)
+        {
+            ReleaseLock();
+            return nullptr;
+        }
+        if (ptr && old_size && Helpers::secure_memcpy(replacement, new_size, ptr, std::min(old_size, new_size)) != Helpers::MEMORY_OP_SUCCESS)
+        {
+            tlsf_free(Pool, replacement);
+            ReleaseLock();
+            return nullptr;
+        }
+        const size_t replacement_size = tlsf_block_size(replacement) + tlsf_alloc_overhead();
+        if (ptr)
+        {
+            tlsf_free(Pool, ptr);
+        }
+        RecordAllocationChange(had_block ? previous_size + tlsf_alloc_overhead() : 0, replacement_size);
+        ReleaseLock();
+        return replacement;
     }
 
     size_t TLSFSlab::AllocationFootprintBound(size_t n, size_t alignment) noexcept

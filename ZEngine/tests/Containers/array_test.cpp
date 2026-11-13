@@ -260,6 +260,62 @@ TEST_F(ArrayTest, CheckedReservePreservesSlabStorageOnExhaustion)
     slab.Shutdown();
 }
 
+TEST_F(ArrayTest, SlabStorageHonorsElementAlignment)
+{
+    struct alignas(16) AlignedRecord
+    {
+        uint64_t Values[2] = {};
+    };
+    ArenaAllocator arena = {};
+    arena.Initialize(64 * 1024, 0);
+    TLSFSlab slab = {};
+    ASSERT_TRUE(slab.TryInit(&arena, 64 * 1024));
+    {
+        void* filler = slab.Alloc(32);
+        ASSERT_NE(filler, nullptr);
+        Array<AlignedRecord> records[8] = {};
+        for (auto& array : records)
+        {
+            array.init(&slab, 1);
+            ASSERT_NE(array.data(), nullptr);
+            ASSERT_EQ(reinterpret_cast<uintptr_t>(array.data()) % alignof(AlignedRecord), 0u);
+        }
+        records[0].push(
+            AlignedRecord{
+            {42, 97}
+        });
+        const auto* original = records[0].data();
+        ASSERT_TRUE(records[0].try_reserve(100));
+        EXPECT_NE(records[0].data(), original);
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(records[0].data()) % alignof(AlignedRecord), 0u);
+        EXPECT_EQ(records[0][0].Values[0], 42u);
+        EXPECT_EQ(records[0][0].Values[1], 97u);
+        records[0].reserve(200);
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(records[0].data()) % alignof(AlignedRecord), 0u);
+        EXPECT_EQ(records[0][0].Values[0], 42u);
+        const auto* retained = records[0].data();
+        EXPECT_FALSE(records[0].try_reserve(64 * 1024));
+        EXPECT_EQ(records[0].data(), retained);
+        EXPECT_EQ(records[0][0].Values[1], 97u);
+        struct alignas(64) OverAlignedRecord
+        {
+            uint64_t Value = 0;
+        };
+        Array<OverAlignedRecord> over_aligned = {};
+        over_aligned.init(&slab, 1);
+        ASSERT_NE(over_aligned.data(), nullptr);
+        ASSERT_EQ(reinterpret_cast<uintptr_t>(over_aligned.data()) % alignof(OverAlignedRecord), 0u);
+        over_aligned.push(OverAlignedRecord{123});
+        ASSERT_TRUE(over_aligned.try_reserve(32));
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(over_aligned.data()) % alignof(OverAlignedRecord), 0u);
+        EXPECT_EQ(over_aligned[0].Value, 123u);
+        slab.Free(filler);
+    }
+    EXPECT_EQ(slab.GetStatistics().LiveBlocks, 0u);
+    slab.Shutdown();
+    arena.Shutdown();
+}
+
 TEST_F(ArrayTest, FrontAndBack)
 {
     Array<int> array;

@@ -83,8 +83,7 @@ namespace ZEngine::Core::Containers
             }
         }
 
-        /// @brief Init backed by a TLSFSlab — Realloc extends in-place when possible,
-        ///        eliminating dead-block accumulation from arena-backed grows.
+        /// @brief Init backed by a TLSFSlab with individually reclaimable storage.
         void init(Memory::TLSFSlab* slab, size_type initial_capacity)
         {
             m_allocator = nullptr;
@@ -293,7 +292,9 @@ namespace ZEngine::Core::Containers
 
             if (m_slab)
             {
-                m_data = static_cast<pointer>(m_slab->Realloc(m_data, new_alloc_size));
+                auto* storage = static_cast<pointer>(m_slab->TryReallocAligned(m_data, old_alloc_size, new_alloc_size, alignof(value_type)));
+                ZENGINE_VALIDATE_ASSERT(storage != nullptr, "Array::reserve: slab exhausted or invalid allocation")
+                m_data = storage;
             }
             else
                 m_data = static_cast<pointer>(ZResize(m_allocator, m_data, old_alloc_size, new_alloc_size, ZAlignof<value_type>()));
@@ -315,7 +316,7 @@ namespace ZEngine::Core::Containers
             }
             const size_t old_bytes = m_capacity * sizeof(T);
             const size_t new_bytes = new_capacity * sizeof(T);
-            auto*        storage   = m_slab ? static_cast<pointer>(m_slab->TryRealloc(m_data, new_bytes)) : static_cast<pointer>(m_allocator->TryResize(m_data, old_bytes, new_bytes, ZAlignof<value_type>()));
+            auto*        storage   = m_slab ? static_cast<pointer>(m_slab->TryReallocAligned(m_data, old_bytes, new_bytes, alignof(value_type))) : static_cast<pointer>(m_allocator->TryResize(m_data, old_bytes, new_bytes, ZAlignof<value_type>()));
             if (!storage)
             {
                 return false;
