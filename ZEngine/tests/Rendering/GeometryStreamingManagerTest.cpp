@@ -573,6 +573,7 @@ protected:
 
 TEST_F(SceneResourceBundleTest, InitialFrameCopiesSceneInputAndExpandsOnlyRetainedResourceVersions)
 {
+    ASSERT_EQ(reinterpret_cast<uintptr_t>(Assets::Instance()->GPUMeshMaterials.data()) % alignof(ZEngine::Rendering::Meshes::MeshMaterial), 0u);
     Material(100);
     Material(101);
     {

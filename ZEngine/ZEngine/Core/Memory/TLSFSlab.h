@@ -58,6 +58,9 @@ namespace ZEngine::Core::Memory
         /// @brief Checked growth; exhaustion leaves ptr allocated and returns null.
         /// Unlike Realloc, invalid sizes and an uninitialized pool do not assert.
         [[nodiscard]] void*         TryRealloc(void* ptr, size_t n);
+        /// Resize while preserving the requested alignment and existing bytes.
+        /// On failure the original block remains owned by the caller.
+        [[nodiscard]] void*         TryReallocAligned(void* ptr, size_t old_size, size_t new_size, size_t alignment);
         /// Checked aligned allocation from existing backing; no parent allocation.
         [[nodiscard]] void*         TryAllocate(size_t n, size_t alignment = DEFAULT_ALIGNMENT);
         // No pool mutation/lock/allocation. Includes the aligned payload and
