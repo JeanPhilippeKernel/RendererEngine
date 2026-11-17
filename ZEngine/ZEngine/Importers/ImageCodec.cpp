@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <limits>
+#include <utility>
 
 // One shared CPU implementation. Cooking installs its checked route before
 // probing/decoding, including decoder-internal allocations and reallocations.
@@ -239,7 +240,7 @@ namespace ZEngine::Importers::ImageCodec
         }
     } // namespace
 
-    Core::VFS::VFSResult<void> ValidateEncodedImage(const AssetCodec::AssetByteSource& source, IAllocationRoute& route, const EncodedImageLimits& limits, EncodedImageDescription* output)
+    static Core::VFS::VFSResult<void> ProcessEncodedImage(const AssetCodec::AssetByteSource& source, IAllocationRoute& route, const EncodedImageLimits& limits, EncodedImageDescription* output, uint8_t** retained_pixels)
     {
         if (!source.Read || !output)
         {
@@ -287,7 +288,7 @@ namespace ZEngine::Importers::ImageCodec
         {
             return VFS::VFSResult<void>::Fail(input.Error != VFS::VFSError::OK ? input.Error : VFS::VFSError::Corrupted);
         }
-        if (static_cast<uint32_t>(width) > limits.MaxDimension || static_cast<uint32_t>(height) > limits.MaxDimension || uint64_t(width) * uint64_t(height) > limits.MaxDecodedBytes / (4 * (bits / 8)))
+        if (static_cast<uint32_t>(width) > limits.MaxDimension || static_cast<uint32_t>(height) > limits.MaxDimension || uint64_t(width) * uint64_t(height) > limits.MaxDecodedBytes / (4 * (bits / 8)) || uint64_t(width) * uint64_t(height) > std::numeric_limits<size_t>::max() / 4)
         {
             return VFS::VFSResult<void>::Fail(VFS::VFSError::SizeLimitExceeded);
         }
@@ -307,12 +308,100 @@ namespace ZEngine::Importers::ImageCodec
         info.bits_per_channel  = 8;
         void*      pixels      = DecodeImage(kind, decoder, &decoded_width, &decoded_height, &decoded_channels, info);
         const bool valid       = pixels && decoded_width == width && decoded_height == height && decoded_channels == channels && info.bits_per_channel == static_cast<int>(bits);
-        Free(pixels);
         if (input.Error != VFS::VFSError::OK || !valid)
         {
+            Free(pixels);
             return VFS::VFSResult<void>::Fail(input.Error != VFS::VFSError::OK ? input.Error : VFS::VFSError::Corrupted);
         }
+        if (retained_pixels)
+        {
+            const size_t pixel_bytes = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+            auto*        rgba        = static_cast<uint8_t*>(pixels);
+            if (bits == 16)
+            {
+                const auto* source16 = static_cast<const uint16_t*>(pixels);
+                for (size_t i = 0; i < pixel_bytes; ++i)
+                {
+                    rgba[i] = static_cast<uint8_t>(source16[i] >> 8);
+                }
+            }
+            const size_t row_bytes = static_cast<size_t>(width) * 4;
+            for (size_t y = 0; y < static_cast<size_t>(height) / 2; ++y)
+            {
+                auto* top    = rgba + y * row_bytes;
+                auto* bottom = rgba + (static_cast<size_t>(height) - 1 - y) * row_bytes;
+                for (size_t x = 0; x < row_bytes; ++x)
+                {
+                    std::swap(top[x], bottom[x]);
+                }
+            }
+            *retained_pixels = rgba;
+        }
+        else
+        {
+            Free(pixels);
+        }
         *output = {kind, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<uint32_t>(channels), bits};
+        return VFS::VFSResult<void>::Ok();
+    }
+
+    DecodedImage::~DecodedImage()
+    {
+        Reset();
+    }
+
+    DecodedImage::DecodedImage(DecodedImage&& other) noexcept : m_route(std::exchange(other.m_route, nullptr)), m_pixels(std::exchange(other.m_pixels, nullptr)), m_size(std::exchange(other.m_size, 0)), m_description(std::exchange(other.m_description, {})) {}
+
+    DecodedImage& DecodedImage::operator=(DecodedImage&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Reset();
+            m_route       = std::exchange(other.m_route, nullptr);
+            m_pixels      = std::exchange(other.m_pixels, nullptr);
+            m_size        = std::exchange(other.m_size, 0);
+            m_description = std::exchange(other.m_description, {});
+        }
+        return *this;
+    }
+
+    void DecodedImage::Reset() noexcept
+    {
+        if (m_pixels)
+        {
+            m_route->Free(m_pixels);
+        }
+        m_route       = nullptr;
+        m_pixels      = nullptr;
+        m_size        = 0;
+        m_description = {};
+    }
+
+    Core::Containers::ArrayView<const uint8_t> DecodedImage::Pixels() const noexcept
+    {
+        return {m_pixels, m_size};
+    }
+
+    Core::VFS::VFSResult<void> ValidateEncodedImage(const AssetCodec::AssetByteSource& source, IAllocationRoute& route, const EncodedImageLimits& limits, EncodedImageDescription* output)
+    {
+        return ProcessEncodedImage(source, route, limits, output, nullptr);
+    }
+
+    Core::VFS::VFSResult<void> DecodeEncodedImage(const AssetCodec::AssetByteSource& source, IAllocationRoute& route, const EncodedImageLimits& limits, DecodedImage* output)
+    {
+        if (!output)
+        {
+            return VFS::VFSResult<void>::Fail(VFS::VFSError::InvalidPath);
+        }
+        DecodedImage candidate = {};
+        const auto   result    = ProcessEncodedImage(source, route, limits, &candidate.m_description, &candidate.m_pixels);
+        if (result.Failed())
+        {
+            return result;
+        }
+        candidate.m_route = &route;
+        candidate.m_size  = static_cast<size_t>(candidate.m_description.Width) * candidate.m_description.Height * 4;
+        *output           = std::move(candidate);
         return VFS::VFSResult<void>::Ok();
     }
 

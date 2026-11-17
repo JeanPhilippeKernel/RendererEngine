@@ -386,7 +386,7 @@ collision by first/last entry wins. These failures preserve the prior package.
 ```
 
 The manifest uses the strict versioned
-[v1 JSON Schema](scene-cooker-contracts/manifest-v1.schema.json), with exact
+[v1 JSON Schema](scene-cooker-manifest-v1.schema.json), with exact
 field names, ordering, compatibility, and semantic rules in the
 [wire contract](scene-cooker-contracts.md#1-manifest-v1). Its records contain:
 

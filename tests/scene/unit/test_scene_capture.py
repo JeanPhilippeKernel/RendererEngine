@@ -1,4 +1,5 @@
 import importlib.util
+import gzip
 from pathlib import Path
 import tempfile
 import unittest
@@ -22,6 +23,12 @@ class SceneCaptureTest(unittest.TestCase):
     def test_crlf_separator(self):
         self.path.write_bytes(b"P6\r\n1 1\r\n255\r\n\n\r\t")
         self.assertEqual(capture.read_ppm(self.path), (1, 1, b"\n\r\t"))
+
+    def test_lossless_gzip_reference_uses_the_same_bounded_parser(self):
+        compressed = self.path.with_suffix(".ppm.gz")
+        with gzip.open(compressed, "wb") as output:
+            output.write(b"P6\n1 1\n255\n\x01\x02\x03")
+        self.assertEqual(capture.read_ppm(compressed), (1, 1, b"\x01\x02\x03"))
 
     def test_malformed_or_wrong_space_capture_is_rejected(self):
         for data in (b"", b"P3\n1 1\n255\n123", b"P6\n0 1\n255\n", b"P6\n1 1\n65535\n123456", b"P6\n1 1\n255\n12", b"P6\n1 1\n255\n1234", b"P6\n# missing newline"):
@@ -79,6 +86,11 @@ class SceneCaptureTest(unittest.TestCase):
                 capture.validate_capture_log(self.path)
         self.path.write_text("[info] Engine initialized\n[info] Engine destroyed\n", encoding="utf-8")
         capture.validate_capture_log(self.path)
+
+    def test_reconstructed_log_rejects_errors_in_earlier_segments(self):
+        capture.validate_capture_log_text("[info] first segment\n[info] Engine destroyed\n")
+        with self.assertRaisesRegex(ValueError, "validation errors"):
+            capture.validate_capture_log_text("[error] first segment failed\n[info] Engine destroyed\n")
 
 
 if __name__ == "__main__":

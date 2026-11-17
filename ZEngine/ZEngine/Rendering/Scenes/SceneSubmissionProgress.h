@@ -12,15 +12,16 @@ namespace ZEngine::Rendering::Scenes
     public:
         struct Snapshot
         {
-            uint64_t Generation       = 0;
-            uint64_t Count            = 0;
-            uint64_t FirstTimestampNs = 0;
-            uint32_t DrawCount        = 0;
+            uint64_t Generation         = 0;
+            uint64_t Count              = 0;
+            uint64_t FirstTimestampNs   = 0;
+            uint32_t DrawCount          = 0;
+            uint64_t FirstTimelineValue = 0;
         };
 
         /// Called only after Vulkan accepted a complete scene frame. A rejected
         /// graph, aborted acquire or failed submission must not advance this.
-        void Record(uint64_t generation, uint64_t timestamp_ns, uint32_t draw_count = 0) noexcept
+        void Record(uint64_t generation, uint64_t timestamp_ns, uint32_t draw_count = 0, uint64_t timeline_value = 0) noexcept
         {
             const auto previous = m_generation.load();
             if (!generation || generation < previous)
@@ -36,6 +37,7 @@ namespace ZEngine::Rendering::Scenes
                 m_generation.store(generation);
                 m_count.store(1);
                 m_first_timestamp.store(timestamp_ns);
+                m_first_timeline_value.store(timeline_value);
             }
             else if (m_count.load() != std::numeric_limits<uint64_t>::max())
             {
@@ -58,7 +60,7 @@ namespace ZEngine::Rendering::Scenes
                 {
                     continue;
                 }
-                const Snapshot snapshot = {m_generation.load(), m_count.load(), m_first_timestamp.load(), m_draw_count.load()};
+                const Snapshot snapshot = {m_generation.load(), m_count.load(), m_first_timestamp.load(), m_draw_count.load(), m_first_timeline_value.load()};
                 if (before == m_sequence.load())
                 {
                     *output = snapshot;
@@ -69,10 +71,11 @@ namespace ZEngine::Rendering::Scenes
         }
 
     private:
-        std::atomic<uint64_t> m_sequence        = 0;
-        std::atomic<uint64_t> m_generation      = 0;
-        std::atomic<uint64_t> m_count           = 0;
-        std::atomic<uint64_t> m_first_timestamp = 0;
-        std::atomic<uint32_t> m_draw_count      = 0;
+        std::atomic<uint64_t> m_sequence             = 0;
+        std::atomic<uint64_t> m_generation           = 0;
+        std::atomic<uint64_t> m_count                = 0;
+        std::atomic<uint64_t> m_first_timestamp      = 0;
+        std::atomic<uint32_t> m_draw_count           = 0;
+        std::atomic<uint64_t> m_first_timeline_value = 0;
     };
 } // namespace ZEngine::Rendering::Scenes

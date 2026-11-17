@@ -182,11 +182,14 @@ def capture_records(path, window=None):
                 continue
             if row["kind"] == "value":
                 memory = row["name"].startswith("SceneLoad.Memory.") and row["name"].endswith("Bytes")
+                visibility = row["name"] == "SceneLoad.Main.WindowOcclusionVisible"
+                if visibility and value not in (0, 1, 2):
+                    raise ValueError("invalid window occlusion observation")
                 if memory and (not value.is_integer() or value > 2 ** 53 or Decimal(row["value"]) != int(value)):
                     raise ValueError("inexact memory byte count")
                 if row["name"].startswith("SceneLoad.Memory.") and not memory:
                     raise ValueError("unknown memory units")
-                if not memory and not row["name"].endswith("Ms"):
+                if not memory and not visibility and not row["name"].endswith("Ms"):
                     raise ValueError("unknown value units")
             yield row["kind"], row["name"], timestamp, value
 

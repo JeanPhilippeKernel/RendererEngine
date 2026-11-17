@@ -11,16 +11,25 @@
 #include <ZEngine/Core/VFS/VFSFileIO.h>
 #include <ZEngine/ECS/BinarySceneCodec.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
+#include <ZEngine/ECS/Components/CameraComponent.h>
 #include <ZEngine/ECS/Components/MaterialComponent.h>
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
 #include <ZEngine/ECS/Components/UUIDComponent.h>
+#include <ZEngine/ECS/CookedSceneReconstruction.h>
 #include <ZEngine/ECS/Scene.h>
+#include <ZEngine/ECS/SceneInstance.h>
 #include <ZEngine/Importers/AssetCodec.h>
 #include <ZEngine/Importers/IAssetImporter.h>
 #include <ZEngine/Importers/ImageCodec.h>
 #include <ZEngine/Importers/MaterialAssetDocument.h>
+#include <ZEngine/Managers/CookedAssetReader.h>
+#include <ZEngine/Managers/CookedCpuAssetSet.h>
+#include <ZEngine/Managers/CookedCpuClosureCache.h>
+#include <ZEngine/Rendering/Materials/CookedMaterialBinding.h>
+#include <ZEngine/Rendering/Meshes/CookedMeshStaging.h>
+#include <ZEngine/Rendering/Textures/CookedEnvironmentUpload.h>
 #include <gtest/gtest.h>
 #include <rapidhash.h>
 #include <algorithm>
@@ -58,6 +67,7 @@ namespace ZEngine::Cook::Tests
             std::filesystem::path Root          = {};
             bool                  Custom        = false;
             uint32_t              CustomVersion = 1;
+            std::filesystem::path SecondRoot    = {};
         };
 
         ProcessOptions Options = {};
@@ -222,6 +232,18 @@ namespace ZEngine::Cook::Tests
     // Test-only producer/consumer executable, not a shipping cooker CLI or
     // runtime/Play integration. Consumer mounts ONLY the published package, with
     // read-only authority, and never constructs an input provider or reads YAML.
+    struct ClosureCacheDrain
+    {
+        Managers::CookedCpuClosureCache& Cache;
+        ~ClosureCacheDrain()
+        {
+            while (Cache.PumpOne())
+            {
+            }
+            EXPECT_TRUE(Cache.Shutdown());
+        }
+    };
+
     class SceneCookProcessTest : public testing::Test
     {
     protected:
@@ -244,7 +266,7 @@ namespace ZEngine::Cook::Tests
 
         void                                             SetUp() override
         {
-            Reading            = Options.Mode == "read" || Options.Mode == "read-changed" || Options.Mode == "reject-missing" || Options.Mode == "reject-corrupt" || Options.Mode == "snapshot-read" || Options.Mode == "reject-schema" || Options.Mode == "reject-version";
+            Reading            = Options.Mode == "read" || Options.Mode == "read-changed" || Options.Mode == "cross-version" || Options.Mode == "reject-missing" || Options.Mode == "reject-corrupt" || Options.Mode == "snapshot-read" || Options.Mode == "reject-schema" || Options.Mode == "reject-version";
             // Allocate different real runtime type IDs in the reader and second
             // producer, without resetting global IDs or changing schema keys.
             const bool reverse = Reading || Options.Mode == "write-reverse";
@@ -357,6 +379,30 @@ namespace ZEngine::Cook::Tests
             });
             scene.AddComponent<ECS::Components::MeshComponent>(entity, {MeshUUID});
             scene.AddComponent<ECS::Components::MaterialComponent>(entity, {MaterialUUID});
+            ECS::EntityID camera = {};
+            if ((Options.Mode == "write-camera" || Options.Mode == "write-blend-camera" || Options.Mode == "write-hierarchy-camera" || Options.Mode == "write-switch-camera" || Options.Mode == "write-switch-no-camera" || Options.Mode == "write-switch-unique-material"))
+            {
+                camera = scene.CreateEntity();
+                scene.AddComponent<ECS::Components::UUIDComponent>(camera, {Identity("a0000000-0000-0000-0000-00000000000a")});
+                scene.AddComponent<ECS::Components::TransformComponent>(
+                    camera,
+                    {
+                    .Position = {1.f, 2.f, 8.f}
+                });
+                scene.AddComponent<ECS::Components::CameraComponent>(camera, {.IsMain = true});
+            }
+            if (Options.Mode == "write-hierarchy" || Options.Mode == "write-hierarchy-camera")
+            {
+                const auto parent = scene.CreateEntity();
+                scene.AddComponent<ECS::Components::UUIDComponent>(parent, {Identity("80000000-0000-0000-0000-000000000008")});
+                scene.AddComponent<ECS::Components::TransformComponent>(
+                    parent,
+                    {
+                    .Position = {1, 0, 0}
+                });
+                scene.GetComponent<ECS::Components::TransformComponent>(entity)->Position.x = 0;
+                ASSERT_TRUE(scene.SetParent(entity, parent));
+            }
             if (Options.Custom)
             {
                 scene.AddComponent<CookCustomComponent>(entity, {.Texture = TextureUUID, .Weight = .375f, .RuntimeCache = 12345});
@@ -368,6 +414,19 @@ namespace ZEngine::Cook::Tests
             ECS::SceneDocument document             = {};
             ASSERT_TRUE(ECS::SceneDocument::Capture(scene, settings, Schemas, &document, &SceneDiagnostics, Limits.SceneLimits));
             ASSERT_TRUE(document.Save(Files, Path(SceneFile), &SceneDiagnostics).Succeeded());
+            if ((Options.Mode == "write-switch" || Options.Mode == "write-switch-camera" || Options.Mode == "write-switch-no-camera" || Options.Mode == "write-switch-unique-material"))
+            {
+                if (Options.Mode == "write-switch-no-camera")
+                    scene.DestroyEntity(camera);
+                if (Options.Mode == "write-switch-unique-material")
+                    scene.GetComponent<ECS::Components::MaterialComponent>(entity)->MaterialUUID = Identity("b0000000-0000-0000-0000-00000000000b");
+                scene.GetComponent<ECS::Components::TransformComponent>(entity)->Position.x = 2;
+                settings.UUID                                                               = Identity("90000000-0000-0000-0000-000000000009");
+                settings.Name                                                               = "Alternate cooked scene";
+                ECS::SceneDocument alternate                                                = {};
+                ASSERT_TRUE(ECS::SceneDocument::Capture(scene, settings, Schemas, &alternate, &SceneDiagnostics, Limits.SceneLimits));
+                ASSERT_TRUE(alternate.Save(Files, Path("/scenes/alternate.scene"), &SceneDiagnostics).Succeeded());
+            }
             scene.Shutdown();
 
             Importers::AssetMesh mesh = {};
@@ -375,6 +434,10 @@ namespace ZEngine::Cook::Tests
             mesh.Vertices.init(&Memory.MainArena, 24, 24);
             mesh.Vertices[8]  = 1;
             mesh.Vertices[17] = 1;
+            if (Options.Mode == "write-blend" || Options.Mode == "write-blend-camera")
+            {
+                mesh.Vertices[5] = mesh.Vertices[13] = mesh.Vertices[21] = 1;
+            }
             mesh.Indices.init(&Memory.MainArena, 3);
             mesh.Indices.push(0);
             mesh.Indices.push(1);
@@ -404,13 +467,26 @@ namespace ZEngine::Cook::Tests
             ASSERT_EQ(Helpers::secure_strcpy(material.Name, sizeof(material.Name), "Fixture material"), Helpers::MEMORY_OP_SUCCESS);
             material.Textures[0].UUID = TextureUUID;
             ASSERT_EQ(Helpers::secure_strcpy(material.Textures[0].Path, sizeof(material.Textures[0].Path), "assets/pixel.bmp"), Helpers::MEMORY_OP_SUCCESS);
-            material.AlbedoColor                                        = {1, .5f, .25f, 1};
-            material.Factors[2]                                         = .5f;
+            material.AlbedoColor = {1, .5f, .25f, 1};
+            material.Factors[2]  = .5f;
+            if (Options.Mode == "write-blend" || Options.Mode == "write-blend-camera")
+            {
+                material.AlphaMode  = Rendering::Materials::AlphaMode::Blend;
+                material.Factors[0] = .5f;
+            }
             Core::Containers::FixedArray<VFS::VFSRelativePath, 5> paths = {Relative("assets/pixel.bmp")};
             MaterialSink                                          sink  = {};
             ASSERT_TRUE(Codec::WriteCanonicalMaterialAsset(material, paths, MaterialSink::Write, &sink).Succeeded());
             Write(Path("/assets/material.zematerial"), {sink.Bytes.data(), sink.Size});
             WriteText("/assets/material.zematerial.meta", R"({"uuid":"40000000-0000-0000-0000-000000000004","importer":"MaterialImporter","settings":[]})");
+            if (Options.Mode == "write-switch-unique-material")
+            {
+                material.UUID               = Identity("b0000000-0000-0000-0000-00000000000b");
+                MaterialSink alternate_sink = {};
+                ASSERT_TRUE(Codec::WriteCanonicalMaterialAsset(material, paths, MaterialSink::Write, &alternate_sink).Succeeded());
+                Write(Path("/assets/alternate.zematerial"), {alternate_sink.Bytes.data(), alternate_sink.Size});
+                WriteText("/assets/alternate.zematerial.meta", R"({"uuid":"b0000000-0000-0000-0000-00000000000b","importer":"MaterialImporter","settings":[]})");
+            }
             SavePixel();
             WriteText("/assets/pixel.bmp.meta", R"({"uuid":"50000000-0000-0000-0000-000000000005","importer":"TextureImporter","settings":[]})");
 
@@ -578,8 +654,11 @@ namespace ZEngine::Cook::Tests
             CookAdapterRegistry   adapters    = {};
             const CookAdapterFns  functions[] = {CookEnvironmentAdapter(), CookMaterialAdapter(), CookMeshAdapter(), CookTextureAdapter()};
             ASSERT_TRUE(adapters.Initialize(functions).Succeeded());
-            const VFS::VFSPath     scenes[]        = {Path(SceneFile)};
-            const SceneCookRequest request         = {scenes, Path("/output"), CookTarget::DesktopVulkanLE64, force};
+            const VFS::VFSPath     scenes[] = {Path(SceneFile), Path("/scenes/alternate.scene")};
+            const SceneCookRequest request  = {
+                {scenes, (Options.Mode == "write-switch" || Options.Mode == "write-switch-camera" || Options.Mode == "write-switch-no-camera" || Options.Mode == "write-switch-unique-material") ? 2u : 1u},
+                Path("/output"), CookTarget::DesktopVulkanLE64, force
+            };
             const SceneCookContext context         = {&source, &Files, &Files, Path("/scratch"), &Schemas, Migrations.IsInitialized() ? &Migrations : nullptr, &adapters, &Allocator, Limits};
             const Digest256        previous_digest = {.Bytes = {{0xa5, 0x5a}}};
             SceneCookResult        result          = {};
@@ -637,9 +716,9 @@ namespace ZEngine::Cook::Tests
                 return;
             }
             ASSERT_TRUE(cooked.Succeeded()) << "Cook failed (VFS " << static_cast<uint32_t>(cooked.Error()) << "; writes " << Faults.Writes << ", reads " << Faults.Reads << ", object renames " << Faults.ObjectRenames << ", manifest renames " << Faults.ManifestRenames << ").";
-            EXPECT_EQ(result.SceneCount, 1u);
-            EXPECT_EQ(result.AssetCount, 4u);
-            EXPECT_EQ(result.ObjectCount, 5u);
+            EXPECT_EQ(result.SceneCount, (Options.Mode == "write-switch" || Options.Mode == "write-switch-camera" || Options.Mode == "write-switch-no-camera" || Options.Mode == "write-switch-unique-material") ? 2u : 1u);
+            EXPECT_EQ(result.AssetCount, Options.Mode == "write-switch-unique-material" ? 5u : 4u);
+            EXPECT_EQ(result.ObjectCount, Options.Mode == "write-switch-unique-material" ? 7u : (Options.Mode == "write-switch" || Options.Mode == "write-switch-camera" || Options.Mode == "write-switch-no-camera" || Options.Mode == "write-switch-unique-material") ? 6u : 5u);
             EXPECT_EQ(result.Published, published);
             EXPECT_LE(result.PeakWorkingBytes, Limits.MaxWorkingBytes);
             EXPECT_FALSE(Diagnostics.HasErrors());
@@ -957,6 +1036,447 @@ namespace ZEngine::Cook::Tests
             }
             return VFS::VFSResult<void>::Ok();
         }
+
+        // Exercise the runtime readers in a fresh process that mounts only the
+        // cook output. The source trees have already been removed by the driver.
+        void CheckRuntimeReaders()
+        {
+            ASSERT_TRUE(Schemas.FreezeForWorker(&SceneDiagnostics));
+            VFS::VFSReadRootLease root = {};
+            ASSERT_TRUE(Files.AcquireReadRoot(VFS::VFSPath::Root(), &root).Succeeded());
+            Managers::CookedPackageSnapshot package = {};
+            ASSERT_TRUE(Managers::CookedPackageSnapshot::Capture(std::move(root), SceneUUID, Schemas, Limits, Allocator, &Diagnostics, &package).Succeeded());
+            CookCodecAllocationRoute       route(Allocator);
+            Managers::CookedObjectSnapshot object = {};
+
+            ASSERT_TRUE(package.CaptureScene(route, ZKilo(64), &object).Succeeded());
+            {
+                Core::Memory::ArenaAllocator scene_arena = {};
+                Memory.MainArena.CreateSubArena(ZMega(16), &scene_arena, "CookRuntimeProcess/Scene");
+                PaddedAtomic<bool>          occupied = {};
+                const ECS::SceneStorageSlot slot     = {&scene_arena, &occupied};
+                ECS::SceneStorageLease      storage  = {};
+                ASSERT_TRUE(ECS::SceneStorageLease::Acquire({&slot, 1}, &storage));
+                VFS::VFSReadRootLease duplicate_root = {};
+                ASSERT_TRUE(Files.AcquireReadRoot(VFS::VFSPath::Root(), &duplicate_root).Succeeded());
+                Managers::CookedPackageSnapshot duplicate = {};
+                ASSERT_TRUE(Managers::CookedPackageSnapshot::Capture(std::move(duplicate_root), SceneUUID, Schemas, Limits, Allocator, &Diagnostics, &duplicate).Succeeded());
+                const auto                           digest       = duplicate.ManifestDigest();
+                Managers::CookedCpuClosureCache      cache        = {};
+                const Managers::CookedCpuAssetLimits asset_limits = {.MaxAssets = 4, .MaxObjectBytes = ZKilo(64), .MaxMeshWorkspaceBytes = ZKilo(64)};
+                ASSERT_TRUE(cache.Initialize(route, Schemas, asset_limits, 1, 2, 8));
+                ClosureCacheDrain              drain{cache};
+                ECS::CookedSceneReconstruction reconstruction = {};
+                std::atomic<bool>              stop           = true;
+                EXPECT_EQ(ECS::ReconstructCookedScene(duplicate, std::move(storage), Schemas, route, ZKilo(64), ZMega(4), cache, &reconstruction, &SceneDiagnostics, Limits.SceneLimits, &stop), ECS::CookedSceneReconstructionError::Cancelled);
+                EXPECT_NE(storage.Arena(), nullptr);
+                EXPECT_TRUE(duplicate.IsValid());
+                stop = false;
+                EXPECT_EQ(ECS::ReconstructCookedScene(duplicate, std::move(storage), Schemas, route, 1, ZMega(4), cache, &reconstruction, &SceneDiagnostics, Limits.SceneLimits, &stop), ECS::CookedSceneReconstructionError::SceneObject);
+                EXPECT_NE(storage.Arena(), nullptr);
+                EXPECT_TRUE(duplicate.IsValid());
+                EXPECT_EQ(reconstruction.Instance, nullptr);
+                EXPECT_FALSE(reconstruction.Assets);
+                ASSERT_EQ(ECS::ReconstructCookedScene(duplicate, std::move(storage), Schemas, route, ZKilo(64), ZMega(4), cache, &reconstruction, &SceneDiagnostics, Limits.SceneLimits, &stop), ECS::CookedSceneReconstructionError::None);
+                ASSERT_NE(reconstruction.Instance, nullptr);
+                EXPECT_FALSE(duplicate.IsValid());
+                EXPECT_TRUE(reconstruction.Instance->MatchesCookedClosure(digest, SceneUUID));
+                EXPECT_FALSE(reconstruction.Instance->MatchesCookedClosure(digest, MeshUUID));
+                EXPECT_FALSE(reconstruction.Instance->MatchesCookedClosure({}, SceneUUID));
+                EXPECT_EQ(reconstruction.Instance->World().AliveCount(), 1u);
+                Managers::CookedCpuClosureCache::Result result = {};
+                ASSERT_TRUE(reconstruction.Assets.Poll(&result));
+                EXPECT_EQ(result.StateValue, Managers::CookedCpuClosureCache::State::Pending);
+                ASSERT_TRUE(cache.PumpOne());
+                ASSERT_TRUE(reconstruction.Assets.Poll(&result));
+                ASSERT_EQ(result.StateValue, Managers::CookedCpuClosureCache::State::Ready);
+                EXPECT_EQ(result.Assets->ManifestDigest(), digest);
+                EXPECT_EQ(result.Assets->SceneUUID(), SceneUUID);
+                reconstruction.Assets.Reset();
+                reconstruction.Instance.reset();
+                ASSERT_TRUE(cache.PumpOne());
+                ASSERT_TRUE(cache.Shutdown());
+                EXPECT_FALSE(occupied.value.load());
+            }
+            ECS::SceneDocument document = {};
+            ASSERT_TRUE(ECS::BinarySceneCodec::Decode(object.Bytes(), Schemas, &document, &SceneDiagnostics, Limits.SceneLimits, &route));
+            ASSERT_TRUE(package.ValidateScene(document, Schemas, &SceneDiagnostics).Succeeded());
+            std::atomic<bool> cancelled = true;
+            EXPECT_EQ(package.ValidateScene(document, Schemas, &SceneDiagnostics, &cancelled).Error(), VFS::VFSError::Cancelled);
+            ECS::Scene empty = {};
+            empty.Initialize(&Memory.MainArena);
+            ECS::SceneDocument                   missing_roots  = {};
+            const ECS::SceneDocumentSettingsView empty_settings = {.UUID = SceneUUID, .Name = SceneName};
+            ASSERT_TRUE(ECS::SceneDocument::Capture(empty, empty_settings, Schemas, &missing_roots, &SceneDiagnostics));
+            EXPECT_EQ(package.ValidateScene(missing_roots, Schemas, &SceneDiagnostics).Error(), VFS::VFSError::Corrupted);
+            empty.Shutdown();
+            object.Reset();
+
+            const CookAssetIdentity mesh_id = {CookAssetKind::Mesh, MeshUUID};
+            ASSERT_TRUE(package.CaptureAsset(mesh_id, route, ZKilo(64), &object).Succeeded());
+            size_t workspace_bytes = 0;
+            ASSERT_TRUE(Codec::MeasureMeshAssetReadWorkspace(object.Source(), &workspace_bytes, MeshUUID).Succeeded());
+            CookWorkspace workspace = {};
+            ASSERT_TRUE(workspace.Initialize(Allocator, workspace_bytes, CookMemoryCategory::Codecs).Succeeded());
+            Importers::AssetMesh          mesh      = {};
+            Importers::AssetNodeHierarchy hierarchy = {};
+            ASSERT_TRUE(Managers::CookedAssetReader::ReadMesh(package, mesh_id, object, workspace.Arena(), *route.WorkingMemoryBudget(), &mesh, &hierarchy).Succeeded());
+            ASSERT_EQ(mesh.SubMeshes.size(), 1u);
+            EXPECT_EQ(mesh.SubMeshes[0].MaterialUUID, MaterialUUID);
+            EXPECT_EQ(hierarchy.MeshUUID, MeshUUID);
+            EXPECT_EQ(Managers::CookedAssetReader::ReadMesh(package, {CookAssetKind::Mesh, MaterialUUID}, object, workspace.Arena(), *route.WorkingMemoryBudget(), &mesh, &hierarchy).Error(), VFS::VFSError::Corrupted);
+            object.Reset();
+
+            const CookAssetIdentity material_id = {CookAssetKind::Material, MaterialUUID};
+            ASSERT_TRUE(package.CaptureAsset(material_id, route, ZKilo(64), &object).Succeeded());
+            Codec::MaterialAssetReader          reader   = {};
+            const Codec::MaterialAssetDocument* material = nullptr;
+            ASSERT_TRUE(Managers::CookedAssetReader::ReadMaterial(package, material_id, object, reader, &material).Succeeded());
+            ASSERT_NE(material, nullptr);
+            EXPECT_EQ(material->Textures[0].UUID, TextureUUID);
+            object.Reset();
+
+            const CookAssetIdentity texture_id = {CookAssetKind::Texture, TextureUUID};
+            ASSERT_TRUE(package.CaptureAsset(texture_id, route, ZKilo(64), &object).Succeeded());
+            Importers::ImageCodec::EncodedImageDescription image = {};
+            ASSERT_TRUE(Managers::CookedAssetReader::ValidateTexture(package, texture_id, object, route, {}, &image).Succeeded());
+            EXPECT_EQ(image.Kind, Importers::ImageCodec::EncodedImageKind::BMP);
+            EXPECT_EQ(image.Width, 1u);
+            {
+                Importers::ImageCodec::DecodedImage pixels = {};
+                ASSERT_TRUE(Managers::CookedAssetReader::ReadTexture(package, texture_id, object, route, {}, &pixels).Succeeded());
+                ASSERT_EQ(pixels.Pixels().size(), 4u);
+                EXPECT_EQ(pixels.Pixels()[0], 30u);
+                EXPECT_EQ(pixels.Pixels()[1], 20u);
+                EXPECT_EQ(pixels.Pixels()[2], Options.Mode == "read-changed" ? 90u : 10u);
+                EXPECT_EQ(pixels.Pixels()[3], 255u);
+            }
+            EXPECT_EQ(Managers::CookedAssetReader::ReadMaterial(package, material_id, object, reader, &material).Error(), VFS::VFSError::Corrupted);
+            object.Reset();
+
+            const CookAssetIdentity environment_id = {CookAssetKind::EnvironmentMap, SkyUUID};
+            ASSERT_TRUE(package.CaptureAsset(environment_id, route, ZKilo(64), &object).Succeeded());
+            Codec::EnvironmentMapFileHeader environment = {};
+            ASSERT_TRUE(Managers::CookedAssetReader::ReadEnvironment(package, environment_id, object, Stream, &environment).Succeeded());
+            EXPECT_EQ(environment.LayerCount, 6u);
+            EXPECT_EQ(environment.BufferByteSize, 96u);
+            EXPECT_EQ(route.Error(), VFS::VFSError::OK);
+            object.Reset();
+
+            const auto                     baseline = Allocator.OutstandingAllocations();
+            Managers::CookedCpuAssetLimits limits   = {.MaxAssets = 4, .MaxObjectBytes = ZKilo(64), .MaxMeshWorkspaceBytes = ZKilo(64)};
+            Managers::CookedCpuAssetSet    assets   = {};
+            auto                           refused  = limits;
+            refused.MaxAssets                       = 3;
+            EXPECT_EQ(Managers::CookedCpuAssetSet::Capture(package, route, refused, &assets).Error(), VFS::VFSError::SizeLimitExceeded);
+            EXPECT_FALSE(assets.IsValid());
+            EXPECT_EQ(Allocator.OutstandingAllocations(), baseline);
+            refused                       = limits;
+            refused.MaxMeshWorkspaceBytes = 1;
+            EXPECT_EQ(Managers::CookedCpuAssetSet::Capture(package, route, refused, &assets).Error(), VFS::VFSError::SizeLimitExceeded);
+            EXPECT_FALSE(assets.IsValid());
+            EXPECT_EQ(Allocator.OutstandingAllocations(), baseline);
+            EXPECT_EQ(Managers::CookedCpuAssetSet::Capture(package, route, limits, &assets, &cancelled).Error(), VFS::VFSError::Cancelled);
+            EXPECT_EQ(Allocator.OutstandingAllocations(), baseline);
+            struct CancellingRoute final : Core::Memory::IAllocationRoute
+            {
+                CookCodecAllocationRoute* Inner     = nullptr;
+                std::atomic<bool>*        Cancelled = nullptr;
+                uint32_t                  Calls     = 0;
+                void*                     Allocate(size_t size) noexcept override
+                {
+                    void* memory = Inner->Allocate(size);
+                    if (memory && ++Calls == 2)
+                    {
+                        Cancelled->store(true, std::memory_order_release);
+                    }
+                    return memory;
+                }
+                void* Reallocate(void* pointer, size_t old_size, size_t new_size) noexcept override
+                {
+                    return Inner->Reallocate(pointer, old_size, new_size);
+                }
+                void Free(void* pointer) noexcept override
+                {
+                    Inner->Free(pointer);
+                }
+                Core::Memory::IWorkingMemoryBudget* WorkingMemoryBudget() noexcept override
+                {
+                    return Inner->WorkingMemoryBudget();
+                }
+            } cancelling;
+            cancelled.store(false, std::memory_order_release);
+            cancelling.Inner     = &route;
+            cancelling.Cancelled = &cancelled;
+            EXPECT_EQ(Managers::CookedCpuAssetSet::Capture(package, cancelling, limits, &assets, &cancelled).Error(), VFS::VFSError::Cancelled);
+            EXPECT_EQ(Allocator.OutstandingAllocations(), baseline);
+            struct RefusingRoute final : Core::Memory::IAllocationRoute
+            {
+                CookCodecAllocationRoute* Inner = nullptr;
+                uint32_t                  Calls = 0;
+                void*                     Allocate(size_t size) noexcept override
+                {
+                    return ++Calls == 3 ? nullptr : Inner->Allocate(size);
+                }
+                void* Reallocate(void* pointer, size_t old_size, size_t new_size) noexcept override
+                {
+                    return Inner->Reallocate(pointer, old_size, new_size);
+                }
+                void Free(void* pointer) noexcept override
+                {
+                    Inner->Free(pointer);
+                }
+                Core::Memory::IWorkingMemoryBudget* WorkingMemoryBudget() noexcept override
+                {
+                    return Inner->WorkingMemoryBudget();
+                }
+            } refusing;
+            refusing.Inner = &route;
+            EXPECT_EQ(Managers::CookedCpuAssetSet::Capture(package, refusing, limits, &assets).Error(), VFS::VFSError::OutOfMemory);
+            EXPECT_FALSE(assets.IsValid());
+            EXPECT_EQ(Allocator.OutstandingAllocations(), baseline);
+            ASSERT_TRUE(Managers::CookedCpuAssetSet::Capture(package, route, limits, &assets).Succeeded());
+            const auto with_assets = Allocator.OutstandingAllocations();
+            ASSERT_EQ(assets.Size(), 4u);
+            EXPECT_EQ(assets.ManifestDigest(), package.ManifestDigest());
+            ASSERT_NE(assets.FindVersion(mesh_id), nullptr);
+            EXPECT_EQ(assets.FindVersion(mesh_id)->ObjectDigest, package.FindSelectedAsset(mesh_id)->Result.Object.Digest);
+            ASSERT_NE(assets.FindMesh(mesh_id), nullptr);
+            EXPECT_EQ(assets.FindMesh(mesh_id)->Vertices.size(), 24u);
+            ASSERT_NE(assets.FindHierarchy(mesh_id), nullptr);
+            EXPECT_EQ(assets.FindHierarchy(mesh_id)->MeshUUID, MeshUUID);
+            ASSERT_NE(assets.FindMaterial(material_id), nullptr);
+            EXPECT_EQ(assets.FindMaterial(material_id)->Textures[0].UUID, TextureUUID);
+            ASSERT_NE(assets.FindTexture(texture_id), nullptr);
+            EXPECT_EQ(assets.FindTexture(texture_id)->Pixels()[2], Options.Mode == "read-changed" ? 90u : 10u);
+            Rendering::Materials::CookedTextureBinding binding = {
+                texture_id, assets.FindVersion(texture_id)->ObjectDigest, {7, 1}
+            };
+            Rendering::Meshes::MeshMaterial gpu_material = {};
+            ASSERT_TRUE(Rendering::Materials::BuildCookedMaterial(assets, material_id, {&binding, 1}, &gpu_material));
+            EXPECT_EQ(gpu_material.AlbedoMap, 7u);
+            EXPECT_EQ(gpu_material.NormalMap, INVALID_MAP_HANDLE);
+            EXPECT_FLOAT_EQ(gpu_material.AlbedoColor.y, .5f);
+            EXPECT_FLOAT_EQ(gpu_material.Factors.z, .5f);
+            auto invalid_binding                   = binding;
+            invalid_binding.ObjectDigest.Bytes[0] ^= 1;
+            gpu_material.AlbedoMap                 = 123;
+            EXPECT_FALSE(Rendering::Materials::BuildCookedMaterial(assets, material_id, {&invalid_binding, 1}, &gpu_material));
+            EXPECT_EQ(gpu_material.AlbedoMap, 123u);
+            EXPECT_FALSE(Rendering::Materials::BuildCookedMaterial(assets, material_id, {}, &gpu_material));
+            invalid_binding              = binding;
+            invalid_binding.Handle.Index = INVALID_MAP_HANDLE;
+            EXPECT_FALSE(Rendering::Materials::BuildCookedMaterial(assets, material_id, {&invalid_binding, 1}, &gpu_material));
+            ASSERT_NE(assets.FindEnvironment(environment_id), nullptr);
+            EXPECT_EQ(assets.FindEnvironment(environment_id)->LayerCount, 6u);
+            EXPECT_EQ(assets.EnvironmentObject(environment_id).size(), 168u);
+            EXPECT_EQ(assets.FindMesh(texture_id), nullptr);
+            // Cancel from inside the actual cache build allocation path. A
+            // shared build must continue; an exclusive build may stop, but its
+            // lease remains valid until the owner releases it.
+            for (bool shared : {true, false})
+            {
+                struct CacheCancellationRoute final : Core::Memory::IAllocationRoute
+                {
+                    CookCodecAllocationRoute*                          Inner            = nullptr;
+                    Managers::CookedCpuClosureCache*                   Cache            = nullptr;
+                    Managers::CookedCpuClosureCache::CancellationToken Token            = {};
+                    Managers::CookedCpuClosureCache::CancellationToken ForeignToken     = {};
+                    bool                                               Armed            = false;
+                    bool                                               Attempted        = false;
+                    bool                                               Cancelled        = false;
+                    bool                                               ForeignCancelled = false;
+                    void*                                              Allocate(size_t size) noexcept override
+                    {
+                        if (Armed && !Attempted)
+                        {
+                            Attempted        = true;
+                            ForeignCancelled = Cache->CancelUnsharedBuild(ForeignToken);
+                            Cancelled        = Cache->CancelUnsharedBuild(Token);
+                        }
+                        return Inner->Allocate(size);
+                    }
+                    void* Reallocate(void* pointer, size_t old_size, size_t new_size) noexcept override
+                    {
+                        return Inner->Reallocate(pointer, old_size, new_size);
+                    }
+                    void Free(void* pointer) noexcept override
+                    {
+                        Inner->Free(pointer);
+                    }
+                    Core::Memory::IWorkingMemoryBudget* WorkingMemoryBudget() noexcept override
+                    {
+                        return Inner->WorkingMemoryBudget();
+                    }
+                } cancellation_route;
+                cancellation_route.Inner                = &route;
+                Managers::CookedCpuClosureCache foreign = {};
+                ASSERT_TRUE(foreign.Initialize(route, Schemas, limits, 2, 2, 8));
+                ClosureCacheDrain     foreign_drain{foreign};
+                VFS::VFSReadRootLease foreign_root = {};
+                ASSERT_TRUE(Files.AcquireReadRoot(VFS::VFSPath::Root(), &foreign_root).Succeeded());
+                Managers::CookedPackageSnapshot foreign_input = {};
+                ASSERT_TRUE(Managers::CookedPackageSnapshot::Capture(std::move(foreign_root), SceneUUID, Schemas, Limits, Allocator, &Diagnostics, &foreign_input).Succeeded());
+                Managers::CookedCpuClosureCache::Lease foreign_lease = {};
+                ASSERT_TRUE(foreign.Request(std::move(foreign_input), &foreign_lease));
+                Managers::CookedCpuClosureCache cache = {};
+                cancellation_route.Cache              = &cache;
+                ASSERT_TRUE(cache.Initialize(cancellation_route, Schemas, limits, 2, 2, 8));
+                ClosureCacheDrain     drain{cache};
+                VFS::VFSReadRootLease root = {};
+                ASSERT_TRUE(Files.AcquireReadRoot(VFS::VFSPath::Root(), &root).Succeeded());
+                Managers::CookedPackageSnapshot input = {};
+                ASSERT_TRUE(Managers::CookedPackageSnapshot::Capture(std::move(root), SceneUUID, Schemas, Limits, Allocator, &Diagnostics, &input).Succeeded());
+                Managers::CookedCpuClosureCache::Lease first = {}, second = {};
+                ASSERT_TRUE(cache.Request(std::move(input), &first));
+                if (shared)
+                    ASSERT_TRUE(first.Retain(&second));
+                cancellation_route.Token        = first.CancellationIdentity();
+                cancellation_route.ForeignToken = foreign_lease.CancellationIdentity();
+                ASSERT_EQ(cancellation_route.Token.Slot, cancellation_route.ForeignToken.Slot);
+                ASSERT_EQ(cancellation_route.Token.Serial, cancellation_route.ForeignToken.Serial);
+                cancellation_route.Armed = true;
+                ASSERT_TRUE(cache.PumpOne());
+                EXPECT_TRUE(cancellation_route.Attempted);
+                EXPECT_FALSE(cancellation_route.ForeignCancelled);
+                EXPECT_EQ(cancellation_route.Cancelled, !shared);
+                Managers::CookedCpuClosureCache::Result result = {};
+                ASSERT_TRUE(first.Poll(&result));
+                EXPECT_EQ(result.StateValue, shared ? Managers::CookedCpuClosureCache::State::Ready : Managers::CookedCpuClosureCache::State::Failed);
+                if (!shared)
+                    EXPECT_EQ(result.Error, VFS::VFSError::Cancelled);
+                second.Reset();
+                first.Reset();
+                ASSERT_TRUE(cache.PumpOne());
+                EXPECT_TRUE(cache.Shutdown());
+                foreign_lease.Reset();
+                ASSERT_TRUE(foreign.PumpOne());
+                EXPECT_TRUE(foreign.Shutdown());
+            }
+            {
+                VFS::VFSReadRootLease duplicate_root = {};
+                ASSERT_TRUE(Files.AcquireReadRoot(VFS::VFSPath::Root(), &duplicate_root).Succeeded());
+                Managers::CookedPackageSnapshot duplicate = {};
+                ASSERT_TRUE(Managers::CookedPackageSnapshot::Capture(std::move(duplicate_root), SceneUUID, Schemas, Limits, Allocator, &Diagnostics, &duplicate).Succeeded());
+                Managers::CookedCpuClosureCache cache = {};
+                ASSERT_TRUE(cache.Initialize(route, Schemas, limits, 2, 2, 8));
+                ClosureCacheDrain                      drain{cache};
+                Managers::CookedCpuClosureCache::Lease first = {}, second = {};
+                ASSERT_TRUE(cache.Request(std::move(duplicate), &first));
+                ASSERT_TRUE(cache.Request(std::move(package), &second));
+                EXPECT_TRUE(package.IsValid());
+                ASSERT_TRUE(cache.PumpOne());
+                Managers::CookedCpuClosureCache::Result first_result = {}, second_result = {};
+                ASSERT_TRUE(first.Poll(&first_result));
+                ASSERT_TRUE(second.Poll(&second_result));
+                ASSERT_EQ(first_result.StateValue, Managers::CookedCpuClosureCache::State::Ready);
+                EXPECT_EQ(first_result.Assets, second_result.Assets);
+                EXPECT_EQ(first_result.Assets->SceneUUID(), SceneUUID);
+                EXPECT_EQ(first_result.Assets->ManifestDigest(), package.ManifestDigest());
+                ASSERT_NE(first_result.Assets->FindTexture(texture_id), nullptr);
+                EXPECT_EQ(first_result.Assets->FindTexture(texture_id)->Pixels()[2], Options.Mode == "read-changed" ? 90u : 10u);
+                Rendering::Meshes::CookedMeshStaging mesh_staging = {};
+                EXPECT_FALSE(mesh_staging.Capture(std::move(second), texture_id));
+                EXPECT_TRUE(second);
+                ASSERT_TRUE(mesh_staging.Capture(std::move(first), mesh_id));
+                EXPECT_FALSE(first);
+                EXPECT_EQ(mesh_staging.Identity(), mesh_id);
+                EXPECT_EQ(mesh_staging.Digest(), first_result.Assets->FindVersion(mesh_id)->ObjectDigest);
+                EXPECT_EQ(mesh_staging.VertexBytes(), 24u * sizeof(float));
+                EXPECT_EQ(mesh_staging.IndexBytes(), 3u * sizeof(uint32_t));
+                ASSERT_NE(mesh_staging.Mesh(), nullptr);
+                EXPECT_EQ(mesh_staging.Mesh()->SubMeshes[0].MaterialUUID, MaterialUUID);
+                EXPECT_FALSE(mesh_staging.StageOne());
+                EXPECT_FALSE(cache.Shutdown());
+                mesh_staging.Reset();
+                ASSERT_TRUE(second.Retain(&first));
+                Rendering::Textures::CookedEnvironmentUpload environment = {};
+                EXPECT_FALSE(environment.Capture(std::move(first), texture_id));
+                EXPECT_TRUE(first);
+                ASSERT_TRUE(environment.Capture(std::move(first), environment_id));
+                EXPECT_FALSE(first);
+                EXPECT_EQ(environment.Identity(), environment_id);
+                EXPECT_EQ(environment.Digest(), second_result.Assets->FindVersion(environment_id)->ObjectDigest);
+                ASSERT_NE(environment.Header(), nullptr);
+                EXPECT_EQ(environment.Header()->FaceWidth, 1u);
+                EXPECT_EQ(environment.Header()->BufferByteSize, 96u);
+                EXPECT_FALSE(environment.StageOne());
+                environment.Reset();
+                first.Reset();
+                second.Reset();
+                ASSERT_TRUE(cache.PumpOne());
+                ASSERT_TRUE(cache.Shutdown());
+            }
+            EXPECT_EQ(Allocator.OutstandingAllocations(), with_assets);
+            Managers::CookedCpuAssetSet moved = std::move(assets);
+            EXPECT_FALSE(assets.IsValid());
+            package.Reset();
+            const auto after_package_reset = Allocator.OutstandingAllocations();
+            EXPECT_EQ(moved.FindMesh(mesh_id)->SubMeshes[0].MaterialUUID, MaterialUUID);
+            EXPECT_EQ(moved.FindTexture(texture_id)->Pixels()[0], 30u);
+            moved.Reset();
+            EXPECT_EQ(Allocator.OutstandingAllocations(), after_package_reset - (with_assets - baseline));
+        }
+
+        void CheckSharedVersionsAcrossPackages()
+        {
+            ASSERT_TRUE(Schemas.FreezeForWorker(&SceneDiagnostics));
+            VFS::VFSDiskBackend next_disk = {};
+            const auto          next_path = Options.SecondRoot.generic_u8string();
+            next_disk.Initialize(reinterpret_cast<cstring>(next_path.c_str()), VFS::VFSBackendCaps::Read | VFS::VFSBackendCaps::List, &Memory.MainArena);
+            VFS::VFSContext next_files = {};
+            next_files.Initialize(&Memory.MainArena);
+            ASSERT_TRUE(next_files.Mount(&next_disk, VFS::VFSPath::Root(), 0).Succeeded());
+            {
+                VFS::VFSReadRootLease old_root = {}, next_root = {};
+                ASSERT_TRUE(Files.AcquireReadRoot(VFS::VFSPath::Root(), &old_root).Succeeded());
+                ASSERT_TRUE(next_files.AcquireReadRoot(VFS::VFSPath::Root(), &next_root).Succeeded());
+                Managers::CookedPackageSnapshot old_package = {}, next_package = {};
+                ASSERT_TRUE(Managers::CookedPackageSnapshot::Capture(std::move(old_root), SceneUUID, Schemas, Limits, Allocator, &Diagnostics, &old_package).Succeeded());
+                ASSERT_TRUE(Managers::CookedPackageSnapshot::Capture(std::move(next_root), SceneUUID, Schemas, Limits, Allocator, &Diagnostics, &next_package).Succeeded());
+                EXPECT_NE(old_package.ManifestDigest(), next_package.ManifestDigest());
+                CookCodecAllocationRoute             route(Allocator);
+                const Managers::CookedCpuAssetLimits limits = {.MaxAssets = 4, .MaxObjectBytes = ZKilo(64), .MaxMeshWorkspaceBytes = ZKilo(64)};
+                Managers::CookedCpuClosureCache      cache  = {};
+                ASSERT_TRUE(cache.Initialize(route, Schemas, limits, 2, 2, 8));
+                ClosureCacheDrain                      drain{cache};
+                Managers::CookedCpuClosureCache::Lease old_lease = {}, next_lease = {};
+                ASSERT_TRUE(cache.Request(std::move(old_package), &old_lease));
+                ASSERT_TRUE(cache.Request(std::move(next_package), &next_lease));
+                ASSERT_TRUE(cache.PumpOne());
+                ASSERT_TRUE(cache.PumpOne());
+                Managers::CookedCpuClosureCache::Result old_result = {}, next_result = {};
+                ASSERT_TRUE(old_lease.Poll(&old_result));
+                ASSERT_TRUE(next_lease.Poll(&next_result));
+                ASSERT_EQ(old_result.StateValue, Managers::CookedCpuClosureCache::State::Ready);
+                ASSERT_EQ(next_result.StateValue, Managers::CookedCpuClosureCache::State::Ready);
+                const CookAssetIdentity mesh        = {CookAssetKind::Mesh, MeshUUID};
+                const CookAssetIdentity material    = {CookAssetKind::Material, MaterialUUID};
+                const CookAssetIdentity texture     = {CookAssetKind::Texture, TextureUUID};
+                const CookAssetIdentity environment = {CookAssetKind::EnvironmentMap, SkyUUID};
+                ASSERT_NE(old_result.Assets->FindMesh(mesh), nullptr);
+                ASSERT_NE(old_result.Assets->FindEnvironment(environment), nullptr);
+                ASSERT_NE(old_result.Assets->FindMaterial(material), nullptr);
+                ASSERT_NE(next_result.Assets->FindMaterial(material), nullptr);
+                ASSERT_NE(old_result.Assets->FindTexture(texture), nullptr);
+                ASSERT_NE(next_result.Assets->FindTexture(texture), nullptr);
+                EXPECT_EQ(old_result.Assets->FindMesh(mesh), next_result.Assets->FindMesh(mesh));
+                EXPECT_EQ(old_result.Assets->FindEnvironment(environment), next_result.Assets->FindEnvironment(environment));
+                EXPECT_NE(old_result.Assets->FindMaterial(material), next_result.Assets->FindMaterial(material));
+                EXPECT_NE(old_result.Assets->FindTexture(texture), next_result.Assets->FindTexture(texture));
+                EXPECT_EQ(old_result.Assets->FindTexture(texture)->Pixels()[2], 10u);
+                EXPECT_EQ(next_result.Assets->FindTexture(texture)->Pixels()[2], 90u);
+                old_lease.Reset();
+                ASSERT_TRUE(cache.PumpOne());
+                ASSERT_TRUE(next_lease.Poll(&next_result));
+                EXPECT_EQ(next_result.Assets->FindMesh(mesh)->SubMeshes[0].MaterialUUID, MaterialUUID);
+                EXPECT_EQ(next_result.Assets->FindTexture(texture)->Pixels()[2], 90u);
+                next_lease.Reset();
+                ASSERT_TRUE(cache.PumpOne());
+                ASSERT_TRUE(cache.Shutdown());
+            }
+            next_files.Shutdown();
+        }
     };
 
     TEST_F(SceneCookProcessTest, ExecutesRequestedPhase)
@@ -1001,6 +1521,15 @@ namespace ZEngine::Cook::Tests
             }
             return;
         }
+        if (Options.Mode == "cross-version")
+        {
+            CheckSharedVersionsAcrossPackages();
+            if (!HasFailure())
+            {
+                std::cout << "ZE_COOK_SHARED_VERSIONS_VERIFIED\n";
+            }
+            return;
+        }
         if (Reading)
         {
             const auto result = ConsumePackage(Options.Mode == "read-changed");
@@ -1016,13 +1545,17 @@ namespace ZEngine::Cook::Tests
             {
                 EXPECT_TRUE(result.Succeeded()) << static_cast<uint32_t>(result.Error());
             }
+            if (!HasFailure() && !Options.Custom && (Options.Mode == "read" || Options.Mode == "read-changed"))
+            {
+                CheckRuntimeReaders();
+            }
             if (!HasFailure())
             {
                 std::cout << ((Options.Mode == "reject-schema" || Options.Mode == "reject-version") ? "ZE_COOK_SCHEMA_REJECTION_VERIFIED\n" : "ZE_COOK_PACKAGE_VERIFIED\n");
             }
             return;
         }
-        const bool create = Options.Mode == "write" || Options.Mode == "write-reverse";
+        const bool create = Options.Mode == "write" || Options.Mode == "write-reverse" || Options.Mode == "write-blend" || Options.Mode == "write-hierarchy" || Options.Mode == "write-blend-camera" || Options.Mode == "write-hierarchy-camera" || Options.Mode == "write-switch" || Options.Mode == "write-camera" || Options.Mode == "write-switch-camera" || Options.Mode == "write-switch-no-camera" || Options.Mode == "write-switch-unique-material";
         if (Options.Mode == "snapshot-write")
         {
             bool ready     = false;
@@ -1059,7 +1592,7 @@ namespace ZEngine::Cook::Tests
                 std::_Exit(committed ? 72 : 71);
             };
         }
-        CookFixture(Options.Mode == "force", create || Options.Mode == "changed" || Options.Mode == "rebuild" || Options.Mode == "snapshot-write" || Options.Mode == "schema-change", Options.Mode == "busy");
+        CookFixture(Options.Mode == "force" || Options.Mode == "recook", create || Options.Mode == "changed" || Options.Mode == "recook" || Options.Mode == "rebuild" || Options.Mode == "snapshot-write" || Options.Mode == "schema-change", Options.Mode == "busy");
         if (!HasFailure() && Options.Mode == "snapshot-write")
         {
             WriteText("/output/desktop-vulkan-le64/.ze-test-commit.done", "done");
@@ -1094,13 +1627,18 @@ namespace ZEngine::Cook::Tests
             }
             return RunProjectSmoke(std::filesystem::path(argv[2]), std::filesystem::path(argv[3]), budget, std::filesystem::path(argv[1]) == "smoke-stress" ? 65536u : UINT32_MAX);
         }
-        const bool custom = argc == 4 && std::filesystem::path(argv[1]) == "custom";
-        if (argc != 3 && !custom)
+        const bool custom        = argc == 4 && std::filesystem::path(argv[1]) == "custom";
+        const bool cross_version = argc == 4 && std::filesystem::path(argv[1]) == "cross-version";
+        if (argc != 3 && !custom && !cross_version)
         {
             return 2;
         }
         std::filesystem::path mode(argv[custom ? 2 : 1]);
-        const bool            version_two = custom && (mode == "schema-change" || mode == "read-v2" || mode == "repeat-v2" || mode == "force-v2" || mode == "reject-migration");
+        if (mode == "cross-version" && !cross_version)
+        {
+            return 2;
+        }
+        const bool version_two = custom && (mode == "schema-change" || mode == "read-v2" || mode == "repeat-v2" || mode == "force-v2" || mode == "reject-migration");
         if (version_two && mode != "schema-change" && mode != "reject-migration")
         {
             mode = mode == "read-v2" ? "read" : mode == "repeat-v2" ? "repeat" : "force";
@@ -1110,11 +1648,12 @@ namespace ZEngine::Cook::Tests
 #if defined(__linux__)
         disk_full_phase = !custom && (mode == "disk-full" || mode == "disk-full-manifest");
 #endif
-        if (!custom_phase && !disk_full_phase && mode != "stress-fixture" && mode != "write" && mode != "write-reverse" && mode != "repeat" && mode != "force" && mode != "changed" && mode != "read" && mode != "read-changed" && mode != "reject-missing" && mode != "reject-corrupt" && mode != "interrupt-before" && mode != "interrupt-after" && mode != "busy" && mode != "rebuild" && mode != "snapshot-read" && mode != "snapshot-write" && mode != "corrupt-texture")
+        if (!custom_phase && !disk_full_phase && mode != "cross-version" && mode != "stress-fixture" && mode != "write" && mode != "write-reverse" && mode != "write-blend" && mode != "write-hierarchy" && mode != "write-blend-camera" && mode != "write-hierarchy-camera" && mode != "write-switch" && mode != "write-camera" && mode != "write-switch-camera" && mode != "write-switch-no-camera" && mode != "write-switch-unique-material" && mode != "repeat" && mode != "force" && mode != "recook" && mode != "changed" && mode != "read" && mode != "read-changed" &&
+            mode != "reject-missing" && mode != "reject-corrupt" && mode != "interrupt-before" && mode != "interrupt-after" && mode != "busy" && mode != "rebuild" && mode != "snapshot-read" && mode != "snapshot-write" && mode != "corrupt-texture")
         {
             return 2;
         }
-        Options           = {mode, std::filesystem::path(argv[custom ? 3 : 2]), custom, version_two ? 2u : 1u};
+        Options           = {mode, std::filesystem::path(argv[custom ? 3 : 2]), custom, version_two ? 2u : 1u, cross_version ? std::filesystem::path(argv[3]) : std::filesystem::path{}};
         int   test_argc   = 1;
         char  name[]      = "SceneCookProcess";
         char* test_argv[] = {name, nullptr};

@@ -46,26 +46,36 @@ namespace ZEngine::Core::VFS
 
     bool AssetRegistry::TryReadRecord(const uuids::uuid& uuid, AssetRecordSnapshot* out) const
     {
+        if (DenyLookup())
+            return false;
         return m_index.TryReadRecord(uuid, out);
     }
 
     bool AssetRegistry::TryReadRecordByPath(const Core::VFS::VFSPath& path, AssetRecordSnapshot* out) const
     {
+        if (DenyLookup())
+            return false;
         return m_index.TryReadRecordByPath(path, out);
     }
 
     bool AssetRegistry::TryReadSlot(const uuids::uuid& uuid, Managers::AssetType type, Managers::AssetHandle* out) const
     {
+        if (DenyLookup())
+            return false;
         return m_index.TryReadSlot(uuid, type, out);
     }
 
     bool AssetRegistry::TryBindLoadedAsset(const AssetRecordSnapshot& expected, Managers::AssetHandle slot)
     {
+        if (DenyLookup())
+            return false;
         return m_index.TryBindLoadedAsset(expected, slot);
     }
 
     bool AssetRegistry::TryBindLoadedMesh(const AssetRecordSnapshot& expected, const uuids::uuid& hierarchy, Managers::AssetHandle mesh_slot, Managers::AssetHandle hierarchy_slot, const AssetRecordSnapshot* retained_hierarchy)
     {
+        if (DenyLookup())
+            return false;
         return m_index.TryBindLoadedMesh(expected, hierarchy, mesh_slot, hierarchy_slot, retained_hierarchy);
     }
 
@@ -140,30 +150,40 @@ namespace ZEngine::Core::VFS
 
     AssetRecord* AssetRegistry::FindByUUID(const uuids::uuid& uuid)
     {
+        if (DenyLookup())
+            return nullptr;
         Helpers::Handle<AssetRecord> h = m_index.FindByUUID(uuid);
         return h.Valid() ? m_index.Access(h) : nullptr;
     }
 
     const AssetRecord* AssetRegistry::FindByUUID(const uuids::uuid& uuid) const
     {
+        if (DenyLookup())
+            return nullptr;
         Helpers::Handle<AssetRecord> h = m_index.FindByUUID(uuid);
         return h.Valid() ? m_index.Access(h) : nullptr;
     }
 
     AssetRecord* AssetRegistry::FindByPath(const Core::VFS::VFSPath& path)
     {
+        if (DenyLookup())
+            return nullptr;
         Helpers::Handle<AssetRecord> h = m_index.FindByPath(path);
         return h.Valid() ? m_index.Access(h) : nullptr;
     }
 
     const AssetRecord* AssetRegistry::FindByPath(const Core::VFS::VFSPath& path) const
     {
+        if (DenyLookup())
+            return nullptr;
         Helpers::Handle<AssetRecord> h = m_index.FindByPath(path);
         return h.Valid() ? m_index.Access(h) : nullptr;
     }
 
     AssetRecord* AssetRegistry::Access(Helpers::Handle<AssetRecord> handle)
     {
+        if (DenyLookup())
+            return nullptr;
         return handle.Valid() ? m_index.Access(handle) : nullptr;
     }
 
@@ -504,6 +524,8 @@ namespace ZEngine::Core::VFS
     {
         QueryResult result{};
         result.Handles.init(arena, 64);
+        if (DenyLookup())
+            return result;
 
         if (filter.Type.has_value())
         {

@@ -58,6 +58,14 @@ namespace ZEngine::Profiling
         return count > CAPTURE_CAPACITY ? count - CAPTURE_CAPACITY : 0;
     }
 
+    bool ProfilerBuffer::CaptureDeadlinePassed()
+    {
+        if (!s_capture_deadline_ns)
+            return false;
+        const auto now = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+        return now >= s_capture_deadline_ns;
+    }
+
     void ProfilerBuffer::Capture(const char* name, double value, bool is_value)
     {
         if (!s_capture_enabled.value.load(std::memory_order_acquire) || std::strncmp(name, s_capture_prefix, std::strlen(s_capture_prefix)) != 0)

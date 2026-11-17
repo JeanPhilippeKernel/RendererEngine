@@ -7,7 +7,13 @@
 #include <ZEngine/ECS/WorldCommands.h>
 #include <ZEngine/ECS/WorldTick.h>
 #include <ZEngine/Managers/AssetCacheLease.h>
+#include <ZEngine/Managers/CookedObjectSnapshot.h>
 #include <memory>
+
+namespace ZEngine::Managers
+{
+    class CookedPackageSnapshot;
+}
 
 namespace ZEngine::ECS
 {
@@ -35,6 +41,17 @@ namespace ZEngine::ECS
         /// Failure requires discarding this instance; no document escapes it.
         [[nodiscard]] bool        ReadSource(Core::VFS::IVFSContext& vfs, const Core::VFS::VFSPath& path, const SceneComponentSchemaRegistry& schemas, size_t working_bytes, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {}, const SceneMigrationRegistry* migrations = nullptr);
         [[nodiscard]] bool        PopulateSource(const SceneComponentSchemaRegistry& schemas, SceneDiagnostics* diagnostics);
+
+        /// Decode an already verified private object snapshot into this owner's
+        /// bounded document route. This alone does not authorize population.
+        [[nodiscard]] bool        ReadCooked(const Managers::CookedObjectSnapshot& object, const SceneComponentSchemaRegistry& schemas, size_t working_bytes, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {});
+        /// Require the selected manifest object and its complete typed scene
+        /// references before allowing population of the unpublished world.
+        [[nodiscard]] bool        ReadVerifiedCooked(const Managers::CookedPackageSnapshot& package, const Managers::CookedObjectSnapshot& object, const SceneComponentSchemaRegistry& schemas, size_t working_bytes, SceneDiagnostics* diagnostics, const SceneDocumentLimits& limits = {}, const std::atomic<bool>* cancelled = nullptr);
+        [[nodiscard]] bool        PopulateCooked(const SceneComponentSchemaRegistry& schemas, SceneDiagnostics* diagnostics);
+        /// True only for the manifest and selected scene that authorized this
+        /// owner's cooked reconstruction.
+        [[nodiscard]] bool        MatchesCookedClosure(const Core::Hash::Digest256& manifest, const uuids::uuid& scene) const noexcept;
 
         /// Adapter rollback only: return the input snapshot before immediately
         /// discarding an unpublished instance whose later preparation failed.
@@ -96,19 +113,27 @@ namespace ZEngine::ECS
         }
 
     private:
+        enum class OwnedDocumentKind : uint8_t
+        {
+            None,
+            Source,
+            Cooked,
+        };
         SceneInstance() = default;
         [[nodiscard]] bool                PopulateDocument(const SceneDocument& document, const SceneComponentSchemaRegistry& schemas, SceneDiagnostics* diagnostics);
 
-        SceneStorageLease                 m_storage               = {};
-        Managers::AssetCacheLease         m_source_assets         = {};
-        Core::Memory::SlabAllocationRoute m_document_route        = {};
-        SceneDocument                     m_document              = {};
-        Scene                             m_world                 = {};
-        ActorManager                      m_actors                = {};
-        WorldCommands                     m_commands              = {};
-        WorldTick                         m_tick                  = {};
-        bool                              m_initialized           = false;
-        bool                              m_population_attempted  = false;
-        bool                              m_source_read_attempted = false;
+        SceneStorageLease                 m_storage              = {};
+        Managers::AssetCacheLease         m_source_assets        = {};
+        Core::Memory::SlabAllocationRoute m_document_route       = {};
+        SceneDocument                     m_document             = {};
+        Scene                             m_world                = {};
+        ActorManager                      m_actors               = {};
+        WorldCommands                     m_commands             = {};
+        WorldTick                         m_tick                 = {};
+        bool                              m_initialized          = false;
+        bool                              m_population_attempted = false;
+        bool                              m_cooked_validated     = false;
+        Core::Hash::Digest256             m_cooked_manifest      = {};
+        OwnedDocumentKind                 m_owned_document_kind  = OwnedDocumentKind::None;
     };
 } // namespace ZEngine::ECS

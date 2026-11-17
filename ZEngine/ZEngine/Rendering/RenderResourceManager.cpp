@@ -15,9 +15,13 @@
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/Rendering/Buffers/Bitmap.h>
+#include <ZEngine/Rendering/Materials/CookedMaterialBinding.h>
+#include <ZEngine/Rendering/Meshes/CookedMeshStaging.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Graphics/AssetPreviewPass.h>
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
+#include <ZEngine/Rendering/Textures/CookedEnvironmentUpload.h>
+#include <ZEngine/Rendering/Textures/CookedTextureUpload.h>
 #include <ZEngine/Rendering/ThumbnailCacheMaintenance.h>
 #include <ZEngine/ZEngineDef.h>
 #include <stb/deprecated/stb_image_resize.h>
@@ -33,6 +37,7 @@
 #include <random>
 #include <thread>
 #include <type_traits>
+#include <utility>
 
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::Core::VFS;
@@ -40,6 +45,10 @@ using namespace ZEngine::Hardwares;
 using namespace ZEngine::Importers;
 using namespace ZEngine::Managers;
 using namespace ZEngine::Helpers;
+using ZEngine::Rendering::Primitives::ImageMemoryBarrier;
+using ZEngine::Rendering::Specifications::ImageFormat;
+using ZEngine::Rendering::Specifications::ImageLayout;
+using ZEngine::Rendering::Specifications::ImageMemoryBarrierSpecification;
 
 namespace ZEngine::Rendering
 {
@@ -482,6 +491,7 @@ namespace ZEngine::Rendering
         // The render thread has joined; submitted consumers are idle (or the
         // device is terminally lost), and no recorded frame can be submitted later.
         ReleaseSceneAndFrameResourcesAfterIdle();
+        ReleaseCookedMeshUploadsAfterIdle();
         ZENGINE_VALIDATE_ASSERT(m_pinned_mesh_geometry_count == 0, "RenderResourceManager::Shutdown: explicit geometry pins must retire before their resource owner")
         ZENGINE_VALIDATE_ASSERT(m_texture_version_pin_count == 0, "RenderResourceManager::Shutdown: material/texture pins must retire before their resource owner")
         for (uint32_t i = 0; i < m_mesh_slot_count; ++i)
@@ -530,6 +540,16 @@ namespace ZEngine::Rendering
         {
             m_upload_cmd_mgr->Deinitialize();
             m_upload_cmd_mgr = nullptr;
+        }
+        // Includes unsubmitted or rejected recordings, which have no timeline
+        // signal. Their command buffers are gone and accepted work is idle.
+        for (auto& frame : m_batch_frames)
+        {
+            for (uint32_t i = 0; i < frame.StagingCount; ++i)
+            {
+                m_device->GpuMem.FreeBuffer(frame.StagingBuffers[i]);
+            }
+            frame.StagingCount = 0;
         }
         m_async_uploads.Deinitialize();
         if (m_sync_upload_fence)
@@ -587,6 +607,7 @@ namespace ZEngine::Rendering
         }
         m_active_frame_index = static_cast<uint8_t>(frame_index);
         RetireBatchStagings();
+        PollCookedMeshUploads();
         DispatchQueuedTextureDecodes();
         FlushPendingMeshReleases();
         m_streaming_mgr.Tick(frame_index);
@@ -607,6 +628,7 @@ namespace ZEngine::Rendering
         {
             EndBatchUpload();
         }
+        PollCookedMeshUploads();
         PollSceneResourcePreparations();
     }
 
@@ -666,12 +688,13 @@ namespace ZEngine::Rendering
         VkBuffer     DstBuffer;
         VkDeviceSize DstOffset;
         size_t       ByteSize;
+        VkDeviceSize SrcOffset = 0;
     };
 
     static void RecordGlobalBufferCopy(VkCommandBuffer cmd, void* ctx_ptr)
     {
         auto*        ctx = static_cast<GlobalBufferCopyCtx*>(ctx_ptr);
-        VkBufferCopy region{.srcOffset = 0, .dstOffset = ctx->DstOffset, .size = ctx->ByteSize};
+        VkBufferCopy region{.srcOffset = ctx->SrcOffset, .dstOffset = ctx->DstOffset, .size = ctx->ByteSize};
         vkCmdCopyBuffer(cmd, ctx->SrcBuffer, ctx->DstBuffer, 1, &region);
 
         VkBufferMemoryBarrier barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
@@ -1048,6 +1071,68 @@ namespace ZEngine::Rendering
         }
     }
 
+    RenderResourceManager::CookedMeshAdmission RenderResourceManager::TryEnsureCookedBatchOpen(uint8_t frame_index)
+    {
+        if (!m_device || !m_device->LogicalDevice || !m_upload_cmd_mgr || !m_batch_timeline || frame_index >= m_batch_frames.size() || m_batch_submission_failed || m_device->IsDeviceLost.load(std::memory_order_acquire) || m_batch_next_value == UINT64_MAX)
+        {
+            return CookedMeshAdmission::Failed;
+        }
+        if (m_batch_mode)
+        {
+            return m_batch_frame_index == frame_index ? CookedMeshAdmission::Recorded : CookedMeshAdmission::Retry;
+        }
+        auto& frame = m_batch_frames[frame_index];
+        if (frame.LastSignal)
+        {
+            uint64_t       completed = 0;
+            const VkResult result    = vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_batch_timeline->GetHandle(), &completed);
+            if (result != VK_SUCCESS)
+            {
+                m_device->CheckDeviceLost(result, "Cooked mesh batch completion query");
+                return CookedMeshAdmission::Failed;
+            }
+            if (completed < frame.LastSignal)
+            {
+                return CookedMeshAdmission::Retry;
+            }
+        }
+        // BeginFrame retires the preceding batch's staging. Do not replace it
+        // or perform an unbounded staging cleanup inside this admission call.
+        if (frame.StagingCount)
+        {
+            return CookedMeshAdmission::Retry;
+        }
+        const size_t stride = size_t(m_upload_cmd_mgr->MaxBufferPerPool) * m_upload_cmd_mgr->MaxBufferPerPool;
+        const size_t index  = size_t(frame_index) * m_upload_cmd_mgr->TotalThreadCount * stride;
+        if (!stride || !m_upload_cmd_mgr->TotalThreadCount || index >= m_upload_cmd_mgr->InstantGraphicsCommandBuffers.size())
+        {
+            return CookedMeshAdmission::Failed;
+        }
+        auto* command = m_upload_cmd_mgr->InstantGraphicsCommandBuffers[index];
+        if (!command || !command->GetHandle() || command->BufferType != Hardwares::CommandBufferType::Primary)
+        {
+            return CookedMeshAdmission::Failed;
+        }
+        VkResult result = vkResetCommandBuffer(command->GetHandle(), 0);
+        if (result == VK_SUCCESS)
+        {
+            command->ResetState();
+            VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
+            result                         = vkBeginCommandBuffer(command->GetHandle(), &begin);
+        }
+        if (result != VK_SUCCESS)
+        {
+            m_device->CheckDeviceLost(result, "Cooked mesh batch recording");
+            return CookedMeshAdmission::Failed;
+        }
+        command->SetState(Hardwares::CommandBufferState::Recording);
+        m_batch_frame_index        = frame_index;
+        m_batch_cmd                = command;
+        m_batch_staging_base_count = frame.StagingCount;
+        m_batch_mode               = true;
+        return CookedMeshAdmission::Recorded;
+    }
+
     void RenderResourceManager::BeginBatchUpload(uint8_t frame_index)
     {
         m_batch_frame_index    = frame_index;
@@ -1071,19 +1156,47 @@ namespace ZEngine::Rendering
         m_batch_cmd->ResetState();
         vkResetCommandBuffer(m_batch_cmd->GetHandle(), 0);
         m_batch_cmd->Begin();
-        m_batch_mode = true;
+        m_batch_staging_base_count = frame.StagingCount;
+        m_batch_mode               = true;
+    }
+
+    void RenderResourceManager::DiscardUnsubmittedBatchStaging()
+    {
+        auto& frame = m_batch_frames[m_batch_frame_index];
+        ZENGINE_VALIDATE_ASSERT(m_batch_staging_base_count <= frame.StagingCount, "Invalid geometry batch staging boundary")
+        while (frame.StagingCount > m_batch_staging_base_count)
+        {
+            auto& staging = frame.StagingBuffers[--frame.StagingCount];
+            m_device->GpuMem.FreeBuffer(staging);
+            staging = {};
+        }
     }
 
     void RenderResourceManager::EndBatchUpload()
     {
-        m_batch_cmd->End();
+        const VkResult end_result = vkEndCommandBuffer(m_batch_cmd->GetHandle());
+        if (end_result != VK_SUCCESS)
+        {
+            m_device->CheckDeviceLost(end_result, "Geometry batch recording end");
+            m_batch_submission_failed = true;
+            m_batch_mode              = false;
+            m_batch_cmd               = nullptr;
+            if (!m_device->IsDeviceLost.load(std::memory_order_acquire))
+                DiscardUnsubmittedBatchStaging();
+            // Fail unaccepted records before any unrelated later batch can
+            // advance the timeline past the value they expected.
+            PollCookedMeshUploads();
+            return;
+        }
+        m_batch_cmd->SetState(Hardwares::CommandBufferState::Executable);
 
         // Submit without blocking so a mesh drop never stalls the render thread. Present()
         // consumes the resulting timeline operation in the graphics submission below.
         // Signals m_batch_timeline — a dedicated semaphore with exactly one writer (this
         // function) — rather than DeviceSwapchain::RenderTimeline, which Present() also
         // drives independently.
-        uint64_t signal_value                          = ++m_batch_next_value;
+        const uint64_t previous_signal                 = m_batch_frames[m_batch_frame_index].LastSignal;
+        uint64_t       signal_value                    = ++m_batch_next_value;
         m_batch_frames[m_batch_frame_index].LastSignal = signal_value;
 
         // The global geometry buffers are bound as whole-buffer storage descriptors.
@@ -1125,7 +1238,21 @@ namespace ZEngine::Rendering
             };
         }
 
-        if (m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, signal_value, copy_waits, copy_wait_count))
+        bool injected_rejection = false;
+        if (m_reject_cooked_batch_probe.load(std::memory_order_acquire))
+        {
+            for (const auto& upload : m_cooked_mesh_uploads)
+            {
+                if (upload.State == CookedMeshUploadState::Pending && upload.SignalValue == signal_value)
+                {
+                    injected_rejection = m_reject_cooked_batch_probe.exchange(false, std::memory_order_acq_rel);
+                    break;
+                }
+            }
+        }
+        if (injected_rejection)
+            ZENGINE_CORE_INFO("[CookedUploadProbe] Rejected recorded cooked batch before queue submission")
+        if (!injected_rejection && m_device->QueueSubmit(m_batch_cmd, m_batch_timeline, signal_value, copy_waits, copy_wait_count))
         {
             m_batch_accepted_value = signal_value;
             m_device->EnqueueAsyncGPUOperation({consumer_wait_stage, signal_value, m_batch_timeline});
@@ -1135,7 +1262,7 @@ namespace ZEngine::Rendering
             // A rejected submit cannot supply a completion gate. Device loss is
             // terminal; never let a later counter value turn it into readiness.
             m_batch_submission_failed                      = true;
-            m_batch_frames[m_batch_frame_index].LastSignal = 0;
+            m_batch_frames[m_batch_frame_index].LastSignal = previous_signal;
         }
 
         // Left in m_batch_frames[m_batch_frame_index] for RetireBatchStagings (or the next
@@ -1143,6 +1270,12 @@ namespace ZEngine::Rendering
         // this copy has completed.
         m_batch_mode = false;
         m_batch_cmd  = nullptr;
+        if (m_batch_submission_failed)
+        {
+            if (!m_device->IsDeviceLost.load(std::memory_order_acquire))
+                DiscardUnsubmittedBatchStaging();
+            PollCookedMeshUploads();
+        }
     }
 
     void RenderResourceManager::AppendToGlobalBuffer(BufferView& dst_buf, const void* data, size_t byte_size, VkDeviceSize byte_offset, uint32_t frame_index)
@@ -1217,6 +1350,327 @@ namespace ZEngine::Rendering
             auto* allocation = const_cast<MeshDrawMetadata*>(metadata);
             allocation->~MeshDrawMetadata();
             slab->Free(allocation);
+        }
+    }
+
+    RenderResourceManager::CookedMeshAdmission RenderResourceManager::RecordCookedMeshUpload(uint8_t frame_index, Meshes::CookedMeshStaging& staging, TLSFSlab& metadata_slab, CookedMeshUploadId* output)
+    {
+        if (!output || !m_device || m_scene_resources_sealed.load(std::memory_order_acquire) || staging.m_phase != Meshes::CookedMeshStaging::Phase::Staged || !staging.m_mesh || staging.m_staging.m_device != m_device || !staging.m_staging.Ready() || !m_pool.VertexBuffer || !m_pool.IndexBuffer || m_cooked_mesh_upload_serial == UINT64_MAX)
+        {
+            return CookedMeshAdmission::Failed;
+        }
+        uint32_t pending_slot = CookedMeshUploadCapacity;
+        for (uint32_t index = 0; index < CookedMeshUploadCapacity; ++index)
+        {
+            if (m_cooked_mesh_uploads[index].State == CookedMeshUploadState::Invalid)
+            {
+                pending_slot = index;
+                break;
+            }
+        }
+        if (pending_slot == CookedMeshUploadCapacity)
+        {
+            return CookedMeshAdmission::Retry;
+        }
+        const auto batch = TryEnsureCookedBatchOpen(frame_index);
+        if (batch != CookedMeshAdmission::Recorded)
+        {
+            return batch;
+        }
+        auto& frame = m_batch_frames[frame_index];
+        if (frame.StagingCount >= MAX_PENDING * 2)
+        {
+            return CookedMeshAdmission::Retry;
+        }
+        const auto* metadata = CaptureMeshDrawMetadata(metadata_slab, *staging.m_mesh);
+        if (!metadata)
+        {
+            return CookedMeshAdmission::Failed;
+        }
+        GeometryRegion region = {};
+        if (!m_pool.Allocate(staging.m_vertex_bytes, staging.m_index_bytes, region))
+        {
+            ReleaseMeshDrawMetadata(metadata);
+            return CookedMeshAdmission::Failed;
+        }
+        const auto     vertices       = staging.m_vertex_bytes / DRAW_VERTEX_BYTES;
+        const auto     indices        = staging.m_index_bytes / sizeof(uint32_t);
+        const bool     invalid_region = region.VtxByteOffset % DRAW_VERTEX_BYTES || region.IdxByteOffset % sizeof(uint32_t) || region.VtxByteOffset > m_pool.VertexBuffer.Size || region.VtxByteSize > m_pool.VertexBuffer.Size - region.VtxByteOffset || region.IdxByteOffset > m_pool.IndexBuffer.Size || region.IdxByteSize > m_pool.IndexBuffer.Size - region.IdxByteOffset || region.VtxByteOffset / DRAW_VERTEX_BYTES > UINT32_MAX - vertices || region.IdxByteOffset / sizeof(uint32_t) > UINT32_MAX - indices;
+        const uint64_t version        = invalid_region ? 0 : NextMeshGeometryVersion();
+        const uint32_t slot           = version ? AllocMeshSlot() : UINT32_MAX;
+        if (slot == UINT32_MAX)
+        {
+            m_pool.Free(region);
+            ReleaseMeshDrawMetadata(metadata);
+            return CookedMeshAdmission::Failed;
+        }
+        MeshSlot mesh             = {};
+        mesh.Region               = region;
+        mesh.VtxCount             = static_cast<uint32_t>(vertices);
+        mesh.IdxCount             = static_cast<uint32_t>(indices);
+        mesh.State                = StreamingState::Resident;
+        mesh.Version              = version;
+        mesh.DrawMetadata         = metadata;
+        m_mesh_slots[slot].Data   = mesh;
+        const BufferHandle handle = {slot, m_mesh_slots[slot].Generation};
+        auto               pin    = PinMeshGeometry(handle);
+        if (!pin)
+        {
+            RetireMeshGeometry(m_mesh_slots[slot].Data);
+            m_mesh_slots[slot] = {};
+            return CookedMeshAdmission::Failed;
+        }
+
+        const auto&         source = staging.m_staging.m_buffer;
+        GlobalBufferCopyCtx vertices_copy{source.Handle, m_pool.VertexBuffer.Handle, region.VtxByteOffset, staging.m_vertex_bytes, 0};
+        GlobalBufferCopyCtx indices_copy{source.Handle, m_pool.IndexBuffer.Handle, region.IdxByteOffset, staging.m_index_bytes, staging.m_vertex_bytes};
+        RecordGlobalBufferCopy(m_batch_cmd->GetHandle(), &vertices_copy);
+        RecordGlobalBufferCopy(m_batch_cmd->GetHandle(), &indices_copy);
+        auto& record                               = m_cooked_mesh_uploads[pending_slot];
+        record.State                               = CookedMeshUploadState::Pending;
+        record.Serial                              = ++m_cooked_mesh_upload_serial;
+        record.SignalValue                         = m_batch_next_value + 1;
+        record.CleanupPending                      = true;
+        record.Identity                            = staging.m_identity;
+        record.Digest                              = staging.m_digest;
+        record.Handle                              = handle;
+        record.Pin                                 = std::move(pin);
+        frame.StagingBuffers[frame.StagingCount++] = std::exchange(staging.m_staging.m_buffer, BufferView{});
+        staging.m_staging.m_device                 = nullptr;
+        staging.m_staging.m_written                = 0;
+        staging.Reset();
+        *output = {pending_slot, record.Serial};
+        return CookedMeshAdmission::Recorded;
+    }
+
+    void RenderResourceManager::ReleaseCookedMeshResources(CookedMeshUploadRecord& record)
+    {
+        Release(record.Handle);
+        record.Handle = {};
+        record.Pin.Reset();
+        record.CleanupPending = false;
+    }
+
+    void RenderResourceManager::PollCookedMeshUploads()
+    {
+        if (!m_device || !m_batch_timeline)
+        {
+            return;
+        }
+        bool need_query = false;
+        for (const auto& record : m_cooked_mesh_uploads)
+        {
+            need_query |= record.CleanupPending && record.SignalValue <= m_batch_accepted_value;
+        }
+        uint64_t completed = 0;
+        bool     lost      = m_device->IsDeviceLost.load(std::memory_order_acquire);
+        if (need_query && !lost)
+        {
+            const VkResult result = vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_batch_timeline->GetHandle(), &completed);
+            if (result != VK_SUCCESS)
+            {
+                lost = m_device->CheckDeviceLost(result, "Cooked mesh upload completion query");
+                if (!lost)
+                {
+                    return;
+                }
+            }
+        }
+        for (auto& record : m_cooked_mesh_uploads)
+        {
+            if (record.State == CookedMeshUploadState::Ready)
+            {
+                const auto* snapshot = record.Pin.Get();
+                const bool  valid    = snapshot && record.Handle.IsValid() && record.Handle.Index < m_mesh_slot_count && m_mesh_slots[record.Handle.Index].Generation == record.Handle.Generation && m_mesh_slots[record.Handle.Index].Data.Version == snapshot->Version;
+                if (!valid)
+                {
+                    record.State = CookedMeshUploadState::Failed;
+                    ReleaseCookedMeshResources(record);
+                }
+                continue;
+            }
+            if (!record.CleanupPending)
+            {
+                continue;
+            }
+            if (record.SignalValue > m_batch_accepted_value)
+            {
+                if (m_batch_submission_failed && !m_batch_mode)
+                {
+                    record.State = record.CancelRequested ? CookedMeshUploadState::Cancelled : CookedMeshUploadState::Failed;
+                    ReleaseCookedMeshResources(record); // The batch was never accepted.
+                }
+                continue;
+            }
+            if (lost)
+            {
+                record.State = record.CancelRequested ? CookedMeshUploadState::Cancelled : CookedMeshUploadState::Failed;
+                continue; // Accepted work stays owned until joined device shutdown.
+            }
+            if (completed < record.SignalValue)
+            {
+                continue;
+            }
+            const auto* snapshot = record.Pin.Get();
+            const bool  valid    = snapshot && record.Handle.IsValid() && record.Handle.Index < m_mesh_slot_count && m_mesh_slots[record.Handle.Index].Generation == record.Handle.Generation && m_mesh_slots[record.Handle.Index].Data.Version == snapshot->Version;
+            if (record.CancelRequested || !valid)
+            {
+                record.State = record.CancelRequested ? CookedMeshUploadState::Cancelled : CookedMeshUploadState::Failed;
+                ReleaseCookedMeshResources(record);
+            }
+            else
+            {
+                record.State          = CookedMeshUploadState::Ready;
+                record.CleanupPending = false;
+            }
+        }
+    }
+
+    RenderResourceManager::CookedMeshUploadResult RenderResourceManager::PollCookedMeshUpload(CookedMeshUploadId id)
+    {
+        if (id.Slot >= CookedMeshUploadCapacity || !id.Serial || m_cooked_mesh_uploads[id.Slot].Serial != id.Serial)
+        {
+            return {};
+        }
+        PollCookedMeshUploads();
+        const auto& record = m_cooked_mesh_uploads[id.Slot];
+        return {record.State, record.CleanupPending, record.Identity, record.Digest};
+    }
+
+    bool RenderResourceManager::CancelCookedMeshUpload(CookedMeshUploadId id)
+    {
+        if (id.Slot >= CookedMeshUploadCapacity || !id.Serial || m_cooked_mesh_uploads[id.Slot].Serial != id.Serial)
+        {
+            return false;
+        }
+        auto& record = m_cooked_mesh_uploads[id.Slot];
+        if (record.State == CookedMeshUploadState::Ready)
+        {
+            ReleaseCookedMeshResources(record);
+        }
+        record.CancelRequested = true;
+        record.State           = CookedMeshUploadState::Cancelled;
+        PollCookedMeshUploads();
+        return true;
+    }
+
+    RenderResourceManager::CookedMeshVersion::~CookedMeshVersion()
+    {
+        Reset();
+    }
+
+    RenderResourceManager::CookedMeshVersion::CookedMeshVersion(CookedMeshVersion&& other) noexcept : m_owner(std::exchange(other.m_owner, nullptr)), m_handle(std::exchange(other.m_handle, {})), m_pin(std::move(other.m_pin)), m_identity(std::exchange(other.m_identity, {})), m_digest(std::exchange(other.m_digest, {})) {}
+
+    RenderResourceManager::CookedMeshVersion& RenderResourceManager::CookedMeshVersion::operator=(CookedMeshVersion&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Reset();
+            m_owner    = std::exchange(other.m_owner, nullptr);
+            m_handle   = std::exchange(other.m_handle, {});
+            m_pin      = std::move(other.m_pin);
+            m_identity = std::exchange(other.m_identity, {});
+            m_digest   = std::exchange(other.m_digest, {});
+        }
+        return *this;
+    }
+
+    void RenderResourceManager::CookedMeshVersion::Reset()
+    {
+        if (m_owner)
+        {
+            m_owner->Release(m_handle);
+            m_owner = nullptr;
+        }
+        m_pin.Reset();
+        m_handle   = {};
+        m_identity = {};
+        m_digest   = {};
+    }
+
+    bool RenderResourceManager::TakeCookedMeshUpload(CookedMeshUploadId id, CookedMeshVersion* output)
+    {
+        if (!output || *output || id.Slot >= CookedMeshUploadCapacity || !id.Serial || m_cooked_mesh_uploads[id.Slot].Serial != id.Serial)
+        {
+            return false;
+        }
+        PollCookedMeshUploads();
+        auto& record = m_cooked_mesh_uploads[id.Slot];
+        if (record.State != CookedMeshUploadState::Ready || !record.Pin)
+        {
+            return false;
+        }
+        output->m_owner    = this;
+        output->m_handle   = record.Handle;
+        output->m_pin      = std::move(record.Pin);
+        output->m_identity = record.Identity;
+        output->m_digest   = record.Digest;
+        record             = {};
+        return true;
+    }
+
+    bool RenderResourceManager::TakeCookedMeshUpload(CookedMeshUploadId id, BufferHandle* handle, MeshGeometryPin* pin)
+    {
+        if (!handle || !pin || *pin || id.Slot >= CookedMeshUploadCapacity || !id.Serial || m_cooked_mesh_uploads[id.Slot].Serial != id.Serial)
+        {
+            return false;
+        }
+        PollCookedMeshUploads();
+        auto& record = m_cooked_mesh_uploads[id.Slot];
+        if (record.State != CookedMeshUploadState::Ready || !record.Pin)
+        {
+            return false;
+        }
+        *handle = record.Handle;
+        *pin    = std::move(record.Pin);
+        record  = {};
+        return true;
+    }
+
+    bool RenderResourceManager::ReleaseCookedMeshUpload(CookedMeshUploadId id)
+    {
+        if (id.Slot >= CookedMeshUploadCapacity || !id.Serial || m_cooked_mesh_uploads[id.Slot].Serial != id.Serial)
+        {
+            return false;
+        }
+        PollCookedMeshUploads();
+        auto& record = m_cooked_mesh_uploads[id.Slot];
+        if (record.State == CookedMeshUploadState::Pending || record.CleanupPending)
+        {
+            return false;
+        }
+        if (record.Pin)
+        {
+            ReleaseCookedMeshResources(record);
+        }
+        record = {};
+        return true;
+    }
+
+    bool RenderResourceManager::AbandonCookedMeshUploadAfterDeviceIdle(CookedMeshUploadId id)
+    {
+        if (id.Slot >= CookedMeshUploadCapacity || !id.Serial || m_cooked_mesh_uploads[id.Slot].Serial != id.Serial)
+        {
+            return false;
+        }
+        auto& record = m_cooked_mesh_uploads[id.Slot];
+        if (record.Pin)
+        {
+            ReleaseCookedMeshResources(record);
+        }
+        record = {};
+        return true;
+    }
+
+    void RenderResourceManager::ReleaseCookedMeshUploadsAfterIdle()
+    {
+        for (auto& record : m_cooked_mesh_uploads)
+        {
+            if (record.Pin)
+            {
+                ReleaseCookedMeshResources(record);
+            }
+            record = {};
         }
     }
 
@@ -1662,7 +2116,7 @@ namespace ZEngine::Rendering
         const auto&     record   = m_texture_versions[handle.Index];
         const bool      same     = record.Snapshot.Handle.Index == handle.Index && record.Snapshot.Handle.Generation == handle.Generation;
         const auto&     producer = m_texture_producer_completions[handle.Index];
-        const bool      pending  = producer.Texture.Index == handle.Index && producer.Texture.Generation == handle.Generation && (producer.PendingSubmission || producer.Timeline || producer.AcquirePending);
+        const bool      pending  = producer.Texture.Index == handle.Index && producer.Texture.Generation == handle.Generation && (producer.PendingSubmission || producer.Timeline || producer.AcquirePending || producer.ConsumerTimeline || (producer.ConsumerAcquired && producer.ConsumerFamily != m_device->GraphicFamilyIndex));
         return !pending && (!same || (!record.References && !record.DestroyRequested));
     }
 
@@ -1679,7 +2133,7 @@ namespace ZEngine::Rendering
         // Ordinary writes/reconstruction must not replace an image still used
         // by an accepted upload. Poll outside the admission mutex, then recheck
         // the exact proof under that mutex before authorizing mutation.
-        if (!TextureProducerComplete(handle))
+        if (!TextureProducerComplete(handle) || !TextureConsumerWorkRetired(handle))
         {
             return false;
         }
@@ -1687,7 +2141,7 @@ namespace ZEngine::Rendering
         auto&           record   = m_texture_versions[handle.Index];
         const bool      same     = record.Snapshot.Handle.Index == handle.Index && record.Snapshot.Handle.Generation == handle.Generation;
         const auto&     producer = m_texture_producer_completions[handle.Index];
-        const bool      pending  = producer.Texture.Index == handle.Index && producer.Texture.Generation == handle.Generation && (producer.PendingSubmission || producer.Timeline || producer.AcquirePending);
+        const bool      pending  = producer.Texture.Index == handle.Index && producer.Texture.Generation == handle.Generation && (producer.PendingSubmission || producer.Timeline || producer.AcquirePending || producer.ConsumerTimeline || (producer.ConsumerAcquired && producer.ConsumerFamily != m_device->GraphicFamilyIndex));
         if (pending || (same && (record.References || record.DestroyRequested)))
         {
             return false;
@@ -1725,7 +2179,7 @@ namespace ZEngine::Rendering
         auto&           producer      = m_texture_producer_completions[handle.Index];
         const bool      same          = record.Snapshot.Handle.Index == handle.Index && record.Snapshot.Handle.Generation == handle.Generation;
         const bool      same_producer = producer.Texture.Index == handle.Index && producer.Texture.Generation == handle.Generation;
-        if ((same && (record.References || record.DestroyRequested)) || (same_producer && (producer.PendingSubmission || producer.Timeline || producer.AcquirePending)) || !TrackTextureDecode(handle))
+        if ((same && (record.References || record.DestroyRequested)) || (same_producer && (producer.PendingSubmission || producer.Timeline || producer.AcquirePending || producer.ConsumerTimeline || (producer.ConsumerAcquired && producer.ConsumerFamily != m_device->GraphicFamilyIndex))) || !TrackTextureDecode(handle))
         {
             return false;
         }
@@ -1739,6 +2193,9 @@ namespace ZEngine::Rendering
         // of this recording must not erase GPU work that is already in flight.
         producer.PendingSubmission   = true;
         producer.GraphicsUploadOnly |= graphics_upload;
+        producer.ConsumerAcquired    = false;
+        producer.ConsumerFamily      = VK_QUEUE_FAMILY_IGNORED;
+        producer.ConsumerDiscarded   = false;
         return true;
     }
 
@@ -1768,7 +2225,7 @@ namespace ZEngine::Rendering
         // old generation must not acquire a new lease before the queue drains.
         record.DestroyRequested      = true;
         const auto& producer         = m_texture_producer_completions[handle.Index];
-        const bool  producer_pending = producer.Texture.Index == handle.Index && producer.Texture.Generation == handle.Generation && (producer.PendingSubmission || producer.Timeline);
+        const bool  producer_pending = producer.Texture.Index == handle.Index && producer.Texture.Generation == handle.Generation && (producer.PendingSubmission || producer.Timeline || producer.ConsumerTimeline);
         if (!record.References)
         {
             const uint64_t bit = uint64_t(1) << (handle.Index % 64);
@@ -1988,6 +2445,58 @@ namespace ZEngine::Rendering
         return pin;
     }
 
+    SceneTextureDescriptorState RenderResourceManager::PrepareExplicitMaterialVersion(const Meshes::MeshMaterial& material, const TextureVersionPin* const (&textures)[5], MaterialVersionPin* output)
+    {
+        if (!output || *output || m_material_version_sequence == UINT64_MAX || m_scene_resources_sealed.load(std::memory_order_acquire))
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        const uint32_t     maps[]    = {material.AlbedoMap, material.EmissiveMap, material.NormalMap, material.OpacityMap, material.SpecularMap};
+        MaterialVersionPin candidate = {};
+        for (uint32_t map = 0; map < 5; ++map)
+        {
+            if (maps[map] == INVALID_MAP_HANDLE)
+            {
+                if (textures[map])
+                {
+                    return SceneTextureDescriptorState::Failed;
+                }
+                continue;
+            }
+            const auto* source   = textures[map];
+            const auto* snapshot = source ? source->Get() : nullptr;
+            if (!snapshot || source->m_owner != this || snapshot->Handle.Index != maps[map])
+            {
+                return SceneTextureDescriptorState::Failed;
+            }
+            const auto acquire = PollSubmittedTextureAcquire(*source);
+            if (acquire != SceneTextureDescriptorState::Ready)
+            {
+                return acquire;
+            }
+            candidate.m_textures[map] = CloneTextureVersion(*source);
+            if (!candidate.m_textures[map])
+            {
+                return SceneTextureDescriptorState::Failed;
+            }
+        }
+        const auto descriptors = PrepareMaterialDescriptorVersions(candidate);
+        if (descriptors != SceneTextureDescriptorState::Ready)
+        {
+            return descriptors;
+        }
+        for (uint32_t map = 0; map < 5; ++map)
+        {
+            if (candidate.m_textures[map] && !candidate.m_descriptor_versions[map])
+            {
+                return SceneTextureDescriptorState::Failed;
+            }
+        }
+        candidate.m_snapshot = {material, ++m_material_version_sequence};
+        *output              = std::move(candidate);
+        return SceneTextureDescriptorState::Ready;
+    }
+
     bool RenderResourceManager::GetFrameMaterialVersion(const uuids::uuid& uuid, uint32_t* index, MaterialVersionSnapshot* snapshot, bool use_fallback)
     {
         auto* assets = AssetManager::Instance();
@@ -2151,6 +2660,92 @@ namespace ZEngine::Rendering
     RenderResourceManager::TextureVersionPin RenderResourceManager::RetainTextureVersion(const TextureVersionPin& retained)
     {
         return CloneTextureVersion(retained);
+    }
+
+    SceneTextureDescriptorState RenderResourceManager::PrepareSubmittedTextureVersion(Textures::TextureHandle handle, TextureVersionPin* retained, uint64_t* publication)
+    {
+        if (!retained || !publication || !m_device || !m_device->LogicalDevice || !handle.Valid() || handle.Index >= TextureVersionCapacity || m_device->IsDeviceLost.load(std::memory_order_acquire) || m_scene_resources_sealed.load(std::memory_order_acquire) || !m_scene_descriptor_preparation || TextureReleaseRequested(handle))
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        const auto* texture = GetTexture(handle);
+        const auto* image   = texture ? m_device->ImageBufferManager.Access(texture->BufferHandle) : nullptr;
+        if (!texture || !image || texture->Specification.IsAliasable || !image->GetBuffer().OwnsAllocation)
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        const auto decode = GetTextureDecodeState(handle);
+        if (decode == TextureDecodeState::Failed || decode == TextureDecodeState::Untracked)
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        if (decode == TextureDecodeState::Pending)
+        {
+            return SceneTextureDescriptorState::Pending;
+        }
+        if (retained->m_owner && (retained->m_owner != this || !retained->Get() || retained->Get()->Handle != handle))
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        if (!*retained)
+        {
+            auto pin = PinTextureVersion(handle);
+            if (!pin)
+            {
+                std::lock_guard lock(m_texture_version_mutex);
+                const auto&     record = m_texture_versions[handle.Index];
+                const bool      same   = record.Snapshot.Handle == handle;
+                return m_texture_version_sequence == UINT64_MAX || (same && (record.DestroyRequested || record.References == UINT32_MAX)) ? SceneTextureDescriptorState::Failed : SceneTextureDescriptorState::Pending;
+            }
+            *retained = std::move(pin);
+        }
+        bool failed = false;
+        if (!TextureProducerComplete(handle, &failed))
+        {
+            return failed ? SceneTextureDescriptorState::Failed : SceneTextureDescriptorState::Pending;
+        }
+        const auto* snapshot = retained->Get();
+        if (!snapshot || snapshot->Image != texture->BufferHandle)
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        const auto state = m_scene_descriptor_preparation->PrepareSceneTextureDescriptor(handle, snapshot->Image, publication);
+        if (state != SceneTextureDescriptorState::Ready)
+        {
+            return state;
+        }
+        return IsSubmittedTextureDescriptorCurrent(*retained, *publication) ? SceneTextureDescriptorState::Ready : SceneTextureDescriptorState::Failed;
+    }
+
+    bool RenderResourceManager::IsSubmittedTextureDescriptorCurrent(const TextureVersionPin& retained, uint64_t publication)
+    {
+        const auto* snapshot = retained.Get();
+        return retained.m_owner == this && snapshot && publication && m_device && !m_device->IsDeviceLost.load(std::memory_order_acquire) && !m_scene_resources_sealed.load(std::memory_order_acquire) && !TextureReleaseRequested(snapshot->Handle) && m_scene_descriptor_preparation && m_scene_descriptor_preparation->IsSceneTextureDescriptorCurrent(snapshot->Handle, snapshot->Image, publication);
+    }
+
+    SceneTextureDescriptorState RenderResourceManager::PollSubmittedTextureAcquire(const TextureVersionPin& retained)
+    {
+        const auto* snapshot = retained.Get();
+        if (retained.m_owner != this || !snapshot || !m_device || m_device->IsDeviceLost.load(std::memory_order_acquire) || TextureReleaseRequested(snapshot->Handle))
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        bool failed = false;
+        if (!TextureConsumerWorkRetired(snapshot->Handle, &failed))
+        {
+            return failed ? SceneTextureDescriptorState::Failed : SceneTextureDescriptorState::Pending;
+        }
+        std::lock_guard lock(m_texture_version_mutex);
+        const auto&     record = m_texture_producer_completions[snapshot->Handle.Index];
+        if (record.Texture != snapshot->Handle || record.ConsumerDiscarded)
+        {
+            return SceneTextureDescriptorState::Failed;
+        }
+        if (!record.ConsumerAcquired)
+        {
+            return SceneTextureDescriptorState::Pending;
+        }
+        return record.ConsumerFamily == m_device->GraphicFamilyIndex ? SceneTextureDescriptorState::Ready : SceneTextureDescriptorState::Failed;
     }
 
     bool RenderResourceManager::GetFrameTextureVersion(const TextureVersionPin& retained, TextureVersionSnapshot* snapshot)
@@ -2554,6 +3149,48 @@ namespace ZEngine::Rendering
             return true;
         }
         PollFrameResources();
+        {
+            // Acquire receipts may reference a graph timeline even when no
+            // frame resource was stamped on it. Do not let its owner destroy
+            // the semaphore until every such consumer has actually retired.
+            std::lock_guard lock(m_texture_version_mutex);
+            bool            referenced = false;
+            for (const auto& record : m_texture_producer_completions)
+            {
+                referenced |= record.ConsumerTimeline == timeline;
+            }
+            if (referenced)
+            {
+                if (!m_device || !m_device->LogicalDevice)
+                {
+                    return false;
+                }
+                uint64_t       completed = 0;
+                const VkResult result    = vkGetSemaphoreCounterValue(m_device->LogicalDevice, timeline->GetHandle(), &completed);
+                const bool     lost      = m_device->CheckDeviceLost(result, "Texture consumer timeline retirement") || m_device->IsDeviceLost.load(std::memory_order_acquire);
+                if (result != VK_SUCCESS && !lost)
+                {
+                    return false;
+                }
+                for (const auto& record : m_texture_producer_completions)
+                {
+                    if (record.ConsumerTimeline == timeline && !lost && completed < record.ConsumerValue)
+                    {
+                        return false;
+                    }
+                }
+                for (auto& record : m_texture_producer_completions)
+                {
+                    if (record.ConsumerTimeline == timeline)
+                    {
+                        record.ConsumerTimeline  = nullptr;
+                        record.ConsumerValue     = 0;
+                        record.ConsumerAcquired  = !lost;
+                        record.ConsumerDiscarded = lost;
+                    }
+                }
+            }
+        }
         for (uint32_t i = 0; i < ResourceTimelineCount; ++i)
         {
             if (m_resource_timelines[i] != timeline)
@@ -2774,7 +3411,24 @@ namespace ZEngine::Rendering
             return false;
         }
         const auto state = record.Environment.load(std::memory_order_acquire);
-        *out             = {id, record.EnvironmentInput, record.ExpectedGeneration, state, phase == SceneResourcePhase::Failed || (phase == SceneResourcePhase::Releasing && state != SceneEnvironmentPreparationState::Activated && record.Readers.load(std::memory_order_acquire) <= 1)};
+        *out             = {id, record.EnvironmentInput, record.ExpectedGeneration, state, phase == SceneResourcePhase::Failed || (phase == SceneResourcePhase::Releasing && state != SceneEnvironmentPreparationState::Activated && record.Readers.load(std::memory_order_acquire) <= 1), record.CookedEnvironment, record.CookedEnvironmentFace, record.CookedEnvironmentHash};
+        return true;
+    }
+
+    bool RenderResourceManager::TakeCookedSceneEnvironment(SceneResourcePreparationId id, Textures::TextureHandle* out)
+    {
+        SceneEnvironmentPreparation preparation = {};
+        if (!out || out->Valid() || !GetSceneEnvironmentPreparation(id, &preparation) || preparation.Cancelled || preparation.State != SceneEnvironmentPreparationState::Preparing)
+        {
+            return false;
+        }
+        auto& record = m_scene_resources[id.Slot];
+        if (!record.CookedEnvironmentOwned || !record.CookedEnvironmentPin)
+        {
+            return false;
+        }
+        *out                          = record.CookedEnvironment;
+        record.CookedEnvironmentOwned = false;
         return true;
     }
 
@@ -2814,9 +3468,10 @@ namespace ZEngine::Rendering
         }
     }
 
-    bool RenderResourceManager::PrepareSceneResources(ECS::SceneRequestId request, uint64_t expected_generation, std::span<const uuids::uuid> meshes, SceneResourcePreparationId* out, ScenePreparationContent content, const SceneEnvironmentInput* environment, const SceneInitialFrameInput* initial_frame, bool defer_instances)
+    bool RenderResourceManager::PrepareSceneResources(ECS::SceneRequestId request, uint64_t expected_generation, std::span<const uuids::uuid> meshes, SceneResourcePreparationId* out, ScenePreparationContent content, const SceneEnvironmentInput* environment, const SceneInitialFrameInput* initial_frame, bool defer_instances, const CookedCpuAssetSet* cooked)
     {
-        if (!request || !expected_generation || expected_generation == UINT64_MAX || !out || *out || meshes.size() > SceneGeometryMeshCapacity || m_scene_resources_sequence == UINT64_MAX || m_scene_resources_sealed.load(std::memory_order_acquire) || (content != ScenePreparationContent::GeometryOnly && content != ScenePreparationContent::MeshMaterials) || (environment && environment->SkyRevision == 0) || (initial_frame && (content != ScenePreparationContent::MeshMaterials || initial_frame->Instances.size() > SceneDrawCapacity)))
+        if (!request || !expected_generation || expected_generation == UINT64_MAX || !out || *out || meshes.size() > SceneGeometryMeshCapacity || m_scene_resources_sequence == UINT64_MAX || m_scene_resources_sealed.load(std::memory_order_acquire) || (content != ScenePreparationContent::GeometryOnly && content != ScenePreparationContent::MeshMaterials) || (environment && environment->SkyRevision == 0) || (initial_frame && (content != ScenePreparationContent::MeshMaterials || initial_frame->Instances.size() > SceneDrawCapacity)) ||
+            (cooked && (!cooked->IsValid() || content != ScenePreparationContent::MeshMaterials)))
         {
             return false;
         }
@@ -2874,10 +3529,19 @@ namespace ZEngine::Rendering
             record.ExpectedGeneration = expected_generation;
             record.MeshCount          = static_cast<uint32_t>(meshes.size());
             std::copy(meshes.begin(), meshes.end(), record.Meshes);
-            record.Cursor           = 0;
-            record.ResidencyWait    = {};
-            record.Content          = content;
-            record.EnvironmentInput = environment ? *environment : SceneEnvironmentInput{};
+            record.Cursor                 = 0;
+            record.Cooked                 = cooked != nullptr;
+            record.CookedManifest         = cooked ? cooked->ManifestDigest() : Core::Hash::Digest256{};
+            record.CookedScene            = cooked ? cooked->SceneUUID() : uuids::uuid{};
+            record.CookedMaterialCount    = 0;
+            record.CookedTextureCount     = 0;
+            record.CookedEnvironment      = {};
+            record.CookedEnvironmentFace  = 0;
+            record.CookedEnvironmentHash  = 0;
+            record.CookedEnvironmentOwned = false;
+            record.ResidencyWait          = {};
+            record.Content                = content;
+            record.EnvironmentInput       = environment ? *environment : SceneEnvironmentInput{};
             record.Environment.store(environment ? SceneEnvironmentPreparationState::Queued : SceneEnvironmentPreparationState::NotRequested, std::memory_order_relaxed);
             record.EnvironmentError.store(SceneResourcePreparationError::None, std::memory_order_relaxed);
             record.MaterialCount          = 0;
@@ -2905,7 +3569,7 @@ namespace ZEngine::Rendering
             record.Error         = SceneResourcePreparationError::None;
             record.MaterialError = MaterialVersionError::None;
             *out                 = record.Id;
-            record.Phase.store(record.InitialCopyCount < record.InitialInstanceCount ? SceneResourcePhase::Collecting : SceneResourcePhase::Queued, std::memory_order_release);
+            record.Phase.store(record.Cooked || record.InitialCopyCount < record.InitialInstanceCount ? SceneResourcePhase::Collecting : SceneResourcePhase::Queued, std::memory_order_release);
             return true;
         }
         return false;
@@ -2952,10 +3616,129 @@ namespace ZEngine::Rendering
             record.InitialTransforms[index] = instance.Transform;
             record.InitialInstances[index]  = {instance.Entity, static_cast<uint32_t>(std::lower_bound(record.Meshes, record.Meshes + record.MeshCount, instance.MeshUUID) - record.Meshes)};
         }
-        if (record.InitialCopyCount == record.InitialInstanceCount)
+        if (record.InitialCopyCount == record.InitialInstanceCount && !record.Cooked)
         {
             record.Phase.store(SceneResourcePhase::Queued, std::memory_order_release);
         }
+        return true;
+    }
+
+    bool RenderResourceManager::AppendCookedSceneMesh(SceneResourcePreparationId id, const CookedCpuAssetSet& assets, const CookedMeshVersion& mesh)
+    {
+        if (!id || id.Slot >= SceneResourcePreparationCapacity)
+        {
+            return false;
+        }
+        auto&       record  = m_scene_resources[id.Slot];
+        const auto* version = assets.FindVersion(mesh.Identity());
+        if (record.Phase.load(std::memory_order_acquire) != SceneResourcePhase::Collecting || record.Id != id || !record.Cooked || !assets.IsValid() || assets.ManifestDigest() != record.CookedManifest || assets.SceneUUID() != record.CookedScene || !version || !assets.FindMesh(mesh.Identity()) || version->ObjectDigest != mesh.Digest() || mesh.m_owner != this || record.Cursor >= record.MeshCount || record.Meshes[record.Cursor] != mesh.Identity().UUID)
+        {
+            return false;
+        }
+        auto pin = PinMeshGeometry(mesh.m_handle);
+        if (!pin || !mesh.Geometry() || pin.Get()->Version != mesh.Geometry()->Version)
+        {
+            return false;
+        }
+        record.Pins[record.Cursor++] = std::move(pin);
+        return true;
+    }
+
+    bool RenderResourceManager::AppendCookedSceneMaterial(SceneResourcePreparationId id, const CookedCpuAssetSet& assets, const Materials::CookedMaterialVersion& material)
+    {
+        if (!id || id.Slot >= SceneResourcePreparationCapacity)
+        {
+            return false;
+        }
+        auto&       record  = m_scene_resources[id.Slot];
+        const auto* version = assets.FindVersion(material.Identity());
+        if (record.Phase.load(std::memory_order_acquire) != SceneResourcePhase::Collecting || record.Id != id || !record.Cooked || !assets.IsValid() || assets.ManifestDigest() != record.CookedManifest || assets.SceneUUID() != record.CookedScene || !version || !assets.FindMaterial(material.Identity()) || version->ObjectDigest != material.Digest() || !material || record.CookedMaterialCount >= SceneMaterialCapacity || (record.CookedMaterialCount && !(record.CookedMaterials[record.CookedMaterialCount - 1] < material.Identity().UUID)))
+        {
+            return false;
+        }
+        for (const auto& texture : material.Pin().m_textures)
+        {
+            if (texture.m_owner && texture.m_owner != this)
+            {
+                return false;
+            }
+        }
+        auto pin = CloneMaterialVersion(material.Pin());
+        if (!pin || !MaterialDescriptorVersionsCurrent(pin))
+        {
+            return false;
+        }
+        record.CookedMaterials[record.CookedMaterialCount]      = material.Identity().UUID;
+        record.CookedMaterialPins[record.CookedMaterialCount++] = std::move(pin);
+        return true;
+    }
+
+    bool RenderResourceManager::AppendCookedSceneTexture(SceneResourcePreparationId id, const CookedCpuAssetSet& assets, Textures::CookedTextureUpload& upload)
+    {
+        if (!id || id.Slot >= SceneResourcePreparationCapacity)
+        {
+            return false;
+        }
+        auto&       record  = m_scene_resources[id.Slot];
+        const auto* version = assets.FindVersion(upload.Identity());
+        const auto* binding = upload.ReadyBinding();
+        if (record.Phase.load(std::memory_order_acquire) != SceneResourcePhase::Collecting || record.Id != id || !record.Cooked || !assets.IsValid() || assets.ManifestDigest() != record.CookedManifest || assets.SceneUUID() != record.CookedScene || !version || !assets.FindTexture(upload.Identity()) || version->ObjectDigest != upload.Digest() || !upload.BelongsTo(*this) || !binding || !binding->Handle.Valid() || record.CookedTextureCount == SceneCookedTextureCapacity ||
+            (record.CookedTextureCount && !(record.CookedTextures[record.CookedTextureCount - 1] < upload.Identity().UUID)))
+        {
+            return false;
+        }
+        auto pin = upload.RetainPreparedVersion();
+        if (!pin)
+        {
+            return false;
+        }
+        const auto index                   = record.CookedTextureCount++;
+        record.CookedTextures[index]       = upload.Identity().UUID;
+        record.CookedTextureHandles[index] = binding->Handle;
+        record.CookedTexturePins[index]    = std::move(pin);
+        return true;
+    }
+
+    bool RenderResourceManager::FinishCookedSceneResources(SceneResourcePreparationId id)
+    {
+        if (!id || id.Slot >= SceneResourcePreparationCapacity)
+        {
+            return false;
+        }
+        auto& record = m_scene_resources[id.Slot];
+        if (record.Phase.load(std::memory_order_acquire) != SceneResourcePhase::Collecting || record.Id != id || !record.Cooked || record.Cursor != record.MeshCount || record.InitialCopyCount != record.InitialInstanceCount || (record.EnvironmentInput.Sky.IsHDRI() && !record.CookedEnvironmentOwned))
+        {
+            return false;
+        }
+        auto expected = SceneResourcePhase::Collecting;
+        return record.Phase.compare_exchange_strong(expected, SceneResourcePhase::Queued, std::memory_order_release);
+    }
+
+    bool RenderResourceManager::AppendCookedSceneEnvironment(SceneResourcePreparationId id, const CookedCpuAssetSet& assets, const Textures::CookedEnvironmentUpload& upload)
+    {
+        if (!id || id.Slot >= SceneResourcePreparationCapacity)
+        {
+            return false;
+        }
+        auto&       record  = m_scene_resources[id.Slot];
+        const auto* version = assets.FindVersion(upload.Identity());
+        const auto* header  = assets.FindEnvironment(upload.Identity());
+        const auto  texture = upload.SubmittedTexture();
+        if (record.Phase.load(std::memory_order_acquire) != SceneResourcePhase::Collecting || record.Id != id || !record.Cooked || !record.EnvironmentInput.Sky.IsHDRI() || record.EnvironmentInput.Sky.EnvironmentMap != upload.Identity().UUID || record.CookedEnvironmentOwned || !assets.IsValid() || assets.ManifestDigest() != record.CookedManifest || assets.SceneUUID() != record.CookedScene || !version || !header || !upload.Header() || version->ObjectDigest != upload.Digest() || !upload.BelongsTo(*this) || !texture.Valid() ||
+            GetTextureDecodeState(texture) != TextureDecodeState::Succeeded)
+        {
+            return false;
+        }
+        auto pin = PinTextureVersion(texture);
+        if (!pin)
+        {
+            return false;
+        }
+        record.CookedEnvironment      = texture;
+        record.CookedEnvironmentFace  = header->FaceWidth;
+        record.CookedEnvironmentHash  = header->SourceHash;
+        record.CookedEnvironmentPin   = std::move(pin);
+        record.CookedEnvironmentOwned = true;
         return true;
     }
 
@@ -2973,6 +3756,9 @@ namespace ZEngine::Rendering
         }
         SceneResourcePreparationResult result = {id, record.ExpectedGeneration, record.MeshCount};
         result.Content                        = record.Content;
+        result.Cooked                         = record.Cooked;
+        result.CookedManifest                 = record.CookedManifest;
+        result.CookedScene                    = record.CookedScene;
         result.FrameRecorded                  = record.FrameRecorded.load(std::memory_order_acquire);
         result.Environment                    = record.Environment.load(std::memory_order_acquire);
         if (phase == SceneResourcePhase::Ready)
@@ -3212,7 +3998,7 @@ namespace ZEngine::Rendering
         {
             return;
         }
-        if (!failed && m_batch_timeline)
+        if (!m_device->IsDeviceLost.load(std::memory_order_acquire) && m_batch_timeline)
         {
             const VkResult result = vkGetSemaphoreCounterValue(m_device->LogicalDevice, m_batch_timeline->GetHandle(), &completed);
             if (result != VK_SUCCESS)
@@ -3224,10 +4010,30 @@ namespace ZEngine::Rendering
                 }
             }
         }
-        TickSceneResourcePreparations(completed, failed || m_device->IsDeviceLost.load(std::memory_order_acquire));
+        const bool device_lost = m_device->IsDeviceLost.load(std::memory_order_acquire);
+        TickSceneResourcePreparations(completed, failed || device_lost, device_lost);
+        if (m_batch_submission_failed && !device_lost && !m_batch_mode)
+        {
+            // Keep the rejection sticky until every affected owner has seen a
+            // terminal result and released its payload. Otherwise a later
+            // accepted signal could make an unsubmitted value look complete.
+            PollCookedMeshUploads();
+            bool outstanding = false;
+            for (const auto& upload : m_cooked_mesh_uploads)
+            {
+                outstanding |= upload.State != CookedMeshUploadState::Invalid;
+            }
+            for (const auto& record : m_scene_resources)
+            {
+                const auto phase  = record.Phase.load(std::memory_order_acquire);
+                outstanding      |= phase != SceneResourcePhase::Free && phase != SceneResourcePhase::Ready;
+            }
+            if (!outstanding)
+                m_batch_submission_failed = false;
+        }
     }
 
-    void RenderResourceManager::TickSceneResourcePreparations(uint64_t completed, bool upload_failed)
+    void RenderResourceManager::TickSceneResourcePreparations(uint64_t completed, bool upload_failed, bool invalidate_ready)
     {
         ZENGINE_PROFILE_SCOPE("SceneLoad.Render.ResourcePreparation");
         uint32_t       budget = SceneResourceSliceOperations;
@@ -3236,7 +4042,7 @@ namespace ZEngine::Rendering
         {
             auto& record = m_scene_resources[(first + offset) % SceneResourcePreparationCapacity];
             auto  phase  = record.Phase.load(std::memory_order_acquire);
-            if (upload_failed && phase == SceneResourcePhase::Ready)
+            if (upload_failed && invalidate_ready && phase == SceneResourcePhase::Ready)
             {
                 record.Error = SceneResourcePreparationError::UploadFailed;
                 record.Phase.compare_exchange_strong(phase, SceneResourcePhase::Failed, std::memory_order_release);
@@ -3255,6 +4061,12 @@ namespace ZEngine::Rendering
             if (phase == SceneResourcePhase::Releasing)
             {
                 if (record.Readers.load(std::memory_order_acquire))
+                {
+                    continue;
+                }
+                // A rejected batch has no completion value, but earlier
+                // accepted work still needs its own retirement gate.
+                if (!invalidate_ready && upload_failed && record.UploadValue <= m_batch_accepted_value && !upload_complete())
                 {
                     continue;
                 }
@@ -3286,12 +4098,34 @@ namespace ZEngine::Rendering
                     record.MaterialPins[index].Reset();
                     --budget;
                 }
-                while (!record.MaterialCount && record.Cursor && budget)
+                if (!record.MaterialCount && record.CookedEnvironmentPin && budget)
+                {
+                    if (record.CookedEnvironmentOwned)
+                    {
+                        ReleaseTexture(record.CookedEnvironment);
+                        record.CookedEnvironmentOwned = false;
+                    }
+                    record.CookedEnvironmentPin.Reset();
+                    --budget;
+                }
+                while (!record.MaterialCount && !record.CookedEnvironmentPin && record.CookedMaterialCount && budget)
+                {
+                    record.CookedMaterialPins[--record.CookedMaterialCount].Reset();
+                    --budget;
+                }
+                while (!record.MaterialCount && !record.CookedEnvironmentPin && !record.CookedMaterialCount && record.CookedTextureCount && budget)
+                {
+                    const auto index = --record.CookedTextureCount;
+                    ReleaseTexture(record.CookedTextureHandles[index]);
+                    record.CookedTexturePins[index].Reset();
+                    --budget;
+                }
+                while (!record.MaterialCount && !record.CookedMaterialCount && !record.CookedTextureCount && record.Cursor && budget)
                 {
                     record.Pins[--record.Cursor].Reset();
                     --budget;
                 }
-                if (!record.Cursor && !record.MaterialCount)
+                if (!record.Cursor && !record.MaterialCount && !record.CookedMaterialCount && !record.CookedEnvironmentPin && !record.CookedTextureCount)
                 {
                     // Identity/input stay untouched until the producer claims Free.
                     record.Phase.store(SceneResourcePhase::Free, std::memory_order_release);
@@ -3419,7 +4253,21 @@ namespace ZEngine::Rendering
                         break;
                     }
                     MaterialVersionError material_error = MaterialVersionError::None;
-                    auto                 pin            = PinMaterialVersion(material, MaterialVersionPolicy::RequiredSceneBindings, &material_error);
+                    MaterialVersionPin   pin            = {};
+                    if (record.Cooked)
+                    {
+                        const auto* found = std::lower_bound(record.CookedMaterials, record.CookedMaterials + record.CookedMaterialCount, material);
+                        if (found == record.CookedMaterials + record.CookedMaterialCount || *found != material)
+                        {
+                            record.Error = SceneResourcePreparationError::RequiredMaterialBinding;
+                            break;
+                        }
+                        pin = CloneMaterialVersion(record.CookedMaterialPins[found - record.CookedMaterials]);
+                    }
+                    else
+                    {
+                        pin = PinMaterialVersion(material, MaterialVersionPolicy::RequiredSceneBindings, &material_error);
+                    }
                     if (!pin)
                     {
                         if (material_error == MaterialVersionError::ResourcesUnavailable && HasPendingTextureUploads())
@@ -3657,6 +4505,42 @@ namespace ZEngine::Rendering
             record.Timeline = nullptr; // Observed completion, not just accepted consumption.
             record.Value    = 0;
         }
+        return true;
+    }
+
+    bool RenderResourceManager::TextureConsumerWorkRetired(Textures::TextureHandle handle, bool* failed)
+    {
+        if (!handle.Valid() || handle.Index >= TextureVersionCapacity)
+        {
+            return true;
+        }
+        // Keep the timeline borrowed while ForgetResourceTimeline checks and
+        // clears these records before its owner can destroy the semaphore.
+        std::lock_guard lock(m_texture_version_mutex);
+        auto&           record   = m_texture_producer_completions[handle.Index];
+        auto*           timeline = record.Texture == handle ? record.ConsumerTimeline : nullptr;
+        if (!timeline)
+        {
+            return true;
+        }
+        uint64_t       completed = 0;
+        const VkResult result    = vkGetSemaphoreCounterValue(m_device->LogicalDevice, timeline->GetHandle(), &completed);
+        if (result != VK_SUCCESS)
+        {
+            m_device->CheckDeviceLost(result, "Texture consumer completion query");
+            if (failed)
+            {
+                *failed = true;
+            }
+            return false;
+        }
+        if (completed < record.ConsumerValue)
+        {
+            return false;
+        }
+        record.ConsumerTimeline = nullptr;
+        record.ConsumerValue    = 0;
+        record.ConsumerAcquired = true;
         return true;
     }
 
@@ -4073,6 +4957,22 @@ namespace ZEngine::Rendering
                 const auto index = --record.MaterialCount;
                 ReleaseFrameMaterialReservation(record.FrameMaterialIndices[index]);
                 record.MaterialPins[index].Reset();
+            }
+            while (record.CookedMaterialCount)
+            {
+                record.CookedMaterialPins[--record.CookedMaterialCount].Reset();
+            }
+            if (record.CookedEnvironmentOwned)
+            {
+                ReleaseTexture(record.CookedEnvironment);
+                record.CookedEnvironmentOwned = false;
+            }
+            record.CookedEnvironmentPin.Reset();
+            while (record.CookedTextureCount)
+            {
+                const auto index = --record.CookedTextureCount;
+                ReleaseTexture(record.CookedTextureHandles[index]);
+                record.CookedTexturePins[index].Reset();
             }
             while (record.Cursor)
             {
@@ -4537,12 +5437,143 @@ namespace ZEngine::Rendering
         }
     }
 
+    RenderResourceManager::UploadStaging::~UploadStaging()
+    {
+        Reset();
+    }
+
+    RenderResourceManager::UploadStaging::UploadStaging(UploadStaging&& other) noexcept : m_device(std::exchange(other.m_device, nullptr)), m_buffer(std::exchange(other.m_buffer, BufferView{})), m_written(std::exchange(other.m_written, 0)) {}
+
+    RenderResourceManager::UploadStaging& RenderResourceManager::UploadStaging::operator=(UploadStaging&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Reset();
+            m_device  = std::exchange(other.m_device, nullptr);
+            m_buffer  = std::exchange(other.m_buffer, BufferView{});
+            m_written = std::exchange(other.m_written, 0);
+        }
+        return *this;
+    }
+
+    void RenderResourceManager::UploadStaging::Reset() noexcept
+    {
+        if (m_device && m_buffer)
+        {
+            m_device->GpuMem.FreeBuffer(m_buffer);
+        }
+        m_device  = nullptr;
+        m_buffer  = {};
+        m_written = 0;
+    }
+
+    bool RenderResourceManager::UploadStaging::Append(std::span<const uint8_t> bytes, size_t* consumed, VkResult* status)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (consumed)
+        {
+            *consumed = 0;
+        }
+        if (!consumed || !m_device || !m_buffer || bytes.empty() || m_written >= m_buffer.Size)
+        {
+            return false;
+        }
+        const size_t count  = std::min({bytes.size(), MaxSliceBytes, static_cast<size_t>(m_buffer.Size - m_written)});
+        VkResult     result = VK_SUCCESS;
+        if (!m_device->GpuMem.WriteHostBuffer(m_buffer, bytes.data(), count, m_written, &result))
+        {
+            m_device->CheckDeviceLost(result, "Texture staging write");
+            if (status)
+            {
+                *status = result;
+            }
+            return false;
+        }
+        m_written += count;
+        *consumed  = count;
+        if (status)
+        {
+            *status = VK_SUCCESS;
+        }
+        return true;
+    }
+
+    bool RenderResourceManager::PrepareUploadStaging(VkDeviceSize size, UploadStaging* output, VkResult* status)
+    {
+        if (status)
+        {
+            *status = VK_ERROR_INITIALIZATION_FAILED;
+        }
+        if (!m_device || !output || !size || size > SIZE_MAX)
+        {
+            return false;
+        }
+        if (m_device->IsDeviceLost.load(std::memory_order_acquire))
+        {
+            if (status)
+            {
+                *status = VK_ERROR_DEVICE_LOST;
+            }
+            return false;
+        }
+        VkResult   result = VK_SUCCESS;
+        BufferView buffer = m_device->GpuMem.TryAllocateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging, "RRM::UploadStaging", &result);
+        if (!buffer)
+        {
+            m_device->CheckDeviceLost(result, "Texture staging allocation");
+            if (status)
+            {
+                *status = result;
+            }
+            return false;
+        }
+        UploadStaging candidate = {};
+        candidate.m_device      = m_device;
+        candidate.m_buffer      = buffer;
+        *output                 = std::move(candidate);
+        if (status)
+        {
+            *status = VK_SUCCESS;
+        }
+        return true;
+    }
+
     Rendering::Textures::TextureHandle RenderResourceManager::UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data, size_t data_size)
     {
-        using namespace Rendering::Specifications;
-        using namespace Rendering::Primitives;
+        if (!m_device || !handle.Valid() || !data || !TextureProducerComplete(handle) || !TextureConsumerWorkRetired(handle) || !CanWriteTextureVersion(handle))
+        {
+            return {};
+        }
+        const auto*        texture   = m_device->GlobalTextures.Access(handle);
+        const VkDeviceSize available = texture && !data_size ? texture->BufferSize : static_cast<VkDeviceSize>(data_size);
+        VkDeviceSize       size      = 0;
+        if (!texture || !texture->ContainsBaseMip(available, &size) || size > SIZE_MAX)
+        {
+            return {};
+        }
+        UploadStaging staging = {};
+        if (!PrepareUploadStaging(size, &staging))
+        {
+            return {};
+        }
+        while (!staging.Ready())
+        {
+            const size_t offset   = static_cast<size_t>(staging.Written());
+            size_t       consumed = 0;
+            if (!staging.Append({data + offset, static_cast<size_t>(size) - offset}, &consumed))
+            {
+                return {};
+            }
+        }
+        return UploadPreparedTextureBuffer(frame_index, thread_index, handle, staging);
+    }
 
-        if (!handle.Valid() || !data || !TextureProducerComplete(handle) || !CanWriteTextureVersion(handle))
+    Rendering::Textures::TextureHandle RenderResourceManager::UploadPreparedTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, UploadStaging& prepared)
+    {
+        if (!m_device || prepared.m_device != m_device || !prepared.Ready() || !handle.Valid() || !TextureProducerComplete(handle) || !TextureConsumerWorkRetired(handle) || !CanWriteTextureVersion(handle))
         {
             return {};
         }
@@ -4553,15 +5584,23 @@ namespace ZEngine::Rendering
             return {};
         }
 
+        if (!m_device->CommandBufferMgr || thread_index >= m_device->CommandBufferMgr->TotalThreadCount || !m_async_uploads.HasCapacity())
+        {
+            return {};
+        }
         uint32_t pool_index = (frame_index * m_device->CommandBufferMgr->TotalThreadCount) + thread_index;
+        if (pool_index >= m_device->CommandBufferMgr->TotalPoolCount)
+        {
+            return {};
+        }
 
-        auto     texture    = m_device->GlobalTextures.Access(handle);
+        auto texture = m_device->GlobalTextures.Access(handle);
         if (!texture)
         {
             return {};
         }
-        const VkDeviceSize upload_size = data_size == 0 ? texture->BufferSize : static_cast<VkDeviceSize>(data_size);
-        if (upload_size == 0 || upload_size > texture->BufferSize)
+        VkDeviceSize upload_size = 0;
+        if (!texture->ContainsBaseMip(prepared.Size(), &upload_size) || prepared.Size() != upload_size)
         {
             return {};
         }
@@ -4570,30 +5609,35 @@ namespace ZEngine::Rendering
         {
             return {};
         }
-        auto img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-        auto buffer_handle  = img_buf->GetHandle();
-
-        if (TextureUploadQueue(handle, img_buf->Layout) == QueueType::TRANSFER_QUEUE)
+        auto       img_buf_aspect = (texture->Specification.Format == ImageFormat::DEPTH_STENCIL_FROM_DEVICE) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+        auto       buffer_handle  = img_buf->GetHandle();
+        const bool transfer       = TextureUploadQueue(handle, img_buf->Layout) == QueueType::TRANSFER_QUEUE;
+        auto&      retire_values  = transfer ? m_tex_transfer_retire[pool_index] : m_tex_retire_values[pool_index];
+        uint32_t   i              = 0;
+        for (; i < GEOMETRY_UPLOAD_SLOT; ++i)
         {
-            auto&    transfer_retire = m_tex_transfer_retire[pool_index];
-            uint32_t i               = 0;
-            for (; i < GEOMETRY_UPLOAD_SLOT; ++i)
+            if (retire_values[i] == 0)
             {
-                if (transfer_retire[i] == 0)
-                {
-                    break;
-                }
+                break;
             }
-            if (i >= GEOMETRY_UPLOAD_SLOT)
-            {
-                ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free transfer slot — upload deferred")
-                return {};
-            }
-            if (!BeginTextureUploadRecording(handle, false))
-            {
-                return {};
-            }
+        }
+        if (i >= GEOMETRY_UPLOAD_SLOT)
+        {
+            return {};
+        }
 
+        if (!BeginTextureUploadRecording(handle, !transfer))
+        {
+            return {};
+        }
+        // The producer slot owns this allocation from here, including inline
+        // queue rejection and later GPU completion.
+        BufferView staging = std::exchange(prepared.m_buffer, BufferView{});
+        prepared.m_device  = nullptr;
+        prepared.m_written = 0;
+
+        if (transfer)
+        {
             auto                            transfer_cmd = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::TRANSFER_QUEUE, frame_index, thread_index, i);
 
             ImageMemoryBarrierSpecification to_transfer  = {};
@@ -4610,41 +5654,38 @@ namespace ZEngine::Rendering
             to_transfer.SourceQueueFamily                = m_device->TransferFamilyIndex;
             to_transfer.DestinationQueueFamily           = m_device->TransferFamilyIndex;
             transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-            img_buf->Layout                                  = to_transfer.NewLayout;
+            img_buf->Layout = to_transfer.NewLayout;
 
             // A streamed upload is submitted independently from the render timeline.
             // Keep its staging allocation off the render-timeline ring and retire it
             // with the producer timeline below.
-            BufferView                      transfer_staging = m_device->WriteTextureDataAfterAdmission(transfer_cmd, handle, data, nullptr, false, upload_size);
+            transfer_cmd->CopyBufferToImage(staging, img_buf->GetBuffer(), texture->Width, texture->Height, texture->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(img_buf->Layout)], 0, texture->Specification.Depth);
 
-            ImageMemoryBarrierSpecification release          = {};
-            release.ImageHandle                              = buffer_handle;
-            release.OldLayout                                = ImageLayout::TRANSFER_DST_OPTIMAL;
-            release.NewLayout                                = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-            release.ImageAspectMask                          = VkImageAspectFlagBits(img_buf_aspect);
-            release.SourceAccessMask                         = VK_ACCESS_TRANSFER_WRITE_BIT;
-            release.DestinationAccessMask                    = VK_ACCESS_NONE;
-            release.SourceStageMask                          = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            ImageMemoryBarrierSpecification release = {};
+            release.ImageHandle                     = buffer_handle;
+            release.OldLayout                       = ImageLayout::TRANSFER_DST_OPTIMAL;
+            release.NewLayout                       = (img_buf_aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ? ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL : ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+            release.ImageAspectMask                 = VkImageAspectFlagBits(img_buf_aspect);
+            release.SourceAccessMask                = VK_ACCESS_TRANSFER_WRITE_BIT;
+            release.DestinationAccessMask           = VK_ACCESS_NONE;
+            release.SourceStageMask                 = VK_PIPELINE_STAGE_TRANSFER_BIT;
             // This is the producer half of a queue-family transfer, recorded
             // on a transfer-only queue. The render graph records the matching
             // graphics-side acquire with the actual consumer stage.
-            release.DestinationStageMask                     = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-            release.LayerCount                               = texture->Specification.LayerCount;
-            release.MipLevelCount                            = texture->Specification.MipLevelCount;
-            const uint32_t producer_family                   = m_device->GetQueue(QueueType::TRANSFER_QUEUE).FamilyIndex;
-            const bool     transfers_ownership               = producer_family != m_device->GraphicFamilyIndex;
-            release.SourceQueueFamily                        = transfers_ownership ? producer_family : VK_QUEUE_FAMILY_IGNORED;
-            release.DestinationQueueFamily                   = transfers_ownership ? m_device->GraphicFamilyIndex : VK_QUEUE_FAMILY_IGNORED;
+            release.DestinationStageMask            = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+            release.LayerCount                      = texture->Specification.LayerCount;
+            release.MipLevelCount                   = texture->Specification.MipLevelCount;
+            const uint32_t producer_family          = m_device->GetQueue(QueueType::TRANSFER_QUEUE).FamilyIndex;
+            const bool     transfers_ownership      = producer_family != m_device->GraphicFamilyIndex;
+            release.SourceQueueFamily               = transfers_ownership ? producer_family : VK_QUEUE_FAMILY_IGNORED;
+            release.DestinationQueueFamily          = transfers_ownership ? m_device->GraphicFamilyIndex : VK_QUEUE_FAMILY_IGNORED;
             transfer_cmd->TransitionImageLayout(ImageMemoryBarrier{release});
             img_buf->Layout = release.NewLayout;
             transfer_cmd->End();
 
-            uint64_t transfer_val = m_tex_transfer_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            transfer_retire[i]    = transfer_val;
-            if (transfer_staging)
-            {
-                m_tex_transfer_staging[pool_index][i] = transfer_staging;
-            }
+            uint64_t transfer_val                 = m_tex_transfer_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            retire_values[i]                      = transfer_val;
+            m_tex_transfer_staging[pool_index][i] = staging;
 
             m_async_uploads.Enqueue({
                 .Buffer            = transfer_cmd,
@@ -4662,25 +5703,6 @@ namespace ZEngine::Rendering
         }
         else
         {
-            auto&    retire_values = m_tex_retire_values[pool_index];
-            uint32_t i             = 0;
-            for (; i < GEOMETRY_UPLOAD_SLOT; ++i)
-            {
-                if (retire_values[i] == 0)
-                {
-                    break;
-                }
-            }
-            if (i >= GEOMETRY_UPLOAD_SLOT)
-            {
-                ZENGINE_CORE_WARN("[RRM] UploadTextureBuffer: no free graphics slot — upload deferred")
-                return {};
-            }
-            if (!BeginTextureUploadRecording(handle, true))
-            {
-                return {};
-            }
-
             auto                            cmd         = m_device->CommandBufferMgr->GetInstantCommandBuffer(QueueType::GRAPHIC_QUEUE, frame_index, thread_index, i);
 
             ImageMemoryBarrierSpecification to_transfer = {};
@@ -4699,11 +5721,11 @@ namespace ZEngine::Rendering
             to_transfer.SourceQueueFamily               = m_device->GraphicFamilyIndex;
             to_transfer.DestinationQueueFamily          = m_device->GraphicFamilyIndex;
             cmd->TransitionImageLayout(ImageMemoryBarrier{to_transfer});
-            img_buf->Layout                          = to_transfer.NewLayout;
+            img_buf->Layout = to_transfer.NewLayout;
 
             // See the dedicated-transfer branch above: the upload submission is not
             // represented by RenderTimeline, so its staging buffer must not use the ring.
-            BufferView                      staging  = m_device->WriteTextureDataAfterAdmission(cmd, handle, data, nullptr, false, upload_size);
+            cmd->CopyBufferToImage(staging, img_buf->GetBuffer(), texture->Width, texture->Height, texture->Specification.LayerCount, Specifications::ImageLayoutMap[VALUE_FROM_SPEC_MAP(img_buf->Layout)], 0, texture->Specification.Depth);
 
             ImageMemoryBarrierSpecification to_final = {};
             to_final.ImageHandle                     = buffer_handle;
@@ -4721,13 +5743,10 @@ namespace ZEngine::Rendering
             cmd->TransitionImageLayout(ImageMemoryBarrier{to_final});
             cmd->End();
 
-            uint64_t signal_value = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
-            retire_values[i]      = signal_value;
-            if (staging)
-            {
-                m_tex_retire_staging[pool_index][i] = staging;
-            }
-            img_buf->Layout = to_final.NewLayout;
+            uint64_t signal_value               = m_tex_next_values[pool_index].fetch_add(1, std::memory_order_acq_rel);
+            retire_values[i]                    = signal_value;
+            m_tex_retire_staging[pool_index][i] = staging;
+            img_buf->Layout                     = to_final.NewLayout;
             m_async_uploads.Enqueue({
                 .Buffer            = cmd,
                 .Timeline          = m_tex_timelines[pool_index],
@@ -4881,7 +5900,7 @@ namespace ZEngine::Rendering
     {
         const auto  handle   = deferral.TexHandle;
         const auto* texture  = m_device ? m_device->GlobalTextures.Access(handle) : nullptr;
-        const bool  terminal = !texture || !deferral.Pixels || handle.Index >= TextureVersionCapacity || !texture->BufferSize || !m_device->ImageBufferManager.Access(texture->BufferHandle) || (deferral.ByteSize && deferral.ByteSize > texture->BufferSize) || TextureReleaseRequested(handle) || GetTextureDecodeState(handle) == TextureDecodeState::Failed;
+        const bool  terminal = !texture || !deferral.Pixels || handle.Index >= TextureVersionCapacity || !texture->ContainsBaseMip(deferral.ByteSize ? deferral.ByteSize : texture->BufferSize) || !m_device->ImageBufferManager.Access(texture->BufferHandle) || TextureReleaseRequested(handle) || GetTextureDecodeState(handle) == TextureDecodeState::Failed;
         if (terminal)
         {
             // A late decode is allowed to finish, not to revive a destroyed
@@ -5110,11 +6129,47 @@ namespace ZEngine::Rendering
                 {
                     producer.AcquirePending     = false;
                     producer.GraphicsUploadOnly = true;
+                    producer.ConsumerDiscarded  = true;
                 }
             }
             m_streaming_upload_tickets.erase(index);
             return;
         }
+    }
+
+    bool RenderResourceManager::AcknowledgeStreamingUploadAcquire(const Hardwares::StreamingUploadTicket& ticket, Primitives::Semaphore* timeline, uint64_t value, uint32_t consumer_family)
+    {
+        if (!ticket.Texture.Valid() || !timeline || !value || consumer_family == VK_QUEUE_FAMILY_IGNORED)
+        {
+            return false;
+        }
+        for (uint32_t index = 0; index < m_streaming_upload_tickets.size(); ++index)
+        {
+            const auto& pending = m_streaming_upload_tickets[index];
+            if (pending.Texture != ticket.Texture || pending.CompletionTimeline != ticket.CompletionTimeline || pending.CompletionValue != ticket.CompletionValue || pending.PreReleaseLayout != ticket.PreReleaseLayout || pending.PostReleaseLayout != ticket.PostReleaseLayout || pending.ProducerQueueFamily != ticket.ProducerQueueFamily)
+            {
+                continue;
+            }
+            if (ticket.Texture.Index < TextureVersionCapacity)
+            {
+                std::lock_guard lock(m_texture_version_mutex);
+                auto&           producer = m_texture_producer_completions[ticket.Texture.Index];
+                if (producer.Texture != ticket.Texture || !producer.AcquirePending || producer.PendingSubmission || producer.ConsumerTimeline)
+                {
+                    return false;
+                }
+                producer.AcquirePending      = false;
+                producer.ConsumerTimeline    = timeline;
+                producer.ConsumerValue       = value;
+                producer.ConsumerFamily      = consumer_family;
+                producer.ConsumerAcquired    = false;
+                producer.ConsumerDiscarded   = false;
+                producer.GraphicsUploadOnly |= consumer_family == m_device->GraphicFamilyIndex;
+            }
+            m_streaming_upload_tickets.erase(index);
+            return true;
+        }
+        return false;
     }
 
     void RenderResourceManager::RetireTextureSlots(uint8_t frame_index, uint8_t thread_index)
@@ -5479,6 +6534,11 @@ namespace ZEngine::Rendering
                 continue;
             }
             if (!TextureProducerComplete(handle))
+            {
+                ++index;
+                continue;
+            }
+            if (!TextureConsumerWorkRetired(handle))
             {
                 ++index;
                 continue;

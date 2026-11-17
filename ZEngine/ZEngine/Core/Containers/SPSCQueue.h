@@ -49,6 +49,14 @@ namespace ZEngine::Core::Containers
             return m_tail.value.load(std::memory_order_acquire) == m_head.value.load(std::memory_order_acquire);
         }
 
+        // Producer-only admission check. A concurrent consumer can only make
+        // more room; another producer must not enqueue between check and push.
+        bool full() const
+        {
+            const uint32_t head = m_head.value.load(std::memory_order_relaxed);
+            return ((head + 1) & MASK) == m_tail.value.load(std::memory_order_acquire);
+        }
+
     private:
         PaddedAtomic<uint32_t> m_head{};
         PaddedAtomic<uint32_t> m_tail{};

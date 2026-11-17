@@ -62,6 +62,9 @@ namespace ZEngine::Profiling
         static void               StopCapture();
         static uint32_t           CaptureCount();
         static uint32_t           CaptureDropped();
+        /// Owner-only query; true once a timed capture's deadline has passed,
+        /// even if no later matching sample arrived to stop recording.
+        static bool               CaptureDeadlinePassed();
         static bool               WriteCaptureCsv(const char* filename);
 
     private:

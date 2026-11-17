@@ -1,6 +1,7 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
+#include <ZEngine/ECS/BinarySceneCodec.h>
 #include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
@@ -8,15 +9,47 @@
 #include <ZEngine/ECS/SceneInstance.h>
 #include <ZEngine/ECS/ScenePublication.h>
 #include <gtest/gtest.h>
+#include <array>
 #include <atomic>
 #include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include "../Cook/CookObjectTestSupport.h"
 
 using namespace ZEngine::Core::Memory;
 using namespace ZEngine::ECS;
 using namespace ZEngine::ECS::Components;
+
+namespace
+{
+    namespace VFS = ZEngine::Core::VFS;
+
+    struct CookedSceneFile
+    {
+        ZEngine::Cook::Tests::ObjectFile    File       = {};
+        ZEngine::Cook::CookObjectDescriptor Descriptor = {};
+
+        bool                                Capture(std::span<const uint8_t> bytes, IAllocationRoute& route, ZEngine::Managers::CookedObjectSnapshot* output)
+        {
+            ZEngine::Core::Hash::SHA256 hash   = {};
+            ZEngine::Cook::Digest256    digest = {};
+            if (hash.Update({bytes.data(), bytes.size()}).Failed() || hash.Finalize(&digest).Failed() || ZEngine::Cook::MakeCookObjectDescriptor(digest, bytes.size(), ZEngine::Cook::CookSceneObjectExtension, &Descriptor).Failed())
+            {
+                return false;
+            }
+            File.Bytes                              = {bytes.data(), bytes.size()};
+            ZEngine::Cook::CookObjectReadFns reader = {
+                this,
+                [](void* context, const VFS::VFSRelativePath& path) {
+                    auto& source = *static_cast<CookedSceneFile*>(context);
+                    return path == source.Descriptor.Path ? VFS::VFSResult<VFS::IVFSFile*>::Ok(&source.File) : VFS::VFSResult<VFS::IVFSFile*>::Fail(VFS::VFSError::NotFound);
+                },
+                [](void*, VFS::IVFSFile* file) { return file->Close(); }};
+            return ZEngine::Managers::CookedObjectSnapshot::Capture(reader, Descriptor, ZEngine::Cook::CookSceneObjectExtension, route, bytes.size(), output).Succeeded();
+        }
+    };
+} // namespace
 
 static_assert(!std::is_copy_constructible_v<SceneStorageLease>);
 static_assert(std::is_nothrow_move_constructible_v<SceneStorageLease>);
@@ -200,6 +233,52 @@ TEST_F(SceneInstanceTest, RefusedDocumentWorkingStorageLeavesNoRetainedAllocatio
     Instance.reset();
     EXPECT_FALSE(Occupied[0].value.load());
     vfs.Shutdown();
+}
+
+TEST_F(SceneInstanceTest, DecodedCookedDocumentUsesOwnedStorageButCannotPopulateWithoutPackageValidation)
+{
+    AddSourceEntity();
+    SceneDocument source = {};
+    ASSERT_TRUE(Capture(&source));
+    ZEngine::Core::Containers::Array<uint8_t> binary = {};
+    ASSERT_TRUE(BinarySceneCodec::Encode(source, Schemas, &Memory.MainArena, &binary, &Diagnostics));
+    SlabAllocationRoute route = {};
+    ASSERT_TRUE(route.Initialize(&Memory.MainArena, ZMega(1)));
+    CookedSceneFile                         file     = {};
+    ZEngine::Managers::CookedObjectSnapshot snapshot = {};
+    ASSERT_TRUE(file.Capture({binary.data(), binary.size()}, route, &snapshot));
+    ASSERT_TRUE(Create());
+    EXPECT_FALSE(Instance->PopulateCooked(Schemas, &Diagnostics));
+    Diagnostics.Clear();
+    ASSERT_TRUE(Instance->ReadCooked(snapshot, Schemas, ZMega(8), &Diagnostics));
+    snapshot.Reset();
+    binary[0] ^= 1;
+    EXPECT_EQ(Instance->World().AliveCount(), 0u);
+    EXPECT_FALSE(Instance->TryReleaseDocumentForDiscard(&source));
+    EXPECT_FALSE(Instance->PopulateSource(Schemas, &Diagnostics));
+    Diagnostics.Clear();
+    EXPECT_FALSE(Instance->PopulateCooked(Schemas, &Diagnostics));
+    EXPECT_EQ(Instance->World().AliveCount(), 0u);
+    EXPECT_EQ(Instance->DocumentMemory().Capacity, ZMega(8));
+    EXPECT_EQ(Instance->DocumentMemory().Working, 0u);
+    Instance.reset();
+}
+
+TEST_F(SceneInstanceTest, InvalidVerifiedCookedBytesDoNotPopulateOrEscapeTheOwner)
+{
+    std::array<uint8_t, 128> invalid = {};
+    SlabAllocationRoute      route   = {};
+    ASSERT_TRUE(route.Initialize(&Memory.MainArena, ZMega(1)));
+    CookedSceneFile                         file     = {};
+    ZEngine::Managers::CookedObjectSnapshot snapshot = {};
+    ASSERT_TRUE(file.Capture(invalid, route, &snapshot));
+    ASSERT_TRUE(Create());
+    EXPECT_FALSE(Instance->ReadCooked(snapshot, Schemas, ZMega(8), &Diagnostics));
+    EXPECT_EQ(Instance->World().AliveCount(), 0u);
+    EXPECT_EQ(Instance->Document().Settings(), nullptr);
+    EXPECT_FALSE(Instance->PopulateCooked(Schemas, &Diagnostics));
+    EXPECT_TRUE(Diagnostics.HasErrors());
+    Instance.reset();
 }
 
 TEST_F(SceneInstanceTest, LeaseAcquisitionIsBoundedAndCannotReplaceALiveLease)

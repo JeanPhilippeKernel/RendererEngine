@@ -66,6 +66,11 @@ namespace ZEngine::Hardwares
         {
             return !m_jobs.empty();
         }
+        /// Producer-thread preflight; no other producer may enqueue before use.
+        bool HasCapacity() const
+        {
+            return !m_jobs.full();
+        }
 
     private:
         VulkanDevice*                                         m_device = nullptr;

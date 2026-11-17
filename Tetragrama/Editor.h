@@ -1,4 +1,6 @@
 #pragma once
+#include <Tetragrama/EditorCookedSceneRequest.h>
+#include <Tetragrama/EditorCookedStartup.h>
 #include <Tetragrama/EditorMeshDrop.h>
 #include <Tetragrama/EditorScene.h>
 #include <Tetragrama/EditorSceneCandidate.h>
@@ -75,6 +77,57 @@ namespace Tetragrama
 
         Editor();
         ~Editor() override;
+        /// Configure before Initialize. A cooked launch uses no project source mount.
+        void ConfigureCookedStartup(std::string package_directory, const uuids::uuid& scene, bool exit_after_first_frame = false, uint32_t expected_draws = 0, std::string capture_path = {}, uint32_t reloads = 0, const uuids::uuid& alternate_scene = {}, bool cancel_reload_after_mesh = false, bool fail_reload_staging = false, bool cancel_reload_cpu = false);
+        /// Test-only source capture uses the same render-graph readback as cooked startup.
+        void ConfigureSourceCapture(std::string capture_path, uint32_t expected_draws, std::string import_path = {});
+        /// The cooked authored-camera view uses a nil UUID to require exactly
+        /// one main camera in each candidate scene.
+        void ConfigureCookedRuntimeView(const uuids::uuid& camera) noexcept
+        {
+            m_cooked_runtime_view   = true;
+            m_cooked_runtime_camera = camera;
+        }
+        void EnableCookedRetryProbe() noexcept
+        {
+            m_cooked_retry_after_failure = true;
+        }
+        void EnableCookedSupersedeProbe() noexcept
+        {
+            m_cooked_supersede_reload = true;
+        }
+        void EnableCookedCpuSupersedeProbe() noexcept
+        {
+            m_cooked_supersede_cpu = true;
+        }
+        void EnableCookedGpuSupersedeProbe() noexcept
+        {
+            m_cooked_supersede_gpu = true;
+        }
+        void EnableCookedSubmitRejectionProbe() noexcept
+        {
+            m_cooked_reject_reload_submit = true;
+        }
+        [[nodiscard]] bool CookedStartupFrameRecorded() const noexcept
+        {
+            return m_cooked_startup_frame_recorded;
+        }
+        [[nodiscard]] bool CookedStartupFailurePreserved() const noexcept
+        {
+            return m_cooked_failure_preserved;
+        }
+        [[nodiscard]] bool CookedReloadCancelledDuringUpload() const noexcept
+        {
+            return m_cooked_cancel_observed;
+        }
+        [[nodiscard]] bool CookedReloadCancelledDuringCpu() const noexcept
+        {
+            return m_cooked_startup && m_cooked_startup->CpuCancellationObserved();
+        }
+        [[nodiscard]] bool CookedReloadStagingRefused() const noexcept
+        {
+            return m_cooked_staging_refusal_observed;
+        }
 
         Layers::ZUILayer*                     ZUIUILayer                        = nullptr;
         Panels::AssetImporterPanel*           AssetImporter                     = nullptr;
@@ -146,46 +199,56 @@ namespace Tetragrama
         {
             return false;
         }
-        [[nodiscard]] bool ProcessCloseRequest(ZEngine::EngineContext& engine);
+        [[nodiscard]] bool                               ProcessCloseRequest(ZEngine::EngineContext& engine);
 
         /// @brief Enqueue an atomic source save; unnamed scenes open the native Save As picker.
-        void               SaveScene();
+        void                                             SaveScene();
 
         /// @brief Opens the native save picker on the main thread, outside UI construction.
-        void               SaveSceneAs();
-        [[nodiscard]] bool RequestSceneSave(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch);
+        void                                             SaveSceneAs();
+        [[nodiscard]] bool                               RequestSceneSave(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch);
         /// @brief Called only within the session mutation phase, after queued edits.
-        [[nodiscard]] bool ProcessSceneSave(ZEngine::EngineContext& engine);
+        [[nodiscard]] bool                               ProcessSceneSave(ZEngine::EngineContext& engine);
         /// @brief Owner-thread polling; picker results retain the original scene/project binding.
-        void               PollSceneSaveDialog();
+        void                                             PollSceneSaveDialog();
         /// @brief Queued whole-scene reset. Dirty scenes are preserved, never silently discarded.
-        [[nodiscard]] bool RequestNewScene();
-        [[nodiscard]] bool ProcessNewScene(ZEngine::EngineContext& engine);
+        [[nodiscard]] bool                               RequestNewScene();
+        [[nodiscard]] bool                               ProcessNewScene(ZEngine::EngineContext& engine);
 
         /// Native dialog invocation is scheduled outside UI construction; completion
         /// is polled on the owner thread and retains the requesting scene/project binding.
-        void               OpenSceneDialog();
-        void               PollSceneOpenDialog();
+        void                                             OpenSceneDialog();
+        void                                             PollSceneOpenDialog();
         /// Queue a project-native source path on the session owner thread; never
         /// replaces the world inline. Dispatch captures project/service identities;
         /// stale work retires before preview cancellation or candidate publication.
-        void               OpenScene(const char* path);
+        void                                             OpenScene(const char* path);
         /// Optional output retains a pollable engine result until the caller
         /// acknowledges it. Without output, the editor releases it after cleanup.
-        [[nodiscard]] bool RequestSceneOpen(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch, ZEngine::ECS::SceneRequestId* request = nullptr);
-        [[nodiscard]] bool ProcessSceneOpen(ZEngine::EngineContext& engine);
-        [[nodiscard]] bool SceneOpenPending() const;
+        [[nodiscard]] bool                               RequestSceneOpen(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch, ZEngine::ECS::SceneRequestId* request = nullptr);
+        /// Request another scene from the mounted cooked package. Optional
+        /// result identity remains pollable through SceneLoads until acknowledged.
+        [[nodiscard]] EditorCookedStartup::RestartResult RequestCookedScene(const uuids::uuid& scene, uint64_t expected_epoch, ZEngine::ECS::SceneRequestId* request = nullptr);
+        /// Transfers a reconstructed candidate and ready closure only on admission.
+        /// The cache, routes and slab must outlive the committed scene and its
+        /// retired GPU resources, including after this request completes.
+        [[nodiscard]] bool                               RequestCookedSceneOpen(ZEngine::Helpers::Scope<EditorSceneCandidate>& candidate, ZEngine::Managers::CookedCpuClosureCache::Lease&& assets, uint64_t expected_epoch, ZEngine::Core::Memory::IAllocationRoute& route, ZEngine::Core::Memory::TLSFSlab& metadata, uint32_t max_textures, ZEngine::ECS::SceneRequestId* request = nullptr, ZEngine::ECS::SceneRequestId admitted_request = {});
+        [[nodiscard]] bool                               ProcessSceneOpen(ZEngine::EngineContext& engine);
+        [[nodiscard]] bool                               SceneOpenPending() const;
+        /// Active editor handoff work, excluding the cooked CPU/waiting owner.
+        [[nodiscard]] bool                               SceneOpenWorkPending() const;
         /// Copies a drop intent with its original scene epoch; no I/O or authored write.
-        [[nodiscard]] bool RequestMeshDrop(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch);
+        [[nodiscard]] bool                               RequestMeshDrop(const ZEngine::Core::VFS::VFSPath& path, uint64_t expected_epoch);
         /// Import completion queues placement; only the shared mutation-point loader creates entities.
-        [[nodiscard]] bool RequestImportedMesh(const ZEngine::EngineContext& engine, const ZEngine::Core::VFS::VFSPath& path, std::string_view name, const uuids::uuid& scene, uint64_t expected_epoch);
+        [[nodiscard]] bool                               RequestImportedMesh(const ZEngine::EngineContext& engine, const ZEngine::Core::VFS::VFSPath& path, std::string_view name, const uuids::uuid& scene, uint64_t expected_epoch);
         /// Complete, unpublished candidate only. Must run in the mutation phase;
         /// rejection preserves both the candidate and current committed content.
         /// Async callers supply the captured activation generation. Zero is only
         /// a synchronous caller's request to use the current generation.
-        [[nodiscard]] bool PublishSceneCandidate(ZEngine::EngineContext& engine, ZEngine::Helpers::Scope<EditorSceneCandidate>& candidate, uint64_t expected_epoch, uint64_t expected_generation = 0, ZEngine::ECS::SceneRequestId request = {});
+        [[nodiscard]] bool                               PublishSceneCandidate(ZEngine::EngineContext& engine, ZEngine::Helpers::Scope<EditorSceneCandidate>& candidate, uint64_t expected_epoch, uint64_t expected_generation = 0, ZEngine::ECS::SceneRequestId request = {});
 
     private:
+        [[nodiscard]] bool                                   ApplyCookedRuntimeCamera(const ZEngine::ECS::Scene&, ZEngine::Applications::RenderFrameState&) const;
         ZEngine::Rendering::Renderers::GridLabelFontSnapshot CaptureGridLabelFont() const;
 
         enum class ObjectPickPhase : uint32_t
@@ -315,6 +378,7 @@ namespace Tetragrama
         SceneFileOwner                      m_editor_close_owner      = {};
         bool                                m_editor_close_pending    = false;
         struct SceneOpenWork;
+        struct CookedOpenWork;
         SceneFileRequest                              m_scene_open               = {};
         ZEngine::ECS::SceneRequestId                  m_scene_open_request       = {};
         ZEngine::EngineContext*                       m_scene_load_engine        = nullptr;
@@ -322,21 +386,77 @@ namespace Tetragrama
         ZEngine::Windows::FileDialogRequest           m_scene_open_picker        = {};
         SceneFileOwner                                m_scene_open_picker_owner  = {};
         ZEngine::Helpers::Scope<SceneOpenWork>        m_scene_open_work;
-        ZEngine::Helpers::Scope<EditorSceneCandidate> m_loaded_scene          = {};
-        ZEngine::ECS::Scene*                          m_original_world        = nullptr;
-        ZEngine::ECS::ActorManager*                   m_original_actors       = nullptr;
-        ZEngine::ECS::WorldCommands*                  m_original_commands     = nullptr;
-        ZEngine::ECS::WorldTick*                      m_original_tick         = nullptr;
-        bool                                          m_publishing_scene      = false;
-        bool                                          m_processing_scene_open = false;
-        bool                                          m_closing               = false;
+        ZEngine::Helpers::Scope<CookedOpenWork>       m_cooked_open_work;
+        ZEngine::Helpers::Scope<EditorCookedStartup>  m_cooked_startup;
+        std::string                                   m_cooked_package_directory        = {};
+        uuids::uuid                                   m_cooked_startup_scene            = {};
+        uuids::uuid                                   m_cooked_alternate_scene          = {};
+        uuids::uuid                                   m_cooked_current_scene            = {};
+        uuids::uuid                                   m_cooked_runtime_camera           = {};
+        bool                                          m_cooked_runtime_view             = false;
+        uint32_t                                      m_cooked_runtime_width            = 0;
+        uint32_t                                      m_cooked_runtime_height           = 0;
+        uint32_t                                      m_cooked_reloads_remaining        = 0;
+        uint64_t                                      m_cooked_reload_generation        = 0;
+        ZEngine::ECS::SceneRequestId                  m_cooked_reload_request           = {};
+        bool                                          m_cooked_cancel_after_mesh        = false;
+        bool                                          m_cooked_cancel_cpu               = false;
+        bool                                          m_cooked_retry_after_failure      = false;
+        bool                                          m_cooked_supersede_reload         = false;
+        bool                                          m_cooked_supersede_cpu            = false;
+        bool                                          m_cooked_supersede_cpu_armed      = false;
+        bool                                          m_cooked_supersede_gpu            = false;
+        bool                                          m_cooked_supersede_gpu_reached    = false;
+        bool                                          m_cooked_cancel_armed             = false;
+        bool                                          m_cooked_cancel_observed          = false;
+        bool                                          m_cooked_fail_reload_staging      = false;
+        bool                                          m_cooked_reject_reload_submit     = false;
+        bool                                          m_cooked_staging_limit_active     = false;
+        bool                                          m_cooked_staging_refusal_observed = false;
+        bool                                          m_cooked_staging_gpu_started      = false;
+        bool                                          m_cooked_staging_request_failed   = false;
+        uint64_t                                      m_cooked_staging_refusal_baseline = 0;
+        ZEngine::Core::Memory::GpuAllocationLimits    m_cooked_saved_gpu_limits         = {};
+        uint64_t                                      m_cooked_memory_sample_generation = 0;
+        bool                                          m_cooked_startup_initialized      = false;
+        bool                                          m_cooked_startup_exit_after_frame = false;
+        bool                                          m_source_capture                  = false;
+        std::string                                   m_source_capture_import_path      = {};
+        ZEngine::Core::VFS::VFSPath                   m_source_capture_scene            = {};
+        uuids::uuid                                   m_source_capture_import           = {};
+        bool                                          m_source_capture_scene_queued     = false;
+        bool                                          m_cooked_startup_frame_recorded   = false;
+        bool                                          m_cooked_startup_failed           = false;
+        bool                                          m_cooked_failure_observed         = false;
+        bool                                          m_cooked_failure_preserved        = false;
+        // One bounded asynchronous viewport capture; callbacks run on render owner.
+        std::string                                   m_cooked_capture_path             = {};
+        std::unique_ptr<uint8_t[]>                    m_cooked_capture_pixels           = {};
+        std::atomic<uint32_t>                         m_cooked_capture_state            = 0; // 0 idle, 1 requested, 2 in flight, 3 complete, 4 failed
+        size_t                                        m_cooked_capture_bytes            = 0;
+        uint32_t                                      m_cooked_capture_width            = 0;
+        uint32_t                                      m_cooked_capture_height           = 0;
+        uint64_t                                      m_cooked_capture_generation       = 0;
+        uint64_t                                      m_cooked_failure_baseline         = 0;
+        uint64_t                                      m_cooked_initial_generation       = 0;
+        ZEngine::ECS::Scene*                          m_cooked_initial_world            = nullptr;
+        ZEngine::Rendering::Scenes::RenderScene*      m_cooked_initial_render           = nullptr;
+        uint32_t                                      m_cooked_expected_draws           = 0;
+        ZEngine::Helpers::Scope<EditorSceneCandidate> m_loaded_scene                    = {};
+        ZEngine::ECS::Scene*                          m_original_world                  = nullptr;
+        ZEngine::ECS::ActorManager*                   m_original_actors                 = nullptr;
+        ZEngine::ECS::WorldCommands*                  m_original_commands               = nullptr;
+        ZEngine::ECS::WorldTick*                      m_original_tick                   = nullptr;
+        bool                                          m_publishing_scene                = false;
+        bool                                          m_processing_scene_open           = false;
+        bool                                          m_closing                         = false;
         // A rapid native loss/regain still cancels at the next safe mutation point.
-        bool                                          m_focus_lost_pending    = false;
-        bool                                          m_gizmo_focused         = true;
-        EditorSceneChange                             m_scene_change          = {};
-        uint64_t                                      m_scene_prompt_focus    = 0;
-        ObjectPickFrame                               m_object_pick           = {};
-        ObjectPickFrame                               m_hover_pick            = {};
+        bool                                          m_focus_lost_pending              = false;
+        bool                                          m_gizmo_focused                   = true;
+        EditorSceneChange                             m_scene_change                    = {};
+        uint64_t                                      m_scene_prompt_focus              = 0;
+        ObjectPickFrame                               m_object_pick                     = {};
+        ObjectPickFrame                               m_hover_pick                      = {};
         static_assert(sizeof(ObjectPickFrame) * 2 <= 160 * 1024);
         ZEngine::Rendering::Cameras::CameraFrameData m_last_pick_camera       = {};
         uint64_t                                     m_camera_revision        = 1;
@@ -348,6 +468,11 @@ namespace Tetragrama
         void                                         CancelSceneOpen();
         void                                         ReleaseSceneOpenWaiting();
         void                                         ReleaseSceneOpenWork(); // Only after Ready or worker join.
+        [[nodiscard]] bool                           ProcessCookedSceneOpen(ZEngine::EngineContext& engine);
+        void                                         ReleaseCookedSceneOpen();
+        static bool                                  BeginCookedCapture(void*, uint32_t, uint32_t, uint64_t);
+        static void                                  CompleteCookedCapture(const void*, size_t, void*);
+        static void                                  CancelCookedCapture(void*);
     };
     ZDEFINE_PTR(Editor);
 

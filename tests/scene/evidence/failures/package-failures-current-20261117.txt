@@ -1,0 +1,18 @@
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from SceneCookProcessTest
+[ RUN      ] SceneCookProcessTest.ExecutesRequestedPhase
+Cook peak working bytes: 12051080
+ZE_COOK_FIXTURE_WRITTEN
+[       OK ] SceneCookProcessTest.ExecutesRequestedPhase (60 ms)
+[----------] 1 test from SceneCookProcessTest (60 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (60 ms total)
+[  PASSED  ] 1 test.
+Cooked asset fixture submitted eight frames with one draw and shut down normally.
+Rejected incorrect expected draw count.
+Rejected missing cooked package.
+Rejected corrupt cooked package.
+Rejected target cooked package.
+Rejected format cooked package.

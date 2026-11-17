@@ -4,6 +4,7 @@
 #include <ZEngine/Core/VFS/Meta/MetaFileIO.h>
 #include <ZEngine/Core/VFS/Registry/AssetIndex.h>
 #include <ZEngine/Core/VFS/Registry/DependencyGraph.h>
+#include <atomic>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -19,6 +20,14 @@ namespace ZEngine::Core::VFS
 
         AssetRegistry()            = default;
         ~AssetRegistry()           = default;
+        void EnableLookupDenialAudit() noexcept
+        {
+            m_deny_lookup.store(true, std::memory_order_release);
+        }
+        [[nodiscard]] uint64_t DeniedLookupCount() const noexcept
+        {
+            return m_denied_lookups.load(std::memory_order_acquire);
+        }
 
         // arena: persistent arena. scratch_size: byte size of BFS scratch sub-arena.
         void               Initialize(Core::Memory::ArenaAllocator* arena, uint64_t scratch_size = 65536);
@@ -127,9 +136,18 @@ namespace ZEngine::Core::VFS
         static bool                ExtensionMatches(const Core::VFS::VFSPath& path, const char* ext);
 
     private:
-        AssetIndex      m_index                                  = {};
-        DependencyGraph m_graph                                  = {};
-        void*           m_reload_cb_ctx                          = nullptr;
+        [[nodiscard]] bool DenyLookup() const noexcept
+        {
+            if (!m_deny_lookup.load(std::memory_order_acquire))
+                return false;
+            m_denied_lookups.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+        std::atomic<bool>             m_deny_lookup              = false;
+        mutable std::atomic<uint64_t> m_denied_lookups           = 0;
+        AssetIndex                    m_index                    = {};
+        DependencyGraph               m_graph                    = {};
+        void*                         m_reload_cb_ctx            = nullptr;
         void (*m_reload_cb)(void*, std::span<const uuids::uuid>) = nullptr;
 
         void*                     m_ready_cb_ctx                 = nullptr;

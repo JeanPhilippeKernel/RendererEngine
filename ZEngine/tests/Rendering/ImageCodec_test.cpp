@@ -481,6 +481,43 @@ namespace ZEngine::Importers::ImageCodec
         EXPECT_EQ(route.LiveBytes, 0u);
     }
 
+    TEST(ImageCodecTest, RuntimeDecodeRetainsBottomUpPixelsAndPreservesThemOnFailure)
+    {
+        constexpr uint8_t   tga[]  = {0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 32, 0x28, 0, 0, 255, 255, 0, 255, 0, 255};
+        BorrowedImageSource source = {};
+        source.Bytes               = {tga, sizeof(tga)};
+        CountingImageRoute route   = {};
+        DecodedImage       image   = {};
+        ASSERT_TRUE(DecodeEncodedImage(source.View(), route, {}, &image).Succeeded());
+        ASSERT_EQ(image.Pixels().size(), 8u);
+        const uint8_t expected[] = {0, 255, 0, 255, 255, 0, 0, 255};
+        EXPECT_TRUE(std::equal(image.Pixels().begin(), image.Pixels().end(), expected));
+        EXPECT_EQ(route.LiveBlocks, 1u);
+        EXPECT_EQ(DecodeEncodedImage(source.View(), route, {.MaxDimension = 1}, &image).Error(), Core::VFS::VFSError::SizeLimitExceeded);
+        EXPECT_TRUE(std::equal(image.Pixels().begin(), image.Pixels().end(), expected));
+        DecodedImage moved = std::move(image);
+        EXPECT_TRUE(image.Pixels().empty());
+        EXPECT_EQ(moved.Pixels().size(), 8u);
+        moved.Reset();
+        EXPECT_EQ(route.LiveBlocks, 0u);
+    }
+
+    TEST(ImageCodecTest, RuntimeDecodeConvertsSixteenBitPngToRgba8)
+    {
+        constexpr uint8_t   png[]  = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x10, 0x06, 0x00, 0x00, 0x00, 0x4f, 0x85, 0x18, 0xca, 0x00, 0x00, 0x00, 0x11, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x10, 0x32, 0x09, 0xab, 0x98, 0xb5, 0xe7, 0xde, 0x07, 0x00, 0x0d, 0xa9, 0x04, 0x39, 0x53, 0x00, 0xc9, 0xba, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82};
+        BorrowedImageSource source = {};
+        source.Bytes               = {png, sizeof(png)};
+        CountingImageRoute route   = {};
+        DecodedImage       image   = {};
+        ASSERT_TRUE(DecodeEncodedImage(source.View(), route, {}, &image).Succeeded());
+        EXPECT_EQ(image.Description().BitsPerChannel, 16u);
+        ASSERT_EQ(image.Pixels().size(), 4u);
+        const uint8_t expected[] = {0x12, 0x56, 0x9a, 0xde};
+        EXPECT_TRUE(std::equal(image.Pixels().begin(), image.Pixels().end(), expected));
+        image.Reset();
+        EXPECT_EQ(route.LiveBlocks, 0u);
+    }
+
     TEST(ImageCodecTest, TGADetectionAndDimensionPreflightDoNotAllocateSpeculativeJPEGState)
     {
         constexpr uint8_t tga[] = {0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0, 32, 0x28, 11, 42, 93, 255, 11, 42, 93, 255};

@@ -221,6 +221,30 @@ TEST_F(VFSContextTest, OpenUnmountedPathFailsNotFound)
     EXPECT_EQ(r.Error(), VFSError::NotFound);
 }
 
+TEST_F(VFSContextTest, EngineOnlyAuditDeniesSourceReadsAndCountsAttempts)
+{
+    MockBackend project("project");
+    MockBackend engine("engine");
+    ASSERT_TRUE(m_ctx.Mount(&project, P("/project"), 0).Succeeded());
+    ASSERT_TRUE(m_ctx.Mount(&engine, P("/ZodiacEngine"), 0).Succeeded());
+    m_ctx.EnableEngineOnlyAudit();
+    const auto source = P("/project/mesh.glb");
+    EXPECT_EQ(m_ctx.Open(source, VFSOpenFlags::Read).Error(), VFSError::PermissionDenied);
+    EXPECT_EQ(m_ctx.Stat(source).Error(), VFSError::PermissionDenied);
+    EXPECT_EQ(m_ctx.Exists(source).Error(), VFSError::PermissionDenied);
+    EXPECT_EQ(m_ctx.List(P("/project"), &m_manager.MainArena).Error(), VFSError::PermissionDenied);
+    VFSReadRootLease        read_root   = {};
+    VFSPublicationRootLease publication = {};
+    VFSScratchRootLease     scratch     = {};
+    EXPECT_EQ(m_ctx.AcquireReadRoot(P("/project"), &read_root).Error(), VFSError::PermissionDenied);
+    EXPECT_EQ(m_ctx.AcquirePublicationRoot(P("/project"), &publication).Error(), VFSError::PermissionDenied);
+    EXPECT_EQ(m_ctx.AcquireScratchRoot(P("/project"), &scratch).Error(), VFSError::PermissionDenied);
+    EXPECT_EQ(m_ctx.DeniedSourceAccesses(), 7u);
+    (void) m_ctx.Open(P("/ZodiacEngine/Settings/test"), VFSOpenFlags::Read);
+    EXPECT_EQ(m_ctx.DeniedSourceAccesses(), 7u);
+    EXPECT_EQ(engine.LastOpen, P("/Settings/test"));
+}
+
 TEST_F(VFSContextTest, WriteOpsRequireWritableBackend)
 {
     MockBackend read_only("ro", VFSBackendCaps::Read);

@@ -17,6 +17,9 @@ namespace ZEngine::Rendering::Specifications
         bool          Is3D                  = false;
         /// @brief Resizes this transient image when its owning render view changes extent.
         bool          IsRenderTargetSized   = false;
+        /// @brief Charge cooked source assets to the texture budget even when
+        /// the image supports attachment usage.
+        bool          IsCookedAsset         = false;
         uint32_t      Width                 = 0;
         uint32_t      Height                = 0;
         uint32_t      Depth                 = 1;
@@ -54,6 +57,7 @@ namespace ZEngine::Rendering::Specifications
         ImageCreateFlag       ImageCreateFlagValue = ImageCreateFlag::NONE;
         /// @brief Adds VK_IMAGE_CREATE_ALIAS_BIT when constructing the Vulkan image.
         bool                  IsAliasable          = false;
+        bool                  IsCookedAsset        = false;
     };
 
 } // namespace ZEngine::Rendering::Specifications

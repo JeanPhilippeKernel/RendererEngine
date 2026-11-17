@@ -8,6 +8,8 @@
 #include <ZEngine/Helpers/MemoryOperations.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
 #include <ZEngine/ZEngineDef.h>
+#include <algorithm>
+#include <limits>
 
 #ifdef VMA_DEBUG_DETECT_CORRUPTION
 #include <cstdio>
@@ -28,6 +30,36 @@
 
 namespace ZEngine::Core::Memory
 {
+    namespace
+    {
+        // VMA may round the requested backing size even when the legacy Vulkan
+        // requirement size is unaligned. Reserve a conservative aligned amount
+        // before asking it for memory, including host atom and small-granularity
+        // rounding. Commit still checks the size VMA actually returned.
+        VkDeviceSize AdmissionBytes(VmaAllocator allocator, const VkMemoryRequirements& requirements)
+        {
+            const VkPhysicalDeviceProperties* properties = nullptr;
+            vmaGetPhysicalDeviceProperties(allocator, &properties);
+            if (!properties || !requirements.size || !requirements.alignment)
+            {
+                return 0;
+            }
+            VkDeviceSize alignment   = std::max(requirements.alignment, properties->limits.nonCoherentAtomSize);
+            const auto   granularity = properties->limits.bufferImageGranularity;
+            if (granularity <= 256)
+            {
+                alignment = std::max(alignment, granularity);
+            }
+            const VkDeviceSize remainder = requirements.size % alignment;
+            const VkDeviceSize padding   = remainder ? alignment - remainder : 0;
+            if (requirements.size > std::numeric_limits<VkDeviceSize>::max() - padding)
+            {
+                return 0;
+            }
+            return requirements.size + padding;
+        }
+    } // namespace
+
     void GpuAllocator::Initialize(VkPhysicalDevice physical_device, VkDevice device, VkInstance instance, bool has_memory_budget_ext, bool has_buffer_device_address_ext)
     {
         m_allocations_initialized             = false;
@@ -298,7 +330,7 @@ namespace ZEngine::Core::Memory
         {
             VkMemoryRequirements requirements = {};
             vkGetBufferMemoryRequirements(allocator_info.device, buffer_view.Handle, &requirements);
-            if (!AdmitAllocationBytes(record, requirements.size, domain))
+            if (!AdmitAllocationBytes(record, AdmissionBytes(Allocator, requirements), domain))
             {
                 result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
             }
@@ -348,7 +380,16 @@ namespace ZEngine::Core::Memory
             ReleaseAllocation(record, nullptr);
             return {};
         }
-        CommitAllocation(record, buffer_view.Allocation);
+        if (!CommitAllocation(record, buffer_view.Allocation))
+        {
+            vmaDestroyBuffer(Allocator, buffer_view.Handle, buffer_view.Allocation);
+            ReleaseAllocation(record, nullptr);
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            }
+            return {};
+        }
         vmaSetAllocationName(Allocator, buffer_view.Allocation, debug_name);
         buffer_view.MappedData            = allocation_info.pMappedData;
         buffer_view.RetirementReservation = retirement.Detach();
@@ -451,16 +492,19 @@ namespace ZEngine::Core::Memory
         return index;
     }
 
-    void GpuAllocator::CommitAllocation(uint32_t index, VmaAllocation allocation)
+    bool GpuAllocator::CommitAllocation(uint32_t index, VmaAllocation allocation)
     {
         const auto      bytes = GetAllocationSize(allocation);
         std::lock_guard lock(m_allocation_mutex);
         ZENGINE_VALIDATE_ASSERT(index < AllocationCapacity && allocation, "Invalid GPU allocation commit")
         auto& record = m_allocations[index];
         ZENGINE_VALIDATE_ASSERT(record.References == 1 && !record.Allocation, "GPU allocation already committed")
+        if (!bytes || bytes > record.Bytes)
+        {
+            return false;
+        }
         record.Allocation = allocation;
-        ZENGINE_VALIDATE_ASSERT(bytes <= record.Bytes, "GPU allocation exceeds admitted native requirements")
-        record.LiveBytes = bytes;
+        record.LiveBytes  = bytes;
         ++m_allocation_statistics.AllocationCount;
         m_allocation_statistics.AllocationBytes += bytes;
         if (m_allocation_statistics.AllocationCount > m_allocation_statistics.PeakAllocationCount)
@@ -471,6 +515,7 @@ namespace ZEngine::Core::Memory
         {
             m_allocation_statistics.PeakAllocationBytes = m_allocation_statistics.AllocationBytes;
         }
+        return true;
     }
 
     bool GpuAllocator::RetainAllocation(uint32_t index, VmaAllocation allocation)
@@ -527,14 +572,26 @@ namespace ZEngine::Core::Memory
         ZENGINE_VALIDATE_ASSERT(record.References == 1 && !record.Allocation && !record.Bytes, "GPU allocation already charged")
         const auto domain_index = static_cast<uint32_t>(domain);
         auto&      domain_bytes = m_allocation_statistics.DomainAdmittedBytes[domain_index];
-        if (!bytes || bytes > m_allocation_limits.TotalBytes - m_allocation_statistics.AdmittedBytes || bytes > m_allocation_limits.DomainBytes[domain_index] - domain_bytes)
+        if (!bytes)
         {
+            return false;
+        }
+        if (bytes > m_allocation_limits.TotalBytes - m_allocation_statistics.AdmittedBytes || bytes > m_allocation_limits.DomainBytes[domain_index] - domain_bytes)
+        {
+            auto& refusals = m_allocation_statistics.DomainBudgetRefusals[domain_index];
+            if (refusals != std::numeric_limits<uint64_t>::max())
+                ++refusals;
             return false;
         }
         record.Bytes                           = bytes;
         record.Domain                          = domain;
         m_allocation_statistics.AdmittedBytes += bytes;
         domain_bytes                          += bytes;
+        auto& domain_peak                      = m_allocation_statistics.DomainPeakAdmittedBytes[domain_index];
+        if (domain_bytes > domain_peak)
+        {
+            domain_peak = domain_bytes;
+        }
         if (m_allocation_statistics.AdmittedBytes > m_allocation_statistics.PeakAdmittedBytes)
         {
             m_allocation_statistics.PeakAdmittedBytes = m_allocation_statistics.AdmittedBytes;
@@ -621,7 +678,7 @@ namespace ZEngine::Core::Memory
         {
             VkMemoryRequirements requirements = {};
             vkGetImageMemoryRequirements(device, buffer_image.Handle, &requirements);
-            if (!AdmitAllocationBytes(record, requirements.size, domain))
+            if (!AdmitAllocationBytes(record, AdmissionBytes(Allocator, requirements), domain))
             {
                 result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
             }
@@ -668,7 +725,16 @@ namespace ZEngine::Core::Memory
             }
             return {};
         }
-        CommitAllocation(record, buffer_image.Allocation);
+        if (!CommitAllocation(record, buffer_image.Allocation))
+        {
+            vmaDestroyImage(Allocator, buffer_image.Handle, buffer_image.Allocation);
+            ReleaseAllocation(record, nullptr);
+            if (status)
+            {
+                *status = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            }
+            return {};
+        }
         vmaSetAllocationName(Allocator, buffer_image.Allocation, debug_name);
 
         result = CreateDefaultImageView(device, image_info, buffer_image.Handle, aspect, view_type, layer_count, &buffer_image.ViewHandle);

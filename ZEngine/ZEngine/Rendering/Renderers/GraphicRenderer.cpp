@@ -354,6 +354,14 @@ namespace ZEngine::Rendering::Renderers
         }
     }
 
+    void GraphicRenderer::RequestSceneColorCapture(RGReadbackFn complete, RGReadbackCancelFn cancelled, void* context)
+    {
+        if (m_tone_mapping_pass)
+            m_tone_mapping_pass->RequestCapture({complete, cancelled, context});
+        else if (cancelled)
+            cancelled(context);
+    }
+
     void GraphicRenderer::RequestObjectIdPick(const ObjectIdPickRequest& request)
     {
         if (m_object_id_pass)
@@ -375,6 +383,8 @@ namespace ZEngine::Rendering::Renderers
         ZENGINE_VALIDATE_ASSERT(frame_index < Scenes::SceneData::MAX_FRAMES_IN_FLIGHT, "Invalid scene-buffer frame index")
         if (initial_frame && initial_frame->View.Captured && !initial_frame->CameraBuffer)
         {
+            if (m_tone_mapping_pass)
+                m_tone_mapping_pass->CancelPendingCapture();
             return nullptr;
         }
         const auto* transforms                      = initial_frame && initial_frame->TransformBuffer ? initial_frame->TransformBuffer : &RenderSceneData->TransformBuffers[frame_index];
@@ -414,7 +424,8 @@ namespace ZEngine::Rendering::Renderers
 
         m_asset_preview_pass->BeginFrame();
         Hardwares::CommandBuffer* const output = RenderGraph->Execute(cb);
-        RenderSceneData->ActiveCameraBuffer    = nullptr;
+        m_tone_mapping_pass->CancelPendingCapture();
+        RenderSceneData->ActiveCameraBuffer = nullptr;
         m_asset_preview_pass->EndFrame();
         FinishSkyFrameRecording(output != nullptr);
         if (output)
@@ -527,7 +538,7 @@ namespace ZEngine::Rendering::Renderers
         m_memory_statistics_sequence.value.fetch_add(1, std::memory_order_release);
     }
 
-    bool GraphicRenderer::SubmitSkySnapshot(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision, Scenes::SkyEnvironmentPublication publication)
+    bool GraphicRenderer::SubmitSkySnapshot(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision, Scenes::SkyEnvironmentPublication publication, const RenderResourceManager::SceneEnvironmentPreparation* preparation)
     {
         ZENGINE_PROFILE_SCOPE("SceneLoad.Render.SkyRequest");
         const EnvironmentLightingBakeSettings bake_settings       = Device ? Device->EnvironmentLightingBakeSettings : ResolveEnvironmentLightingQuality(EnvironmentLightingQualityTier::Standard);
@@ -535,7 +546,12 @@ namespace ZEngine::Rendering::Renderers
         bool                                  hdri_artifact_ready = !sky.IsHDRI();
         if (sky.IsHDRI())
         {
-            if (auto* const asset_manager = ZEngine::Managers::AssetManager::Instance(); asset_manager && asset_manager->Registry)
+            if (preparation && preparation->CookedSource.Valid() && preparation->Input.Sky.IsHDRI() && preparation->Input.Sky.EnvironmentMap == sky.EnvironmentMap)
+            {
+                hdri_source_hash    = preparation->CookedSourceHash;
+                hdri_artifact_ready = true;
+            }
+            else if (auto* const asset_manager = ZEngine::Managers::AssetManager::Instance(); asset_manager && asset_manager->Registry)
             {
                 std::lock_guard lock(asset_manager->IngestMutex);
                 if (const auto* const environment = asset_manager->Registry->FindByUUID(sky.EnvironmentMap))
@@ -730,7 +746,7 @@ namespace ZEngine::Rendering::Renderers
             }
             m_scene_pipeline_state  = RGScenePipelinePreparationState::Preparing;
             m_scene_pipeline_active = true;
-            if (!SubmitSkySnapshot(preparation.Input.Sky, preparation.Input.CelestialLight, m_scene_sky_revision, Scenes::SkyEnvironmentPublication::Explicit))
+            if (!SubmitSkySnapshot(preparation.Input.Sky, preparation.Input.CelestialLight, m_scene_sky_revision, Scenes::SkyEnvironmentPublication::Explicit, &preparation))
             {
                 rrm->CompleteSceneEnvironmentPreparation(m_scene_sky_id, false);
                 ReleaseSceneEnvironmentPreparation();
@@ -828,14 +844,16 @@ namespace ZEngine::Rendering::Renderers
     {
         ZENGINE_PROFILE_SCOPE("SceneLoad.Render.EnvironmentActivation");
         PollSceneEnvironmentPreparations();
+        RenderResourceManager::SceneEnvironmentPreparation        preparation          = {};
+        const RenderResourceManager::SceneEnvironmentPreparation* retained_preparation = nullptr;
         if (resources)
         {
-            RenderResourceManager::SceneEnvironmentPreparation preparation = {};
-            auto* const                                        rrm         = Device && Device->RRM ? static_cast<RenderResourceManager*>(Device->RRM) : nullptr;
+            auto* const rrm = Device && Device->RRM ? static_cast<RenderResourceManager*>(Device->RRM) : nullptr;
             if (!rrm || !rrm->GetSceneEnvironmentPreparation(resources, &preparation) || preparation.ExpectedGeneration + 1 != scene_generation)
             {
                 return false;
             }
+            retained_preparation = &preparation;
             if (preparation.State == RenderResourceManager::SceneEnvironmentPreparationState::Ready)
             {
                 if (preparation.Cancelled || resources != m_scene_sky_id || !m_scene_texture_sources_ready || !m_sky_environment.GetPreparedSnapshot(m_scene_sky_revision) || !m_scene_pipeline_preparation->ActivateSceneDescriptors() || !rrm->ActivateSceneEnvironmentPreparation(resources))
@@ -861,6 +879,15 @@ namespace ZEngine::Rendering::Renderers
             if (preparation.State != RenderResourceManager::SceneEnvironmentPreparationState::NotRequested && preparation.State != RenderResourceManager::SceneEnvironmentPreparationState::Activated)
             {
                 return false;
+            }
+            // A cooked environment is immutable for its scene generation.
+            // Cancelling a newer prepared candidate must keep the already
+            // published sky, rather than re-resolving the outgoing HDRI through
+            // the authoring registry or starting another bake.
+            RenderResourceManager::SceneResourcePreparationResult resource_result = {};
+            if (preparation.State == RenderResourceManager::SceneEnvironmentPreparationState::Activated && m_presented_scene_generation == scene_generation && m_presented_sky_revision == revision && rrm->PollSceneResourcePreparation(resources, &resource_result) && resource_result.Cooked)
+            {
+                return true;
             }
         }
         // Coalesced authoring edits cannot replace the prepared input before
@@ -889,7 +916,7 @@ namespace ZEngine::Rendering::Renderers
             m_presented_scene_generation    = scene_generation;
             m_presented_sky_revision        = revision;
         }
-        if (SubmitSkySnapshot(sky, celestial_light, m_presented_render_sky_revision, Scenes::SkyEnvironmentPublication::Immediate))
+        if (SubmitSkySnapshot(sky, celestial_light, m_presented_render_sky_revision, Scenes::SkyEnvironmentPublication::Immediate, retained_preparation))
         {
             StartPendingSkyBake();
         }
@@ -1060,8 +1087,31 @@ namespace ZEngine::Rendering::Renderers
             return;
         }
 
+        auto* const                                        rrm    = Device && Device->RRM ? static_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+        RenderResourceManager::SceneEnvironmentPreparation cooked = {};
+        if (rrm && m_scene_sky_lease && request.Revision == m_scene_sky_revision && rrm->GetSceneEnvironmentPreparation(m_scene_sky_id, &cooked) && cooked.CookedSource.Valid())
+        {
+            cstring reason = nullptr;
+            if (cooked.Cancelled || !SupportsHDRISourceResources(cooked.CookedFaceWidth, &reason) || !m_sky_environment.ReserveActiveBakeMemory(request.Revision, EstimateHDRIBakeBytes(request.BakeSettings, cooked.CookedFaceWidth)))
+            {
+                m_sky_environment.CompleteBake(request.Revision, {}, false);
+                return;
+            }
+            Textures::TextureHandle source = {};
+            if (!rrm->TakeCookedSceneEnvironment(m_scene_sky_id, &source))
+            {
+                m_sky_environment.CompleteBake(request.Revision, {}, false);
+                return;
+            }
+            if (!m_sky_environment.AttachBakeResource(request.Revision, source))
+            {
+                m_sky_environment.CompleteBake(request.Revision, source, false);
+                DiscardSkyTexture(source);
+            }
+            return;
+        }
+
         auto* const asset_manager = ZEngine::Managers::AssetManager::Instance();
-        auto* const rrm           = Device && Device->RRM ? static_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
         if (!asset_manager || !asset_manager->Registry || !rrm)
         {
             ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} is using the fallback: asset services are unavailable", request.Revision)
@@ -1180,13 +1230,36 @@ namespace ZEngine::Rendering::Renderers
             }
 
             const Hardwares::StreamingUploadTicket* const ticket = rrm->FindStreamingUploadTicket(source_radiance);
-            if (!ticket || !ticket->CompletionTimeline)
-                return;
-
-            uint64_t completed_upload_value = 0;
-            vkGetSemaphoreCounterValue(Device->LogicalDevice, ticket->CompletionTimeline->GetHandle(), &completed_upload_value);
-            if (completed_upload_value < ticket->CompletionValue)
-                return;
+            if (ticket)
+            {
+                if (!ticket->CompletionTimeline)
+                    return;
+                uint64_t completed_upload_value = 0;
+                vkGetSemaphoreCounterValue(Device->LogicalDevice, ticket->CompletionTimeline->GetHandle(), &completed_upload_value);
+                if (completed_upload_value < ticket->CompletionValue)
+                    return;
+            }
+            else
+            {
+                // A prior bindless pass may have consumed this ticket before
+                // sky preparation claimed the source. Its absence alone is
+                // not readiness: observe the exact graphics acquire completion.
+                auto retained = rrm->PinTextureVersion(source_radiance);
+                if (!retained)
+                    return;
+                const auto acquired = rrm->PollSubmittedTextureAcquire(retained);
+                if (acquired == SceneTextureDescriptorState::Pending)
+                    return;
+                if (acquired != SceneTextureDescriptorState::Ready)
+                {
+                    rrm->ForgetTextureDecode(source_radiance);
+                    m_sky_environment.CompleteBake(revision, source_radiance, false);
+                    DiscardSkyTexture(source_radiance);
+                    ZENGINE_CORE_ERROR("[SkyEnvironment] Revision {} could not acquire its HDRI source", revision)
+                    StartPendingSkyBake();
+                    return;
+                }
+            }
 
             EnvironmentLightingResources lighting = CreateSkyLightingResources(bake->BakeSettings);
             if (!lighting.Valid() || !m_sky_environment.AttachBakeLighting(revision, lighting) || !m_sky_environment.BeginGpuBake(revision))

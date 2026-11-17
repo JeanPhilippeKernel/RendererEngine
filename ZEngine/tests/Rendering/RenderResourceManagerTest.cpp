@@ -29,6 +29,34 @@ using namespace ZEngine::Core::VFS;
 using namespace ZEngine::Rendering;
 using namespace ZEngine::Managers;
 
+TEST(TextureUploadSizeTest, ChecksBaseMipLayersDepthFormatAndOverflow)
+{
+    Textures::Texture texture        = {};
+    texture.Width                    = 4;
+    texture.Height                   = 2;
+    texture.BytePerPixel             = 4;
+    texture.Specification.Format     = Specifications::ImageFormat::R8G8B8A8_UNORM;
+    texture.Specification.Depth      = 2;
+    texture.Specification.LayerCount = 3;
+    texture.BufferSize               = 200; // Includes additional mip storage.
+    EXPECT_FALSE(texture.ContainsBaseMip(191));
+    EXPECT_TRUE(texture.ContainsBaseMip(192));
+    VkDeviceSize copy_bytes = 0;
+    EXPECT_TRUE(texture.ContainsBaseMip(200, &copy_bytes));
+    EXPECT_EQ(copy_bytes, 192u);
+    EXPECT_FALSE(texture.ContainsBaseMip(201));
+    texture.BytePerPixel = 1;
+    EXPECT_FALSE(texture.ContainsBaseMip(192));
+    texture.BytePerPixel         = 4;
+    texture.Specification.Format = Specifications::ImageFormat::DEPTH16_UNORM;
+    EXPECT_FALSE(texture.ContainsBaseMip(192));
+    texture.Specification.Format = Specifications::ImageFormat::R8G8B8A8_UNORM;
+    texture.Width                = UINT32_MAX;
+    texture.Height               = UINT32_MAX;
+    texture.BufferSize           = std::numeric_limits<VkDeviceSize>::max();
+    EXPECT_FALSE(texture.ContainsBaseMip(texture.BufferSize));
+}
+
 struct RRMDecodeTestHelper
 {
     static uint32_t FrameMaterialCount(const RenderResourceManager& manager)
@@ -688,9 +716,15 @@ protected:
 
 TEST_F(ResourceVersionDecodeTest, PinnedDecodeDeferralRetriesButDestructionReclaimsItsPixelsAndLease)
 {
-    const auto texture                                 = MakeTexture();
-    Device->GlobalTextures.Access(texture)->BufferSize = 4;
-    auto pin                                           = Manager->PinTextureVersion(texture);
+    const auto texture  = MakeTexture();
+    auto*      resource = Device->GlobalTextures.Access(texture);
+    resource->Width = resource->Height = 1;
+    resource->BytePerPixel             = 4;
+    resource->Specification.Depth      = 1;
+    resource->Specification.LayerCount = 1;
+    resource->BufferSize               = 4;
+    ASSERT_TRUE(resource->ContainsBaseMip(4));
+    auto pin = Manager->PinTextureVersion(texture);
     ASSERT_TRUE(pin);
     ASSERT_TRUE(RRMDecodeTestHelper::Track(*Manager, texture));
     auto deferral = RRMDecodeTestHelper::MakeDeferral(*Manager, texture);
@@ -716,6 +750,24 @@ TEST_F(ResourceVersionDecodeTest, PinnedDecodeDeferralRetriesButDestructionRecla
     EXPECT_EQ(disposal.Handle.Generation, texture.Generation);
     RRMDecodeTestHelper::FlushReleases(*Manager);
     EXPECT_TRUE(Device->TextureHandleToDispose.empty());
+}
+
+TEST_F(ResourceVersionDecodeTest, ShortDecodedDeferralFailsAndReleasesItsLease)
+{
+    const auto texture                 = MakeTexture();
+    auto*      resource                = Device->GlobalTextures.Access(texture);
+    resource->BytePerPixel             = 4;
+    resource->Specification.Depth      = 1;
+    resource->Specification.LayerCount = 1;
+    resource->BufferSize               = 16 * 8 * 4;
+    ASSERT_TRUE(RRMDecodeTestHelper::Track(*Manager, texture));
+    auto deferral = RRMDecodeTestHelper::MakeDeferral(*Manager, texture);
+    ASSERT_NE(deferral.Pixels, nullptr);
+    EXPECT_TRUE(RRMDecodeTestHelper::ProcessDeferral(*Manager, deferral));
+    EXPECT_EQ(deferral.Pixels, nullptr);
+    EXPECT_EQ(RRMDecodeTestHelper::ActiveDecodeSlabs(*Manager), 0u);
+    EXPECT_EQ(Manager->GetTextureDecodeState(texture), RenderResourceManager::TextureDecodeState::Failed);
+    EXPECT_TRUE(Manager->CanWriteTextureVersion(texture));
 }
 
 TEST_F(ResourceVersionDecodeTest, LateDecodeCannotModifyTheReusedTextureSlotOrKeepItsSlab)

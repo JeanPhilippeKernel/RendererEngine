@@ -19,6 +19,7 @@ proposed work, or implementation history.
 - [Scene cooker review proposal](future-plan/scene-cooker.md)
 - [Scene cooker v1 contracts](future-plan/scene-cooker-contracts.md)
 - [Renderer resource-management proposal](future-plan/render-resource-manager.md)
+- [Profiling: in-editor Performance, CPU/GPU/memory and Tracy proposal](future-plan/profiling.md)
 - [Zodiac Engine Hub / Panzerfaust integration](future-plan/panzerfaust.md)
 
 ## Proposal / RFC documents
