@@ -43,6 +43,11 @@ struct RRMTestHelper
         return renderer.m_sky_environment;
     }
 
+    static bool SubmitCookedSky(ZEngine::Rendering::Renderers::GraphicRenderer& renderer, const ZEngine::Rendering::Scenes::SkyConfig& sky, const RenderResourceManager::SceneEnvironmentPreparation& preparation)
+    {
+        return renderer.SubmitSkySnapshot(sky, {}, 1, ZEngine::Rendering::Scenes::SkyEnvironmentPublication::Immediate, &preparation);
+    }
+
     static void InitializeSky(ZEngine::Rendering::Renderers::GraphicRenderer& renderer, ZEngine::Hardwares::VulkanDevice* device, ZEngine::Tests::ScenePipelinePreparationTestHost& pipelines, ZEngine::Rendering::Textures::TextureHandle source, const ZEngine::Rendering::EnvironmentLightingResources& lighting)
     {
         renderer.Device                       = device;
@@ -70,6 +75,11 @@ struct RRMTestHelper
     static void UseLastScenePreparationSerial(RenderResourceManager& resources)
     {
         resources.m_scene_resources_sequence = UINT64_MAX - 1;
+    }
+
+    static void MarkSceneCooked(RenderResourceManager& resources, RenderResourceManager::SceneResourcePreparationId id)
+    {
+        resources.m_scene_resources[id.Slot].Cooked = true;
     }
 
     static void BeginSubmittedSceneSky(ZEngine::Rendering::Renderers::GraphicRenderer& renderer, RenderResourceManager& resources)
@@ -255,9 +265,9 @@ struct RRMTestHelper
         return index == UINT32_MAX ? 0 : rrm.m_pinned_mesh_geometry[index].PinCount;
     }
 
-    static void TickPreparation(RenderResourceManager& rrm, uint64_t completed = 0, bool failed = false)
+    static void TickPreparation(RenderResourceManager& rrm, uint64_t completed = 0, bool failed = false, bool invalidate_ready = true)
     {
-        rrm.TickSceneResourcePreparations(completed, failed);
+        rrm.TickSceneResourcePreparations(completed, failed, invalidate_ready);
     }
 
     static void SetUploadProgress(RenderResourceManager& rrm, uint64_t recorded, uint64_t accepted, bool open)
@@ -1345,6 +1355,21 @@ TEST_F(SceneEnvironmentHandoffTest, CandidateLeavesOutgoingSkyUnchangedUntilItsM
     EXPECT_TRUE(Result(id).FrameRecorded);
 }
 
+TEST_F(SceneEnvironmentHandoffTest, RetainedCookedHDRISourceDoesNotRequeueAsMissingAfterActivation)
+{
+    auto input                                   = Sphere();
+    input.Sky.Mode                               = Scenes::SkyMode::HDRI;
+    input.Sky.EnvironmentMap                     = *uuids::uuid::from_string("60000000-0000-0000-0000-000000000006");
+    RRM::SceneEnvironmentPreparation preparation = {};
+    preparation.Input                            = input;
+    preparation.CookedSource                     = {20, 1};
+    preparation.CookedSourceHash                 = 1234;
+    ASSERT_TRUE(RRMTestHelper::SubmitCookedSky(*Renderer, input.Sky, preparation));
+    // Submitting the same verified identity must not look like a transition to
+    // an unavailable source merely because the authoring registry is empty.
+    EXPECT_FALSE(RRMTestHelper::SubmitCookedSky(*Renderer, input.Sky, preparation));
+}
+
 TEST_F(SceneEnvironmentHandoffTest, CancellationBeforePublicationReleasesTheClaimAndOutgoingEditsCanResume)
 {
     const auto outgoing = Sphere(1.0f, 500);
@@ -1364,6 +1389,30 @@ TEST_F(SceneEnvironmentHandoffTest, CancellationBeforePublicationReleasesTheClai
     ASSERT_TRUE(Renderer->ApplySkyConfig(changed.Sky, {}, 501, 1));
     EXPECT_EQ(RRMTestHelper::Sky(*Renderer).GetPresentationConfig(), changed.Sky);
     EXPECT_FALSE(Renderer->ApplySkyConfig({}, {}, 2, 2, id));
+}
+
+TEST_F(SceneEnvironmentHandoffTest, CancelledCandidateDoesNotResubmitTheActiveCookedSky)
+{
+    const auto active    = Sphere(1.0f, 7);
+    const auto active_id = Queue(active);
+    RRMTestHelper::MarkSceneCooked(Fixture->rrm, active_id);
+    Renderer->PollSceneEnvironmentPreparations();
+    ASSERT_EQ(Result(active_id).Environment, RRM::SceneEnvironmentPreparationState::Ready);
+    auto active_frame = Fixture->rrm.AcquireSceneResourceLease(active_id, 2);
+    ASSERT_TRUE(active_frame);
+    ASSERT_TRUE(Renderer->ApplySkyConfig(active.Sky, {}, active.SkyRevision, 2, active_id));
+    RRMTestHelper::FinishSkyFrame(*Renderer, true);
+    const auto candidate    = Sphere(4.0f, 8);
+    const auto candidate_id = Queue(candidate, 2, 2);
+    Renderer->PollSceneEnvironmentPreparations();
+    ASSERT_EQ(Result(candidate_id).Environment, RRM::SceneEnvironmentPreparationState::Ready);
+    ASSERT_TRUE(Fixture->rrm.ReleaseSceneResourcePreparation(candidate_id));
+    RRMTestHelper::TickPreparation(Fixture->rrm);
+    Renderer->PollSceneEnvironmentPreparations();
+    const auto latest_revision = RRMTestHelper::Sky(*Renderer).GetLatestRevision();
+    ASSERT_TRUE(Renderer->ApplySkyConfig(active.Sky, {}, active.SkyRevision, 2, active_id));
+    EXPECT_EQ(RRMTestHelper::Sky(*Renderer).GetLatestRevision(), latest_revision);
+    EXPECT_EQ(RRMTestHelper::Sky(*Renderer).GetPresentationConfig(), active.Sky);
 }
 
 TEST_F(SceneEnvironmentHandoffTest, MailboxRetentionPreventsTheNextCandidateFromSupersedingTheFirstSky)
@@ -2041,9 +2090,9 @@ TEST_F(SceneResourceBundleTest, CancellationDuringPreparationWaitsForAcceptedPro
     RRMTestHelper::TickPreparation(rrm, 100); // A signal alone cannot accept the open batch.
     EXPECT_EQ(RRMTestHelper::TextureReferences(rrm), 2u);
     RRMTestHelper::SetUploadProgress(rrm, 4, 4, false);
-    RRMTestHelper::TickPreparation(rrm, 3);
+    RRMTestHelper::TickPreparation(rrm, 3, true, false); // A later rejected batch cannot bypass an accepted upload.
     EXPECT_EQ(RRMTestHelper::TextureReferences(rrm), 2u);
-    RRMTestHelper::TickPreparation(rrm, 4);
+    RRMTestHelper::TickPreparation(rrm, 4, true, false);
     EXPECT_EQ(RRMTestHelper::TextureReferences(rrm), 0u);
     RRM::SceneResourcePreparationResult result = {};
     EXPECT_FALSE(rrm.PollSceneResourcePreparation(id, &result));

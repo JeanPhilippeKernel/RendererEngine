@@ -96,6 +96,7 @@ namespace ZEngine::Rendering::Renderers
         void                                   ApplySelectionOutline(bool enabled);
         /// @brief Configures an optional one-pixel object-ID readback for the next frame.
         void                                   RequestObjectIdPick(const ObjectIdPickRequest& request);
+        void                                   RequestSceneColorCapture(RGReadbackFn complete, RGReadbackCancelFn cancelled, void* context);
         /// @brief Returns the stable frame-color texture used by UI viewport widgets.
         Textures::TextureHandle                GetFrameOutput();
         /// @brief Returns a coherent renderer-memory snapshot for a non-render-thread UI reader.
@@ -107,7 +108,7 @@ namespace ZEngine::Rendering::Renderers
 
     private:
         friend struct ::RRMTestHelper;
-        bool SubmitSkySnapshot(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision, Scenes::SkyEnvironmentPublication publication);
+        bool SubmitSkySnapshot(const Scenes::SkyConfig& sky, const Scenes::SkyCelestialLight& celestial_light, uint64_t revision, Scenes::SkyEnvironmentPublication publication, const RenderResourceManager::SceneEnvironmentPreparation* preparation = nullptr);
         void ReleaseSceneEnvironmentPreparation();
         void EndScenePipelinePreparation();
         enum class SceneTextureSourceState : uint8_t

@@ -112,6 +112,14 @@ namespace ZEngine::Hardwares
         }
 #endif
 
+        bool khronos_validation_enabled = false;
+        for (const char* layer_name : enabled_layer_name_collection)
+        {
+            if (Helpers::secure_strcmp(layer_name, "VK_LAYER_KHRONOS_validation") == 0)
+                khronos_validation_enabled = true;
+        }
+        ZENGINE_CORE_INFO("[VulkanValidation] khronos_enabled={}", khronos_validation_enabled ? 1 : 0)
+
         Array<const char*> enabled_extension_layer_name_collection;
         enabled_extension_layer_name_collection.init(scratch.Arena, 16);
 
@@ -1199,9 +1207,11 @@ namespace ZEngine::Hardwares
         VkSemaphoreSubmitInfo     signal_info   = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO, .semaphore = signal_semaphore->GetHandle(), .value = signal_value, .stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT};
         VkSubmitInfo2             submit_info   = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2, .waitSemaphoreInfoCount = wait_info_count, .pWaitSemaphoreInfos = wait_infos, .commandBufferInfoCount = 1, .pCommandBufferInfos = &command_info, .signalSemaphoreInfoCount = 1, .pSignalSemaphoreInfos = &signal_info};
         VkResult                  submit_result = vkQueueSubmit2(GetQueue(command_buffer->QueueType).Handle, 1, &submit_info, VK_NULL_HANDLE);
-        if (CheckDeviceLost(submit_result, "QueueSubmit (timeline waits)"))
+        if (submit_result != VK_SUCCESS)
+        {
+            CheckDeviceLost(submit_result, "QueueSubmit (timeline waits)");
             return false;
-        ZENGINE_VALIDATE_ASSERT(submit_result == VK_SUCCESS, "Failed to submit queue")
+        }
         command_buffer->SetState(CommandBufferState::Pending);
         return true;
     }
@@ -2916,7 +2926,7 @@ namespace ZEngine::Hardwares
         info.usage = Specification.ImageUsage;
         info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        const auto domain = (info.usage & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) ? Core::Memory::GpuMemoryDomain::RenderTarget : Core::Memory::GpuMemoryDomain::DeviceTexture;
+        const auto domain = Specification.IsCookedAsset ? Core::Memory::GpuMemoryDomain::DeviceTexture : (info.usage & (VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) ? Core::Memory::GpuMemoryDomain::RenderTarget : Core::Memory::GpuMemoryDomain::DeviceTexture;
         auto image = device->GpuMem.TryAllocateImage(info, domain, device->LogicalDevice, Specification.ImageAspectFlag, Specifications::ImageViewTypeMap[VALUE_FROM_SPEC_MAP(image_view_type)], Specification.LayerCount, DebugName, &result);
         if (status)
         {
@@ -3159,6 +3169,7 @@ namespace ZEngine::Hardwares
         buffer_res->Specification            = {.Width = spec.Width, .Height = spec.Height, .Depth = spec.Depth, .ImageViewTypeValue = spec.Is3D ? Specifications::ImageViewType::TYPE_3D : spec.IsCubemap ? Specifications::ImageViewType::TYPE_CUBE : Specifications::ImageViewType::TYPE_2D, .BufferUsageType = spec.Is3D ? Specifications::ImageBufferUsageType::SINGLE_3D_IMAGE : spec.IsCubemap ? Specifications::ImageBufferUsageType::CUBEMAP : Specifications::ImageBufferUsageType::SINGLE_2D_IMAGE, .ImageFormat = image_format, .ImageAspectFlag = VkImageAspectFlagBits(image_aspect), .MipLevelCount = spec.MipLevelCount, .LayerCount = spec.LayerCount};
         buffer_res->Specification.ImageUsage = VkImageUsageFlagBits(image_usage_attachment | transfert_dst_bit | transfert_src_bit | sampled_bit | storage_bit);
         buffer_res->Specification.IsAliasable = spec.IsAliasable;
+        buffer_res->Specification.IsCookedAsset = spec.IsCookedAsset;
     }
 
     Rendering::Textures::TextureHandle VulkanDevice::CreateTexture(const Rendering::Specifications::TextureSpecification& spec, cstring debug_name, uint32_t reserved_slots)
@@ -3475,7 +3486,13 @@ namespace ZEngine::Hardwares
             *out_ring_offset = std::numeric_limits<uint32_t>::max();
         }
 
-        if (!handle.Valid() || !(data) || !(command_buf) || (RRM && !static_cast<Rendering::RenderResourceManager*>(RRM)->BeginTextureVersionWrite(handle)))
+        if (!handle.Valid() || !data || !command_buf)
+        {
+            return {};
+        }
+        const auto* resource = GlobalTextures.Access(handle);
+        const VkDeviceSize upload_size = resource && data_size == 0 ? resource->BufferSize : data_size;
+        if (!resource || !resource->ContainsBaseMip(upload_size) || (RRM && !static_cast<Rendering::RenderResourceManager*>(RRM)->BeginTextureVersionWrite(handle)))
         {
             return {};
         }
@@ -3501,14 +3518,15 @@ namespace ZEngine::Hardwares
             return {};
         }
 
-        const VkDeviceSize upload_size = data_size == 0 ? resource->BufferSize : data_size;
-        if (upload_size == 0 || upload_size > resource->BufferSize)
+        const VkDeviceSize available = data_size == 0 ? resource->BufferSize : data_size;
+        VkDeviceSize       upload_size = 0;
+        if (!resource->ContainsBaseMip(available, &upload_size))
         {
             return {};
         }
 
         uint32_t ring_offset = 0;
-        void*    ring_ptr    = use_staging_ring ? GpuMem.Ring.Allocate(static_cast<uint32_t>(upload_size), 4, &ring_offset) : nullptr;
+        void*    ring_ptr    = use_staging_ring && upload_size <= std::numeric_limits<uint32_t>::max() ? GpuMem.Ring.Allocate(static_cast<uint32_t>(upload_size), 4, &ring_offset) : nullptr;
 
         if (ring_ptr)
         {

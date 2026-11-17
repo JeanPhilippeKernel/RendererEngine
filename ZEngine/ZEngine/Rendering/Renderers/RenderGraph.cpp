@@ -409,21 +409,46 @@ namespace ZEngine::Rendering::Renderers
             if (!graph || !CanRecordSecondary(graph->Device, pass) || pass.SecondaryWorker == UINT32_MAX)
                 return;
 
+#if ZENGINE_PROFILING
+            auto       stage_start       = std::chrono::steady_clock::now();
+            const auto report_slow_stage = [&stage_start](const char* name) {
+                const auto   now        = std::chrono::steady_clock::now();
+                const double elapsed_ms = std::chrono::duration<double, std::milli>(now - stage_start).count();
+                if (elapsed_ms >= 1.0)
+                    ZENGINE_PROFILE_VALUE(name, elapsed_ms);
+                stage_start = now;
+            };
+#endif
             auto* secondary = graph->Device->CommandBufferMgr->AcquireWorkerSecondary(pass.Queue, frame_index, pass.SecondaryWorker, pass.SecondaryOrdinal);
             pass.Secondary  = secondary;
+#if ZENGINE_PROFILING
+            report_slow_stage("SceneLoad.RecordingWorker.AcquireMs");
+#endif
 
             if (IsGraphicPass(pass))
             {
                 secondary->BeginSecondary(static_cast<RenderPasses::GraphicPass*>(pass.Handle), ResolveGraphFramebuffer(graph->Device, pass));
+#if ZENGINE_PROFILING
+                report_slow_stage("SceneLoad.RecordingWorker.BeginMs");
+#endif
                 pass.SecondaryRecorded = pass.Callback->RecordDraw(graph->Device, graph->ResourceInspector, graph->SceneData, pass.Handle, pass.Framebuffer, secondary);
             }
             else
             {
                 secondary->BeginSecondaryCompute();
+#if ZENGINE_PROFILING
+                report_slow_stage("SceneLoad.RecordingWorker.BeginMs");
+#endif
                 pass.Callback->Execute(graph->Device, graph->ResourceInspector, graph->SceneData, pass.Handle, pass.Framebuffer, secondary);
                 pass.SecondaryRecorded = true;
             }
+#if ZENGINE_PROFILING
+            report_slow_stage("SceneLoad.RecordingWorker.CallbackMs");
+#endif
             secondary->End();
+#if ZENGINE_PROFILING
+            report_slow_stage("SceneLoad.RecordingWorker.EndMs");
+#endif
         }
 
         void RecordGraphSecondaryWorkerBatch(void* context)
@@ -3606,7 +3631,7 @@ namespace ZEngine::Rendering::Renderers
                 Device->SwapchainPtr->DirectGraphicsTimeline      = timeline;
                 Device->SwapchainPtr->DirectGraphicsTimelineValue = signal_value;
             }
-            AcknowledgeStreamingAcquires(batch.FirstPassOrder, batch.PassCount);
+            AcknowledgeStreamingAcquires(batch.FirstPassOrder, batch.PassCount, timeline, signal_value);
             SubmitReadbacks(batch.FirstPassOrder, batch.PassCount, timeline, signal_value);
             // RenderGraph and DeviceSwapchain run on the render thread. Appending
             // directly avoids re-draining the MPSC producer queue while ensuring
@@ -5743,6 +5768,23 @@ namespace ZEngine::Rendering::Renderers
             // compute or transfer.
             if (!pass.QueryWrites.empty())
                 pass.RequestedQueue = Rendering::QueueType::GRAPHIC_QUEUE;
+            // Streamed images are released to the graphics family. Untyped
+            // bindless reads cannot express per-image queue ownership, and a
+            // ticketed explicit import must acquire on that same family.
+            const auto reads_ticketed_image = [&](const auto& uses) {
+                for (const auto& use : uses)
+                {
+                    if (use.Handle.Valid() && use.Handle.Index < Resources.size() && Resources[use.Handle.Index].HasStreamingTicket)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            if (pass.ReadsBindless || reads_ticketed_image(pass.Reads) || reads_ticketed_image(pass.Writes))
+            {
+                pass.RequestedQueue = Rendering::QueueType::GRAPHIC_QUEUE;
+            }
         }
         bool isolate_atmosphere_view_passes = false;
 #ifndef NDEBUG
@@ -5923,7 +5965,7 @@ namespace ZEngine::Rendering::Renderers
                 plan_ticket(ticket, UINT32_MAX);
     }
 
-    void RenderGraph::AcknowledgeStreamingAcquires(uint32_t first_pass_order, uint32_t pass_count)
+    void RenderGraph::AcknowledgeStreamingAcquires(uint32_t first_pass_order, uint32_t pass_count, Rendering::Primitives::Semaphore* timeline, uint64_t value)
     {
         auto* const    rrm       = Device && Device->RRM ? static_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
         const uint32_t end_order = std::min(first_pass_order + pass_count, static_cast<uint32_t>(SortedPassIndices.size()));
@@ -5935,8 +5977,10 @@ namespace ZEngine::Rendering::Renderers
                 if (!plan.BarrierRecorded || plan.Acknowledged)
                     continue;
 
-                if (rrm)
-                    rrm->AcknowledgeStreamingUploadTicket(plan.Ticket);
+                if (rrm && !rrm->AcknowledgeStreamingUploadAcquire(plan.Ticket, timeline, value, Device->GetQueue(pass.Queue).FamilyIndex))
+                {
+                    continue;
+                }
                 for (RGImportedResource& imported : ImportedResources)
                 {
                     const auto& ticket = imported.StreamingTicket;
@@ -5955,7 +5999,7 @@ namespace ZEngine::Rendering::Renderers
         auto* const graph = static_cast<RenderGraph*>(context);
         if (graph)
         {
-            graph->AcknowledgeStreamingAcquires(0, static_cast<uint32_t>(graph->SortedPassIndices.size()));
+            graph->AcknowledgeStreamingAcquires(0, static_cast<uint32_t>(graph->SortedPassIndices.size()), timeline, timeline_value);
             graph->SubmitReadbacks(0, static_cast<uint32_t>(graph->SortedPassIndices.size()), timeline, timeline_value);
         }
     }

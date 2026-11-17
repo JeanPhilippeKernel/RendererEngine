@@ -1,0 +1,69 @@
+{
+  "status": "user-approved macOS fixed-viewport visual reference; not full M2 qualification",
+  "backend": "macOS Vulkan on Apple M4 Pro (MoltenVK)",
+  "capture_space": "RGB8 UNORM scene-target readback",
+  "viewport": [
+    1280,
+    720
+  ],
+  "character_region": [
+    560,
+    225,
+    160,
+    250
+  ],
+  "ppm_sha256": "c8e487774ecf7e42cc9b87a6b7ae771488c77a98c15da0d4f4368f388a5c95ed",
+  "compressed_sha256": "b9c5ca700feeead1a976c7dfd91b8a72c504b2502868014dae9085d665565e6e",
+  "pixel_sha256": "dad5a00f088726f6c02546cd2084172197a1c3db67c6c0703565d4b726872810",
+  "scene_sha256": "da6d6c6050200a0d31b17e05ef8b53950ef0ddc705ae4fe7f4e4dfacece9cd31",
+  "augmented_scene_sha256": "0554a318872db8a0c86f03c65bb45cf9cac65e8b7539b0a68dddc7399411a66a",
+  "manifest_sha256": "3dc692d4affcb702f2255c48f68c34e6652bc9b5c5590efb85c5b735a53c43da",
+  "camera_uuid": "b1b1b1b1-7171-4141-8181-b1b1b1b1b1b1",
+  "source_vs_cooked_changed_pixels": 0,
+  "repeat_changed_pixels": 0,
+  "limitations": [
+    "Runtime binary and shader identities were not recorded for this capture.",
+    "Approval of this image does not qualify every visual semantic or the overall M2 profile."
+  ],
+  "preview_png_sha256": "4da68f038761e2b7c9e8cf8d10c66fa9581d61f42617cefd2666ccf16785cd01",
+  "matching_later_capture": {
+    "binary_sha256": {
+      "cooker_sha256": "cc4bc8c155a47c8a021030132134589bd4f7d68fc74f1568e69ff22c4294ba1f",
+      "runtime_sha256": "07cd943dde32946864f82bfc935a7e9baa142c6b21d130369b806123c366352b"
+    },
+    "shader_cache": {
+      "sha256": "dfd8d94eb2a7e0afc9e34f4644052fb2d86de3e7396cb0ff5496d89717d21916",
+      "files": 44
+    },
+    "device": {
+      "gpu": "Apple M4 Pro",
+      "driver_path": "/usr/local/lib/libMoltenVK.dylib",
+      "driver_sha256": "0b398933adeb1aba84aff76ef438f54f17e7deb6960beb5711fa6e23cd192cdb"
+    },
+    "manifest_sha256": "3dc692d4affcb702f2255c48f68c34e6652bc9b5c5590efb85c5b735a53c43da",
+    "pixel_sha256": "dad5a00f088726f6c02546cd2084172197a1c3db67c6c0703565d4b726872810",
+    "source_cooked_changed_pixels": 0,
+    "candidate_changed_pixels": 0,
+    "same_build_repeat_changed_pixels": 0,
+    "same_build_repeat_maximum_channel_delta": 0
+  },
+  "matching_corrected_domain_capture": {
+    "binary_sha256": {
+      "cooker_sha256": "cc4bc8c155a47c8a021030132134589bd4f7d68fc74f1568e69ff22c4294ba1f",
+      "runtime_sha256": "14af15626c422b8d299fc2483c7a650067fc65028d510565289f0122a6533b5e"
+    },
+    "shader_cache": {
+      "sha256": "dfd8d94eb2a7e0afc9e34f4644052fb2d86de3e7396cb0ff5496d89717d21916",
+      "files": 44
+    },
+    "device": {
+      "gpu": "Apple M4 Pro",
+      "driver_path": "/usr/local/lib/libMoltenVK.dylib",
+      "driver_sha256": "0b398933adeb1aba84aff76ef438f54f17e7deb6960beb5711fa6e23cd192cdb"
+    },
+    "manifest_sha256": "3dc692d4affcb702f2255c48f68c34e6652bc9b5c5590efb85c5b735a53c43da",
+    "runtime_pixel_sha256": "dad5a00f088726f6c02546cd2084172197a1c3db67c6c0703565d4b726872810",
+    "source_cooked_changed_pixels": 0,
+    "candidate_changed_pixels": 0
+  }
+}

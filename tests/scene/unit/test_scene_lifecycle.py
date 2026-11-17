@@ -10,6 +10,15 @@ SPEC.loader.exec_module(lifecycle)
 
 
 class LifecycleEvidenceTest(unittest.TestCase):
+    def test_capture_accepts_only_declared_occlusion_states(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "stages.csv"
+            path.write_text('kind,name,timestamp_ns,value\nvalue,SceneLoad.Main.WindowOcclusionVisible,1,1\n')
+            self.assertEqual(list(lifecycle.capture_records(path))[0][3], 1)
+            path.write_text('kind,name,timestamp_ns,value\nvalue,SceneLoad.Main.WindowOcclusionVisible,1,3\n')
+            with self.assertRaisesRegex(ValueError, "invalid window occlusion"):
+                list(lifecycle.capture_records(path))
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

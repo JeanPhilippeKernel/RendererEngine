@@ -9,6 +9,7 @@ reference proves repeatability only, until a reviewer accepts its visual content
 """
 
 import argparse
+import gzip
 import hashlib
 import json
 from pathlib import Path
@@ -24,15 +25,24 @@ def validate_capture_log(path):
         data = source.read(MAX_LOG_BYTES + 1)
     if not data or len(data) > MAX_LOG_BYTES:
         raise ValueError("missing or oversized capture validation log")
-    text = data.decode("utf-8", errors="strict").lower()
+    validate_capture_log_text(data.decode("utf-8", errors="strict"))
+
+
+def validate_capture_log_text(text):
+    """Validate a complete, already reconstructed process log."""
+    if not text or len(text.encode("utf-8")) > MAX_LOG_BYTES:
+        raise ValueError("missing or oversized capture validation log")
+    text = text.lower()
     if any(marker in text for marker in ("[error]", "vuid-", "vk_not_ready", "validation error")):
-        raise ValueError(f"capture validation errors in {path}")
+        raise ValueError("capture validation errors in process log")
     if "engine destroyed" not in text:
         raise ValueError("capture log does not show completed engine shutdown")
 
 
 def read_ppm(path):
-    with Path(path).open("rb") as source:
+    path = Path(path)
+    opener = gzip.open if path.suffix == ".gz" else Path.open
+    with opener(path, "rb") as source:
         data = source.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise ValueError("capture exceeds the bounded image profile")

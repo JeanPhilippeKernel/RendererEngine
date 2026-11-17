@@ -14,13 +14,14 @@ TEST(SceneSubmissionProgressTest, StartsEmptyAndCountsOnlyExplicitAcceptedNotifi
     EXPECT_EQ(snapshot.Count, 0u);
     EXPECT_FALSE(progress.TryRead(nullptr));
     progress.Record(0, 10);
-    progress.Record(4, 20, 8192);
-    progress.Record(4, 30, 8192);
+    progress.Record(4, 20, 8192, 13);
+    progress.Record(4, 30, 8192, 14);
     ASSERT_TRUE(progress.TryRead(&snapshot));
     EXPECT_EQ(snapshot.Generation, 4u);
     EXPECT_EQ(snapshot.Count, 2u);
     EXPECT_EQ(snapshot.FirstTimestampNs, 20u);
     EXPECT_EQ(snapshot.DrawCount, 8192u);
+    EXPECT_EQ(snapshot.FirstTimelineValue, 13u);
     progress.Record(3, 40);
     ASSERT_TRUE(progress.TryRead(&snapshot));
     EXPECT_EQ(snapshot.Count, 2u);
@@ -31,6 +32,7 @@ TEST(SceneSubmissionProgressTest, StartsEmptyAndCountsOnlyExplicitAcceptedNotifi
     EXPECT_EQ(snapshot.Count, 1u);
     EXPECT_EQ(snapshot.FirstTimestampNs, 50u);
     EXPECT_EQ(snapshot.DrawCount, 0u);
+    EXPECT_EQ(snapshot.FirstTimelineValue, 0u);
 }
 
 TEST(SceneSubmissionProgressTest, ConcurrentReadsNeverMixGenerationCountAndFirstTimestamp)
@@ -40,8 +42,8 @@ TEST(SceneSubmissionProgressTest, ConcurrentReadsNeverMixGenerationCountAndFirst
     std::thread             writer([&] {
         for (uint64_t generation = 1; generation <= 100000; ++generation)
         {
-            progress.Record(generation, generation * 11, static_cast<uint32_t>(generation));
-            progress.Record(generation, generation * 11 + 1, static_cast<uint32_t>(generation));
+            progress.Record(generation, generation * 11, static_cast<uint32_t>(generation), generation * 3);
+            progress.Record(generation, generation * 11 + 1, static_cast<uint32_t>(generation), generation * 3 + 1);
         }
         finished.store(true, std::memory_order_release);
     });
@@ -55,6 +57,7 @@ TEST(SceneSubmissionProgressTest, ConcurrentReadsNeverMixGenerationCountAndFirst
             coherent        &= snapshot.Generation >= last_generation && snapshot.FirstTimestampNs == snapshot.Generation * 11;
             coherent        &= snapshot.Generation ? (snapshot.Count == 1 || snapshot.Count == 2) : snapshot.Count == 0;
             coherent        &= snapshot.DrawCount == snapshot.Generation;
+            coherent        &= snapshot.FirstTimelineValue == snapshot.Generation * 3;
             last_generation  = snapshot.Generation;
         }
     } while (!finished.load(std::memory_order_acquire));

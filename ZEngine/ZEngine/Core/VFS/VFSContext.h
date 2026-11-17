@@ -4,6 +4,7 @@
 #include <ZEngine/Core/VFS/VFSDirectoryCache.h>
 #include <ZEngine/Core/VFS/VFSFileWatcher.h>
 #include <ZEngine/Core/VFS/VFSMountTable.h>
+#include <atomic>
 #include <mutex>
 
 namespace ZEngine
@@ -33,6 +34,17 @@ namespace ZEngine::Core::VFS
 
     struct VFSContext : IVFSContext
     {
+        /// Standalone source-independence probe: only the engine-owned VFS
+        /// namespace remains readable through this context. The separately
+        /// mounted cooked package uses its own context.
+        void EnableEngineOnlyAudit() noexcept
+        {
+            m_engine_only_audit.store(true, std::memory_order_release);
+        }
+        [[nodiscard]] uint64_t DeniedSourceAccesses() const noexcept
+        {
+            return m_denied_source_accesses.load(std::memory_order_acquire);
+        }
         void                                                    Initialize(Memory::ArenaAllocator* arena, size_t mount_table_capacity = 16);
 
         [[nodiscard]] VFSResult<VFSContextStorage>              NativeStorage() const noexcept override;
@@ -78,6 +90,15 @@ namespace ZEngine::Core::VFS
         void                                                    Shutdown() override;
 
     private:
+        [[nodiscard]] bool DenySourceAccess(const VFSPath& path) const noexcept
+        {
+            if (!m_engine_only_audit.load(std::memory_order_acquire) || (path.ComponentCount() && path.ComponentAt(0).Equals("ZodiacEngine")))
+                return false;
+            m_denied_source_accesses.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+        std::atomic<bool>             m_engine_only_audit      = false;
+        mutable std::atomic<uint64_t> m_denied_source_accesses = 0;
         friend struct VFSContextTestAccess;
 
         struct ImportPublicationState

@@ -4,14 +4,15 @@
 #include <ZEngine/ECS/Components/MeshComponent.h>
 #include <ZEngine/ECS/Components/NameComponent.h>
 #include <ZEngine/ECS/Components/TransformComponent.h>
+#include <ZEngine/ECS/CookedSceneReconstruction.h>
 #include <ZEngine/ECS/Systems/HierarchySystem.h>
 #include <ZEngine/ECS/Systems/LightSyncSystem.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Managers/CookedCpuAssetSet.h>
 #include <ZEngine/Profiling/Profiling.h>
 #include <algorithm>
 #include <new>
-#include <vector>
 
 using namespace ZEngine::ECS;
 using namespace ZEngine::ECS::Components;
@@ -25,12 +26,6 @@ namespace Tetragrama
             SceneDiagnosticError(diagnostics, message);
             return false;
         }
-        struct MeshRequirement
-        {
-            uuids::uuid UUID = {};
-            uint32_t    Uses = 1;
-        };
-
         /// Retain the adapter's existing failure contract after the engine has
         /// reconstructed the ECS: later editor binding failure returns the input
         /// document before the unpublished engine owner releases its slot.
@@ -51,79 +46,21 @@ namespace Tetragrama
         };
     } // namespace
 
-    EditorSceneCandidate::~EditorSceneCandidate()
-    {
-        if (m_resources && m_resource_preparation)
-        {
-            m_resources->ReleaseSceneResourcePreparation(m_resource_preparation);
-        }
-    }
+    EditorSceneCandidate::~EditorSceneCandidate() = default;
 
-    bool EditorSceneCandidate::PrepareRenderResources(ZEngine::Rendering::RenderResourceManager& resources, SceneRequestId request, uint64_t generation, const ZEngine::Rendering::Scenes::SceneInitialView& view)
+    bool EditorSceneCandidate::PrepareRenderResources(ZEngine::Rendering::RenderResourceManager& resources, SceneRequestId request, uint64_t generation, const ZEngine::Rendering::Scenes::SceneInitialView& view, const ZEngine::Managers::CookedCpuAssetSet* cooked, bool* terminal_failure)
     {
-        ZENGINE_PROFILE_SCOPE("SceneLoad.Main.ResourceAdmission");
-        if (m_resource_preparation)
-        {
-            if (m_resources != &resources)
-            {
-                return false;
-            }
-            if (m_resource_instances_copied < m_render.Instances.size())
-            {
-                const auto count = std::min(size_t(64), m_render.Instances.size() - m_resource_instances_copied);
-                if (resources.AppendSceneResourceInstances(m_resource_preparation, {m_render.Instances.data() + m_resource_instances_copied, count}))
-                {
-                    m_resource_instances_copied += static_cast<uint32_t>(count);
-                }
-                // A refused batch is a terminal resource result, not backpressure.
-                // The caller polls it and preserves the outgoing generation.
-            }
-            return true;
-        }
-        // Resolve the candidate's sun, never the outgoing world's light state.
-        ZEngine::ECS::Systems::SyncHierarchy(World());
-        // The unpublished adapter already has exact entity membership. Copy
-        // directly rather than performing a linear instance-ID lookup per entity.
-        for (auto& instance : m_render.Instances)
-        {
-            const auto* transform = World().GetComponent<TransformComponent>(instance.Entity);
-            if (!transform)
-            {
-                return false;
-            }
-            instance.Transform = transform->WorldTransform;
-        }
-        m_render.MarkInstancesDirty();
-        ZEngine::ECS::Systems::SyncECSToLights(World(), m_render);
-        const ZEngine::Rendering::RenderResourceManager::SceneEnvironmentInput  environment   = {m_render.Sky, m_render.CelestialLight, m_render.SkyRevision.value.load(std::memory_order_acquire)};
-        const ZEngine::Rendering::RenderResourceManager::SceneInitialFrameInput initial_frame = {
-            {m_render.Instances.data(), m_render.Instances.size()},
-            m_render.PendingLights, m_render.Grid, view
-        };
-        if (!resources.PrepareSceneResources(request, generation, {m_required_meshes.data(), m_required_meshes.size()}, &m_resource_preparation, ZEngine::Rendering::RenderResourceManager::ScenePreparationContent::MeshMaterials, &environment, &initial_frame, true))
-        {
-            return false;
-        }
-        m_resource_instances_copied = 0;
-        m_resources                 = &resources;
-        return true;
+        return m_scene_resources.Prepare(*m_instance, m_render, {m_required_meshes.data(), m_required_meshes.size()}, resources, request, generation, view, cooked, terminal_failure);
     }
 
     bool EditorSceneCandidate::PollRenderResources(ZEngine::Rendering::RenderResourceManager::SceneResourcePreparationResult* out) const
     {
-        return m_resources && m_resources->PollSceneResourcePreparation(m_resource_preparation, out);
+        return m_scene_resources.Poll(out);
     }
 
     ZEngine::Rendering::RenderResourceManager::SceneResourcePreparationId EditorSceneCandidate::InitialRenderResources()
     {
-        ZEngine::Rendering::RenderResourceManager::SceneResourcePreparationResult result = {};
-        if (PollRenderResources(&result) && result.FrameRecorded)
-        {
-            m_resources->ReleaseSceneResourcePreparation(m_resource_preparation);
-            m_resource_preparation = {};
-            m_resources            = nullptr;
-        }
-        return m_resource_preparation;
+        return m_scene_resources.InitialResources();
     }
 
     bool EditorSceneCandidate::Prepare(ZEngine::EngineContext& engine, SceneDocument&& document, const SceneComponentSchemaRegistry& schemas, const ZEngine::Core::VFS::VFSPath& source, const EditorSceneAssetResolver& assets, ZEngine::Helpers::Scope<EditorSceneCandidate>* out, SceneDiagnostics* diagnostics, const EditorSceneCandidateLimits& limits)
@@ -188,12 +125,73 @@ namespace Tetragrama
         return true;
     }
 
-    bool EditorSceneCandidate::PrepareRenderAdapter(const ZEngine::Core::VFS::VFSPath& source, const EditorSceneAssetResolver& assets, SceneDiagnostics* diagnostics, const EditorSceneCandidateLimits& limits)
+    bool EditorSceneCandidate::PreparePopulatedCooked(std::unique_ptr<SceneInstance>&& instance, const ZEngine::Core::VFS::VFSPath& source, const ZEngine::Managers::CookedCpuAssetSet& assets, ZEngine::Helpers::Scope<EditorSceneCandidate>* out, SceneDiagnostics* diagnostics, const EditorSceneCandidateLimits& limits)
+    {
+        if (!instance || !assets.IsValid() || !instance->MatchesCookedClosure(assets.ManifestDigest(), assets.SceneUUID()))
+        {
+            return Reject(diagnostics, "Scene binding requires the verified closure for this cooked scene and manifest.");
+        }
+        const auto*                    closure  = &assets;
+        const EditorSceneAssetResolver resolver = {&closure, [](void* context, const uuids::uuid& uuid, uint32_t* draws, SceneDiagnostics*) {
+                                                       const auto*                            set      = *static_cast<const ZEngine::Managers::CookedCpuAssetSet**>(context);
+                                                       const ZEngine::Cook::CookAssetIdentity identity = {ZEngine::Cook::CookAssetKind::Mesh, uuid};
+                                                       const auto*                            mesh     = set->FindMesh(identity);
+                                                       if (!draws || !mesh || mesh->SubMeshes.empty() || mesh->SubMeshes.size() > UINT32_MAX)
+                                                       {
+                                                           return false;
+                                                       }
+                                                       *draws = static_cast<uint32_t>(mesh->SubMeshes.size());
+                                                       return true;
+                                                   }};
+        if (!out || *out || !instance->Document().Settings() || instance->Actors().Count() || !instance->Commands().IsEmpty() || instance->Tick().SystemCount())
+        {
+            return Reject(diagnostics, "Cooked editor binding requires an unpublished engine owner without actor lifecycle work.");
+        }
+        auto candidate = ZEngine::Helpers::Scope<EditorSceneCandidate>(new (std::nothrow) EditorSceneCandidate{});
+        if (!candidate)
+            return Reject(diagnostics, "Cannot allocate editor scene ownership.");
+        candidate->m_instance = std::move(instance);
+        if (!candidate->PrepareRenderAdapter(source, resolver, diagnostics, limits, true))
+            return false;
+        *out = std::move(candidate);
+        return true;
+    }
+
+    CookedCandidateState EditorSceneCandidate::PrepareReconstructedCooked(CookedSceneReconstruction& reconstruction, const ZEngine::Core::VFS::VFSPath& source, ZEngine::Helpers::Scope<EditorSceneCandidate>* out, SceneDiagnostics* diagnostics, ZEngine::Core::VFS::VFSError* asset_error, const EditorSceneCandidateLimits& limits)
+    {
+        if (!out || *out || !reconstruction.Instance || !reconstruction.Assets)
+        {
+            Reject(diagnostics, "Cooked scene binding requires an unpublished reconstruction and an empty destination.");
+            return CookedCandidateState::Failed;
+        }
+        ZEngine::Managers::CookedCpuClosureCache::Result result = {};
+        if (!reconstruction.Assets.Poll(&result))
+        {
+            Reject(diagnostics, "The cooked asset lease is no longer valid.");
+            return CookedCandidateState::Failed;
+        }
+        if (result.StateValue == ZEngine::Managers::CookedCpuClosureCache::State::Pending)
+        {
+            return CookedCandidateState::Pending;
+        }
+        if (result.StateValue != ZEngine::Managers::CookedCpuClosureCache::State::Ready || !result.Assets)
+        {
+            if (asset_error)
+            {
+                *asset_error = result.Error;
+            }
+            Reject(diagnostics, "The cooked asset closure could not be prepared.");
+            return CookedCandidateState::Failed;
+        }
+        return PreparePopulatedCooked(std::move(reconstruction.Instance), source, *result.Assets, out, diagnostics, limits) ? CookedCandidateState::Ready : CookedCandidateState::Failed;
+    }
+
+    bool EditorSceneCandidate::PrepareRenderAdapter(const ZEngine::Core::VFS::VFSPath& source, const EditorSceneAssetResolver& assets, SceneDiagnostics* diagnostics, const EditorSceneCandidateLimits& limits, bool cooked)
     {
         ZENGINE_PROFILE_SCOPE("SceneLoad.Worker.RenderAdapter");
         constexpr auto gpu_budget = ZEngine::Rendering::Scenes::SceneData::MAX_DRAW_COMMANDS;
         const auto*    settings   = Document().Settings();
-        if (!settings || !IsSceneSourcePath(source) || limits.MaxInstances > gpu_budget || limits.MaxDrawCommands > gpu_budget)
+        if (!settings || (cooked ? (!source.IsValid() || source.IsRoot()) : !IsSceneSourcePath(source)) || limits.MaxInstances > gpu_budget || limits.MaxDrawCommands > gpu_budget)
         {
             return Reject(diagnostics, "Invalid scene source or editor render limits.");
         }
@@ -212,90 +210,24 @@ namespace Tetragrama
         {
             return Reject(diagnostics, "The legacy directional-light icon identity is invalid.");
         }
-        std::vector<EntityID> retired_icons = {};
-        world.ForEach<MeshComponent, LightComponent>([&](EntityID entity, const MeshComponent& mesh, const LightComponent& light) {
-            if (mesh.MeshUUID == *legacy_icon && light.LightType == LightComponent::Type::Directional)
-            {
-                retired_icons.push_back(entity);
-            }
-        });
-        for (const EntityID entity : retired_icons)
         {
-            world.RemoveComponent<MeshComponent>(entity);
+            ZEngine::Core::Memory::ArenaCheckpoint     scratch(m_instance->Arena());
+            ZEngine::Core::Containers::Array<EntityID> retired_icons = {};
+            retired_icons.m_allocator                                = m_instance->Arena();
+            bool scratch_ok                                          = true;
+            world.ForEach<MeshComponent, LightComponent>([&](EntityID entity, const MeshComponent& mesh, const LightComponent& light) {
+                if (mesh.MeshUUID == *legacy_icon && light.LightType == LightComponent::Type::Directional && !retired_icons.try_push(entity))
+                    scratch_ok = false;
+            });
+            if (!scratch_ok)
+                return Reject(diagnostics, "Scene storage cannot retain legacy icon cleanup scratch.");
+            for (const EntityID entity : retired_icons)
+                world.RemoveComponent<MeshComponent>(entity);
+            m_instance->RecordMemoryUsage();
         }
 
-        // O(E + M log M), with one asset lookup per distinct mesh, not per placed
-        // instance. Temporary vectors exist only during an explicit scene load.
-        std::vector<MeshRequirement> requirements = {};
-        bool                         valid        = true;
-        world.ForEach<MeshComponent>([&](EntityID entity, const MeshComponent& mesh) {
-            if (!world.HasComponent<TransformComponent>(entity) || mesh.MeshUUID.is_nil() || requirements.size() >= limits.MaxInstances)
-            {
-                valid = false;
-                return;
-            }
-            requirements.push_back({mesh.MeshUUID});
-        });
-        if (!valid)
-        {
-            return Reject(diagnostics, "A mesh has no transform/asset identity, or the complete scene exceeds the instance budget.");
-        }
-        const auto instance_count = static_cast<uint32_t>(requirements.size());
-        if (instance_count && !assets.ResolveMesh)
-        {
-            return Reject(diagnostics, "Scene meshes need an explicit asset resolver; no render bindings were published.");
-        }
-        std::sort(requirements.begin(), requirements.end(), [](const auto& a, const auto& b) { return a.UUID < b.UUID; });
-        size_t unique_count = 0;
-        for (size_t i = 0; i < requirements.size(); ++i)
-        {
-            if (unique_count && requirements[unique_count - 1].UUID == requirements[i].UUID)
-            {
-                ++requirements[unique_count - 1].Uses;
-            }
-            else
-            {
-                requirements[unique_count++] = requirements[i];
-            }
-        }
-        requirements.resize(unique_count);
-        m_required_meshes.m_allocator = m_instance->Arena();
-        if (!m_required_meshes.try_reserve(unique_count))
-        {
-            return Reject(diagnostics, "Cannot retain the complete scene resource identity set.");
-        }
-        for (const auto& requirement : requirements)
-        {
-            m_required_meshes.push(requirement.UUID);
-            uint32_t draws = 0;
-            if (!assets.ResolveMesh(assets.Context, requirement.UUID, &draws, diagnostics) || draws == 0)
-            {
-                return Reject(diagnostics, "A referenced mesh is missing or has no complete drawable binding; the active scene was preserved.");
-            }
-            const uint64_t additional = uint64_t(draws) * requirement.Uses;
-            if (additional > limits.MaxDrawCommands - m_draw_count)
-            {
-                return Reject(diagnostics, "The complete scene exceeds the GPU submesh draw budget; no instances were truncated.");
-            }
-            m_draw_count += static_cast<uint32_t>(additional);
-        }
-        if (!render.Instances.try_reserve(instance_count))
-        {
-            return Reject(diagnostics, "Cannot retain the complete scene instance list in its bounded arena.");
-        }
-        world.ForEach<MeshComponent>([&](EntityID entity, MeshComponent& mesh) {
-            ZEngine::Rendering::Scenes::MeshInstance instance = {};
-            instance.Id                                       = render.NextInstanceId++;
-            instance.MeshUUID                                 = mesh.MeshUUID;
-            instance.Entity                                   = entity;
-            instance.Transform                                = world.GetComponent<TransformComponent>(entity)->WorldTransform;
-            if (const auto* name = world.GetComponent<NameComponent>(entity))
-            {
-                ZEngine::Helpers::secure_strncpy(instance.Name, sizeof(instance.Name), name->Value, sizeof(instance.Name) - 1);
-            }
-            mesh.RenderInstanceId = instance.Id;
-            render.Instances.push(instance);
-        });
+        if (!ZEngine::Rendering::Scenes::BuildSceneMeshBindings(*m_instance, render, assets, limits, m_required_meshes, m_draw_count, diagnostics))
+            return false;
 
         render.Name         = settings->Name.data(); // NUL-terminated text owned by the retained document.
         render.UUID         = settings->UUID;
@@ -303,7 +235,7 @@ namespace Tetragrama
         render.SyncGridFromAuthored();
         render.Sky            = settings->Sky;
         render.SourcePath     = source;
-        render.SourceReadOnly = Document().ReadOnly();
+        render.SourceReadOnly = cooked || Document().ReadOnly();
         render.MarkDirty(false);
         render.MarkInstancesDirty();
         render.MarkSkyDirty();

@@ -53,4 +53,10 @@ jobs:
         shell: pwsh
         env:
           PATH: ${{github.workspace}}\lib
-        run: ${{github.workspace}}\tests\TetragramaTests.exe
+        run: |
+          & "${{github.workspace}}\tests\TetragramaTests.exe"
+          if ($LASTEXITCODE -ne 0) {
+            $nativeCode = [uint32]([int64]$LASTEXITCODE -band 0xFFFFFFFFL)
+            Write-Error ("Editor test process failed with native exit code 0x{0:X8}" -f $nativeCode)
+            exit 1
+          }

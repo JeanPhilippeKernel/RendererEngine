@@ -2508,6 +2508,41 @@ TEST(RenderGraphQueueScheduleTest, CompiledComputeBackendPreservesCallbackQueueP
     manager.Shutdown();
 }
 
+TEST(RenderGraphQueueScheduleTest, BindlessAndTicketedImageConsumersUseGraphicsFamily)
+{
+    MemoryManager manager = {};
+    manager.Initialize(16384, {});
+    auto& arena                      = manager.MainArena;
+    auto  device                     = std::make_unique<Hardwares::VulkanDevice>();
+    device->Arena                    = &arena;
+    device->HasSeparateComputeQueue  = true;
+    device->HasSeparateTransferQueue = true;
+    RenderGraph graph                = {};
+    graph.Device                     = device.get();
+    graph.Passes.init(&arena, 3);
+    graph.Resources.init(&arena, 1);
+    graph.Resources.push({});
+    graph.Resources[0].HasStreamingTicket = true;
+    graph.SortedPassIndices.init(&arena, 3);
+    graph.QueueBatches.init(&arena, 3);
+    graph.QueueDependencies.init(&arena, 3);
+    graph.QueueOwnershipTransfers.init(&arena, 3);
+    TestComputePass compute = {};
+    for (uint32_t index = 0; index < 3; ++index)
+    {
+        graph.Passes.push(MakePass(&arena, "Compute consumer"));
+        graph.Passes[index].Callback = &compute;
+        graph.SortedPassIndices.push(index);
+    }
+    graph.Passes[0].ReadsBindless = true;
+    AddRead(graph.Passes[1], 0);
+    RenderGraphTestAccess::BuildQueueSchedule(graph);
+    EXPECT_EQ(graph.Passes[0].Queue, Rendering::QueueType::GRAPHIC_QUEUE);
+    EXPECT_EQ(graph.Passes[1].Queue, Rendering::QueueType::GRAPHIC_QUEUE);
+    EXPECT_EQ(graph.Passes[2].Queue, Rendering::QueueType::COMPUTE_QUEUE);
+    manager.Shutdown();
+}
+
 TEST(RenderGraphQueueScheduleTest, GroupsContiguousPassesByResolvedQueue)
 {
     MemoryManager manager{};

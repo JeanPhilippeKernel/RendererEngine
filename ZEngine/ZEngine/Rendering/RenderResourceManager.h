@@ -1,6 +1,8 @@
 #pragma once
+#include <ZEngine/Cook/CookTypes.h>
 #include <ZEngine/Core/Containers/Array.h>
 #include <ZEngine/Core/Containers/MPSCQueue.h>
+#include <ZEngine/Core/Hash/SHA256.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Core/Memory/TLSFSlab.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
@@ -42,6 +44,25 @@ namespace ZEngine::Rendering::Primitives
     struct Fence;
 } // namespace ZEngine::Rendering::Primitives
 
+namespace ZEngine::Rendering::Meshes
+{
+    class CookedMeshStaging;
+}
+
+namespace ZEngine::Managers
+{
+    class CookedCpuAssetSet;
+}
+namespace ZEngine::Rendering::Materials
+{
+    class CookedMaterialVersion;
+}
+namespace ZEngine::Rendering::Textures
+{
+    class CookedEnvironmentUpload;
+    class CookedTextureUpload;
+} // namespace ZEngine::Rendering::Textures
+
 namespace ZEngine::Rendering
 {
     // RenderResourceManager — single authority over GPU buffer/image lifetime.
@@ -64,6 +85,52 @@ namespace ZEngine::Rendering
     class RenderResourceManager
     {
     public:
+        /// Process-test fault injection: reject one batch containing a cooked mesh.
+        /// The render thread consumes this only immediately before queue submission.
+        void ArmCookedBatchRejectionProbe() noexcept
+        {
+            m_reject_cooked_batch_probe.store(true, std::memory_order_release);
+        }
+        /// Exclusive owner of unpublished host staging. The device must outlive
+        /// it; handoffs between threads require external synchronization. The
+        /// source bytes passed to Append must remain immutable until consumed.
+        /// This owner does not retain or identify the source asset; the caller
+        /// must retain its exact version and bind it to the intended texture.
+        class UploadStaging final
+        {
+        public:
+            static constexpr size_t MaxSliceBytes = 64 * 1024;
+            UploadStaging()                       = default;
+            ~UploadStaging();
+            UploadStaging(const UploadStaging&)            = delete;
+            UploadStaging& operator=(const UploadStaging&) = delete;
+            UploadStaging(UploadStaging&&) noexcept;
+            UploadStaging&     operator=(UploadStaging&&) noexcept;
+
+            /// Writes at most MaxSliceBytes. Failure does not advance Written.
+            [[nodiscard]] bool Append(std::span<const uint8_t> bytes, size_t* consumed, VkResult* status = nullptr);
+            void               Reset() noexcept;
+            [[nodiscard]] bool Ready() const noexcept
+            {
+                return m_device && m_written == m_buffer.Size;
+            }
+            [[nodiscard]] VkDeviceSize Written() const noexcept
+            {
+                return m_written;
+            }
+            [[nodiscard]] VkDeviceSize Size() const noexcept
+            {
+                return m_buffer.Size;
+            }
+
+        private:
+            friend class RenderResourceManager;
+            friend struct ::RRMUploadBatchTestHelper;
+            Hardwares::VulkanDevice* m_device  = nullptr;
+            Core::Memory::BufferView m_buffer  = {};
+            VkDeviceSize             m_written = 0;
+        };
+
         /// Immutable draw layout captured from the same CPU mesh as the upload.
         /// Material UUIDs are identities, not retained material/texture versions.
         struct MeshDrawMetadata
@@ -222,44 +289,142 @@ namespace ZEngine::Rendering
             ResourcesUnavailable,
         };
 
-        TextureVersionPin         PinTextureVersion(Textures::TextureHandle handle);
+        TextureVersionPin                         PinTextureVersion(Textures::TextureHandle handle);
         /// Retains a graph-owned image identity and its shared allocation, not
         /// its contents. Graph barriers still order writes and alias reuse.
-        TextureVersionPin         PinGraphTextureVersion(Textures::TextureHandle handle);
+        TextureVersionPin                         PinGraphTextureVersion(Textures::TextureHandle handle);
         /// Extend an existing exact texture lease into accepted-submission
         /// retirement. Does not reacquire a UUID or reopen sealed admission.
         /// Output is unchanged on refusal; the render owner calls this before
         /// recording a consumer, including pass-local sampled descriptors.
-        bool                      GetFrameTextureVersion(const TextureVersionPin& retained, TextureVersionSnapshot* snapshot);
-        TextureVersionPin         RetainTextureVersion(const TextureVersionPin& retained);
+        bool                                      GetFrameTextureVersion(const TextureVersionPin& retained, TextureVersionSnapshot* snapshot);
+        TextureVersionPin                         RetainTextureVersion(const TextureVersionPin& retained);
+        /// Render-owner preparation for an already submitted upload. Retains its
+        /// exact image and observes producer completion and bindless publication.
+        /// Ready here does not prove a consumer acquire or a complete scene.
+        [[nodiscard]] SceneTextureDescriptorState PrepareSubmittedTextureVersion(Textures::TextureHandle handle, TextureVersionPin* retained, uint64_t* publication);
+        [[nodiscard]] bool                        IsSubmittedTextureDescriptorCurrent(const TextureVersionPin& retained, uint64_t publication);
+        /// Observes the exact accepted consumer-acquire submission. Ready means
+        /// completion on the graphics family; an erased ticket alone is not proof.
+        [[nodiscard]] SceneTextureDescriptorState PollSubmittedTextureAcquire(const TextureVersionPin& retained);
+        static constexpr uint32_t                 CookedMeshUploadCapacity = 16;
+        struct CookedMeshUploadId
+        {
+            uint32_t Slot   = UINT32_MAX;
+            uint64_t Serial = 0;
+        };
+        enum class CookedMeshAdmission : uint8_t
+        {
+            Recorded,
+            Retry,
+            Failed
+        };
+        enum class CookedMeshUploadState : uint8_t
+        {
+            Invalid,
+            Pending,
+            Ready,
+            Failed,
+            Cancelled
+        };
+        struct CookedMeshUploadResult
+        {
+            CookedMeshUploadState   State          = CookedMeshUploadState::Invalid;
+            bool                    CleanupPending = false;
+            Cook::CookAssetIdentity Identity       = {};
+            Core::Hash::Digest256   Digest         = {};
+        };
+        /// Render-owner lease for a completed cooked upload. Identity and
+        /// digest travel with the exact geometry; the manager outlives it.
+        class CookedMeshVersion final
+        {
+        public:
+            CookedMeshVersion() = default;
+            ~CookedMeshVersion();
+            CookedMeshVersion(const CookedMeshVersion&)            = delete;
+            CookedMeshVersion& operator=(const CookedMeshVersion&) = delete;
+            CookedMeshVersion(CookedMeshVersion&& other) noexcept;
+            CookedMeshVersion& operator=(CookedMeshVersion&& other) noexcept;
+            explicit           operator bool() const noexcept
+            {
+                return m_owner != nullptr;
+            }
+            const Cook::CookAssetIdentity& Identity() const noexcept
+            {
+                return m_identity;
+            }
+            const Core::Hash::Digest256& Digest() const noexcept
+            {
+                return m_digest;
+            }
+            const MeshGeometrySnapshot* Geometry() const
+            {
+                return m_pin.Get();
+            }
+            void Reset();
+
+        private:
+            friend class RenderResourceManager;
+            RenderResourceManager*  m_owner    = nullptr;
+            BufferHandle            m_handle   = {};
+            MeshGeometryPin         m_pin      = {};
+            Cook::CookAssetIdentity m_identity = {};
+            Core::Hash::Digest256   m_digest   = {};
+        };
+        /// Render-owner only. Records a staged cooked mesh without waiting for
+        /// a batch slot. The bounded metadata slab must outlive every resulting
+        /// mesh version and pin. Retry/Failed preserve the staged candidate.
+        /// A batch submission failure is terminal for cooked mesh admission;
+        /// only capacity or a busy slot produces Retry.
+        [[nodiscard]] CookedMeshAdmission         RecordCookedMeshUpload(uint8_t frame_index, Meshes::CookedMeshStaging& staging, Core::Memory::TLSFSlab& metadata_slab, CookedMeshUploadId* output);
+        /// Recorded work stays pinned until acceptance and GPU completion. A
+        /// cancelled outcome can precede cleanup; keep polling until it drains.
+        [[nodiscard]] CookedMeshUploadResult      PollCookedMeshUpload(CookedMeshUploadId id);
+        [[nodiscard]] bool                        CancelCookedMeshUpload(CookedMeshUploadId id);
+        /// Transfers the ready pin and handle to the caller. The caller must
+        /// eventually Release(handle) and retain the pin through consumers.
+        [[nodiscard]] bool                        TakeCookedMeshUpload(CookedMeshUploadId id, BufferHandle* handle, MeshGeometryPin* pin);
+        /// Takes a completed upload without dropping its cooked identity.
+        [[nodiscard]] bool                        TakeCookedMeshUpload(CookedMeshUploadId id, CookedMeshVersion* output);
+        /// Release a terminal result after cleanup, or discard a ready result.
+        [[nodiscard]] bool                        ReleaseCookedMeshUpload(CookedMeshUploadId id);
+        /// Joined-owner shutdown only: the device is idle or terminally lost and
+        /// no recorded work can subsequently be submitted.
+        [[nodiscard]] bool                        AbandonCookedMeshUploadAfterDeviceIdle(CookedMeshUploadId id);
         /// RequiredSceneBindings validates authored texture identities under the
         /// cache lock and rejects debug fallbacks before retaining any GPU map.
-        MaterialVersionPin        PinMaterialVersion(const uuids::uuid& uuid, MaterialVersionPolicy policy = MaterialVersionPolicy::ExistingBindings, MaterialVersionError* error = nullptr);
-        static constexpr uint32_t FrameMaterialCapacity = 4096;
+        MaterialVersionPin                        PinMaterialVersion(const uuids::uuid& uuid, MaterialVersionPolicy policy = MaterialVersionPolicy::ExistingBindings, MaterialVersionError* error = nullptr);
+        /// Render-owner preparation from explicit texture pins, in shader map
+        /// order. Each nonempty map must match a pin from this manager. Ready
+        /// requires the exact graphics acquire and current descriptor versions;
+        /// Pending/Failed leave output unchanged. No asset registry is consulted.
+        [[nodiscard]] SceneTextureDescriptorState PrepareExplicitMaterialVersion(const Meshes::MeshMaterial& material, const TextureVersionPin* const (&textures)[5], MaterialVersionPin* output);
+        static constexpr uint32_t                 FrameMaterialCapacity = 4096;
         /// Render-thread draw admission. The returned table index and copied
         /// shader values refer to one retained version, shared across draws/frames.
         /// Legacy scene callers explicitly opt into the cache's fallback material.
-        bool                      GetFrameMaterialVersion(const uuids::uuid& uuid, uint32_t* index, MaterialVersionSnapshot* snapshot, bool use_fallback = false);
-        bool                      GetFrameMaterialVersion(const Meshes::MeshMaterial& material, uint32_t* index, MaterialVersionSnapshot* snapshot);
+        bool                                      GetFrameMaterialVersion(const uuids::uuid& uuid, uint32_t* index, MaterialVersionSnapshot* snapshot, bool use_fallback = false);
+        bool                                      GetFrameMaterialVersion(const Meshes::MeshMaterial& material, uint32_t* index, MaterialVersionSnapshot* snapshot);
         /// Extend an existing lease into automatic frame retirement without
         /// reacquiring the mutable cache or reopening sealed texture admission.
-        bool                      GetFrameMaterialVersion(const MaterialVersionPin& retained, uint32_t* index, MaterialVersionSnapshot* snapshot);
+        bool                                      GetFrameMaterialVersion(const MaterialVersionPin& retained, uint32_t* index, MaterialVersionSnapshot* snapshot);
         /// Upload only admitted immutable entries, never the mutable asset cache.
-        void                      UploadFrameMaterials(Core::Memory::BufferView& destination);
+        void                                      UploadFrameMaterials(Core::Memory::BufferView& destination);
         /// Device mutation/retirement guards; callable by producer threads.
-        bool                      IsTextureVersionPinned(Textures::TextureHandle handle) const;
-        bool                      CanWriteTextureVersion(Textures::TextureHandle handle) const;
+        bool                                      IsTextureVersionPinned(Textures::TextureHandle handle) const;
+        bool                                      CanWriteTextureVersion(Textures::TextureHandle handle) const;
         /// Managed writers observe producer completion, require acknowledged
         /// ownership and invalidate previous admission proof before changing bytes.
-        bool                      BeginTextureVersionWrite(Textures::TextureHandle handle);
+        bool                                      BeginTextureVersionWrite(Textures::TextureHandle handle);
         /// force_defer preserves retirement when the bounded native queue refuses admission.
-        bool                      RetainTextureForRetirement(Textures::TextureHandle handle, bool force_defer = false);
+        bool                                      RetainTextureForRetirement(Textures::TextureHandle handle, bool force_defer = false);
 
-        static constexpr uint32_t SceneResourcePreparationCapacity = 2;
-        static constexpr uint32_t SceneGeometryMeshCapacity        = 4096;
-        static constexpr uint32_t SceneResourceSliceOperations     = 16;
-        static constexpr uint32_t SceneMaterialCapacity            = 4096;
-        static constexpr uint32_t SceneDrawCapacity                = Scenes::SceneData::MAX_DRAW_COMMANDS;
+        static constexpr uint32_t                 SceneResourcePreparationCapacity = 2;
+        static constexpr uint32_t                 SceneGeometryMeshCapacity        = 4096;
+        static constexpr uint32_t                 SceneResourceSliceOperations     = 16;
+        static constexpr uint32_t                 SceneMaterialCapacity            = 4096;
+        static constexpr uint32_t                 SceneCookedTextureCapacity       = TextureVersionCapacity;
+        static constexpr uint32_t                 SceneDrawCapacity                = Scenes::SceneData::MAX_DRAW_COMMANDS;
 
         /// Main-producer input copied into fixed request storage at admission.
         /// The span is never borrowed by render-owner preparation.
@@ -360,6 +525,9 @@ namespace ZEngine::Rendering
             uint64_t                         ExpectedGeneration = 0;
             SceneEnvironmentPreparationState State              = SceneEnvironmentPreparationState::NotRequested;
             bool                             Cancelled          = false;
+            Textures::TextureHandle          CookedSource       = {};
+            uint32_t                         CookedFaceWidth    = 0;
+            uint64_t                         CookedSourceHash   = 0;
         };
         struct SceneResourcePreparationResult
         {
@@ -370,6 +538,9 @@ namespace ZEngine::Rendering
             SceneResourcePreparationError    Error                  = SceneResourcePreparationError::None;
             MaterialVersionError             MaterialError          = MaterialVersionError::None;
             ScenePreparationContent          Content                = ScenePreparationContent::GeometryOnly;
+            bool                             Cooked                 = false;
+            Core::Hash::Digest256            CookedManifest         = {};
+            uuids::uuid                      CookedScene            = {};
             // Published only at GeometryReady/ResourcesRetained or Failed.
             uint32_t                         MaterialCount          = 0;
             bool                             FrameRecorded          = false;
@@ -395,7 +566,23 @@ namespace ZEngine::Rendering
         /// from retained metadata/material reservations under the same slice
         /// budget. Draw overflow/invalid ranges fail before resource readiness.
         /// GeometryOnly preserves the narrow upload-readiness contract.
-        bool                          PrepareSceneResources(ECS::SceneRequestId request, uint64_t expected_generation, std::span<const uuids::uuid> meshes, SceneResourcePreparationId* out, ScenePreparationContent content = ScenePreparationContent::GeometryOnly, const SceneEnvironmentInput* environment = nullptr, const SceneInitialFrameInput* initial_frame = nullptr, bool defer_instances = false);
+        bool               PrepareSceneResources(ECS::SceneRequestId request, uint64_t expected_generation, std::span<const uuids::uuid> meshes, SceneResourcePreparationId* out, ScenePreparationContent content = ScenePreparationContent::GeometryOnly, const SceneEnvironmentInput* environment = nullptr, const SceneInitialFrameInput* initial_frame = nullptr, bool defer_instances = false, const Managers::CookedCpuAssetSet* cooked = nullptr);
+        [[nodiscard]] bool SceneResourceAdmissionSealed() const noexcept
+        {
+            return m_scene_resources_sealed.load(std::memory_order_acquire);
+        }
+        /// Render-owner collection, serialized with admission, instance copying,
+        /// cancellation and release. Each call retains one verified version;
+        /// Finish queues the complete candidate for ordinary sliced preparation.
+        [[nodiscard]] bool            AppendCookedSceneMesh(SceneResourcePreparationId, const Managers::CookedCpuAssetSet&, const CookedMeshVersion&);
+        [[nodiscard]] bool            AppendCookedSceneMaterial(SceneResourcePreparationId, const Managers::CookedCpuAssetSet&, const Materials::CookedMaterialVersion&);
+        /// On success transfers the uploaded texture's ownership to the scene.
+        /// Inputs must arrive once each in ascending UUID order.
+        [[nodiscard]] bool            AppendCookedSceneTexture(SceneResourcePreparationId, const Managers::CookedCpuAssetSet&, Textures::CookedTextureUpload&);
+        /// On success transfers destination-texture ownership to the request.
+        /// Refusal preserves caller ownership; retry after upload submission.
+        [[nodiscard]] bool            AppendCookedSceneEnvironment(SceneResourcePreparationId, const Managers::CookedCpuAssetSet&, const Textures::CookedEnvironmentUpload&);
+        [[nodiscard]] bool            FinishCookedSceneResources(SceneResourcePreparationId);
         /// Producer-thread only, serialized with admission/release. Deferred input
         /// is copied in batches of at most 64; no producer pointer is retained.
         /// Rendering cannot observe partial input. Invalid batches fail the request.
@@ -429,6 +616,8 @@ namespace ZEngine::Rendering
         /// Activate requires both the render-owner claim and a retained frame.
         SceneResourceLease            ClaimSceneEnvironmentPreparation(SceneEnvironmentPreparation* out);
         bool                          GetSceneEnvironmentPreparation(SceneResourcePreparationId id, SceneEnvironmentPreparation* out) const;
+        /// Render owner transfers the retained source to the sky scheduler.
+        [[nodiscard]] bool            TakeCookedSceneEnvironment(SceneResourcePreparationId, Textures::TextureHandle* out);
         bool                          CompleteSceneEnvironmentPreparation(SceneResourcePreparationId id, bool success, SceneResourcePreparationError error = SceneResourcePreparationError::RequiredEnvironment);
         bool                          ActivateSceneEnvironmentPreparation(SceneResourcePreparationId id);
 
@@ -462,24 +651,24 @@ namespace ZEngine::Rendering
         /// @param registry The asset registry to subscribe to; must outlive this RRM instance.
         /// @param upload_arena Owns bounded CPU decode storage and must outlive this
         ///                     manager and the worker-pool registrations.
-        void                                Initialize(Hardwares::VulkanDevice* device, Core::VFS::AssetRegistry* registry, Core::Memory::ArenaAllocator* upload_arena);
+        void                                             Initialize(Hardwares::VulkanDevice* device, Core::VFS::AssetRegistry* registry, Core::Memory::ArenaAllocator* upload_arena);
 
         /// @brief Drain in-flight GPU work and release all GPU resources.
         /// @details Calls vkQueueWaitAll, shuts down texture timelines, and frees the
         ///          global geometry buffers and all generic buffer slots. Must be called
         ///          from the main thread before VulkanDevice teardown.
-        void                                Shutdown();
+        void                                             Shutdown();
 
         /// @brief Per-frame render-thread entry point.
         /// @details Flushes pending uploads, swaps, and texture reloads/releases queued
         ///          from other threads since the previous BeginFrame. Called by AppRenderPipeline.
         /// @param frame_index Current swapchain frame index (0 .. FRAMES_IN_FLIGHT-1).
-        void                                BeginFrame(uint32_t frame_index);
+        void                                             BeginFrame(uint32_t frame_index);
 
         /// @brief Closes the current deferred upload batch, if anything joined it.
         /// @details Called by RenderGraph after its declaration phase and by
         ///          AppRenderPipeline::EndFrame as an idempotent fallback.
-        void                                EndFrame();
+        void                                             EndFrame();
 
         /// @brief Ingest a texture file, uploading (existing invalid) or reloading it in
         ///        place (existing valid) under the same handle.
@@ -487,25 +676,25 @@ namespace ZEngine::Rendering
         /// @param absolute_path Absolute filesystem path to the image file.
         /// @param existing      Current handle when reimporting; invalid for first ingest.
         /// @return The texture's handle — same as existing when reimporting.
-        Rendering::Textures::TextureHandle  IngestTexture(const uuids::uuid& uuid, const char* absolute_path, Rendering::Textures::TextureHandle existing = {});
+        Rendering::Textures::TextureHandle               IngestTexture(const uuids::uuid& uuid, const char* absolute_path, Rendering::Textures::TextureHandle existing = {});
 
         /// @brief Schedule a hot-reload reimport for a texture, deduped by UUID.
         /// @details Thread-safe; applied by the next FlushPendingTextureReloads.
-        void                                ScheduleTextureReload(const uuids::uuid& uuid);
+        void                                             ScheduleTextureReload(const uuids::uuid& uuid);
 
         /// Render-thread readiness guard for material-preview rendering. A valid
         /// bindless handle alone does not mean its asynchronous source decode ran.
-        bool                                HasPendingTextureUploads();
+        bool                                             HasPendingTextureUploads();
 
         /// @brief Release a texture: patch referencing materials to the sentinel, then
         ///        timeline-gate the GPU-side teardown.
         /// @details Thread-safe. The CPU-side patch always lands before the bindless slot
         ///          can be reused — see Device->DestroyTexture for the GPU-side gate.
-        void                                ReleaseTexture(const uuids::uuid& uuid);
+        void                                             ReleaseTexture(const uuids::uuid& uuid);
 
         /// @brief Look up a texture by handle.
         /// @return Pointer to the Texture, or nullptr if the handle is invalid or stale.
-        const Rendering::Textures::Texture* GetTexture(const Rendering::Textures::TextureHandle& handle) const;
+        const Rendering::Textures::Texture*              GetTexture(const Rendering::Textures::TextureHandle& handle) const;
 
         /// @brief Upload raw RGBA pixel data to an existing TextureHandle via the timeline path.
         /// @details Records a staging copy into an instant command buffer and enqueues the
@@ -515,14 +704,24 @@ namespace ZEngine::Rendering
         /// @param thread_index Thread index within the pool.
         /// @param handle       Pre-allocated TextureHandle whose VkImage will receive the data.
         /// @param data         RGBA pixel data; must remain valid until SubmitAsyncUploads runs.
+        /// @param data_size    Available bytes, or zero when the caller guarantees
+        ///                     that the base mip is present. Only mip zero is copied.
         /// @return The same handle on success; invalid handle if no free upload slot.
-        Rendering::Textures::TextureHandle  UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data, size_t data_size = 0);
+        Rendering::Textures::TextureHandle               UploadTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, unsigned char* data, size_t data_size = 0);
+
+        /// Render-owner allocation of bounded unpublished staging. Failure preserves output; the
+        /// allocation is charged until Reset or transfer to the upload queue.
+        [[nodiscard]] bool                               PrepareUploadStaging(VkDeviceSize size, UploadStaging* output, VkResult* status = nullptr);
+        /// Render-owner only. Incomplete or incompatible staging is refused.
+        /// Refusal preserves the staging for retry; success transfers ownership
+        /// to the producer timeline. This is not GPU/descriptor readiness.
+        [[nodiscard]] Rendering::Textures::TextureHandle UploadPreparedTextureBuffer(uint8_t frame_index, uint8_t thread_index, const Rendering::Textures::TextureHandle& handle, UploadStaging& staging);
 
         // Upload the ZUI font atlas synchronously using m_upload_cmd_mgr/m_sync_upload_fence.
         // Blocks until the GPU copy is complete so the texture is ready before the first
         // frame renders. Caller must enqueue the returned handle to
         // TextureHandleToUpdates for bindless descriptor registration.
-        Rendering::Textures::TextureHandle  UploadFontAtlas(unsigned char* pixels, uint32_t width, uint32_t height);
+        Rendering::Textures::TextureHandle               UploadFontAtlas(unsigned char* pixels, uint32_t width, uint32_t height);
 
         /// @brief Decode a texture file on the thread pool and upload it, async.
         /// @details When existing is valid, reconstructs that handle in place instead of
@@ -534,12 +733,12 @@ namespace ZEngine::Rendering
         /// @param existing     Handle to reconstruct in place; invalid to allocate a new one.
         /// @param track_decode When true, retain the decode result for the render-thread caller.
         /// @return A valid TextureHandle that will become readable once the upload drains.
-        Rendering::Textures::TextureHandle  SubmitTextureFile(const char* filename, Rendering::Textures::TextureHandle existing = {}, bool track_decode = false);
+        Rendering::Textures::TextureHandle               SubmitTextureFile(const char* filename, Rendering::Textures::TextureHandle existing = {}, bool track_decode = false);
 
         /// @brief Decode a raster source into a bounded square texture for editor previews.
         /// @details The source is aspect-fit into a transparent square on a worker and then
         ///          follows the normal asynchronous upload and bindless-registration path.
-        static constexpr uint32_t           ThumbnailTextureSlotReserve = 16;
+        static constexpr uint32_t                        ThumbnailTextureSlotReserve = 16;
         struct ThumbnailCacheIdentity
         {
             uuids::uuid AssetUUID        = {};
@@ -646,6 +845,10 @@ namespace ZEngine::Rendering
         /// @details Render-thread only. The ticket is removed after its acquire barrier
         ///          has been recorded into the consuming graph submission.
         void                                                             AcknowledgeStreamingUploadTicket(const Hardwares::StreamingUploadTicket& ticket);
+        /// Called by the graph only after the acquire-bearing submission is
+        /// accepted. Its timeline must remain live until ForgetResourceTimeline
+        /// succeeds. Cancellation/discard must use the non-proof method above.
+        [[nodiscard]] bool                                               AcknowledgeStreamingUploadAcquire(const Hardwares::StreamingUploadTicket& ticket, Primitives::Semaphore* timeline, uint64_t value, uint32_t consumer_family);
 
         /// @brief Retire command buffers whose timeline fence has been signalled.
         /// @details Frees staging buffers associated with completed texture uploads for the
@@ -902,6 +1105,19 @@ namespace ZEngine::Rendering
             uint64_t             RetireValues[ResourceTimelineCount] = {};
         };
 
+        struct CookedMeshUploadRecord
+        {
+            CookedMeshUploadState   State           = CookedMeshUploadState::Invalid;
+            uint64_t                Serial          = 0;
+            uint64_t                SignalValue     = 0;
+            bool                    CleanupPending  = false;
+            bool                    CancelRequested = false;
+            Cook::CookAssetIdentity Identity        = {};
+            Core::Hash::Digest256   Digest          = {};
+            BufferHandle            Handle          = {};
+            MeshGeometryPin         Pin             = {};
+        };
+
         enum class SceneResourcePhase : uint8_t
         {
             Free,
@@ -940,13 +1156,28 @@ namespace ZEngine::Rendering
             std::atomic<SceneResourcePhase>               Phase{SceneResourcePhase::Free};
             std::atomic<uint32_t>                         Readers{0};
             std::atomic<bool>                             FrameRecorded{false};
-            SceneResourcePreparationId                    Id                                = {};
-            uint64_t                                      ExpectedGeneration                = 0;
-            uint32_t                                      MeshCount                         = 0;
-            uuids::uuid                                   Meshes[SceneGeometryMeshCapacity] = {};
-            MeshGeometryPin                               Pins[SceneGeometryMeshCapacity]   = {};
-            ScenePreparationContent                       Content                           = ScenePreparationContent::GeometryOnly;
-            SceneEnvironmentInput                         EnvironmentInput                  = {};
+            SceneResourcePreparationId                    Id                                               = {};
+            uint64_t                                      ExpectedGeneration                               = 0;
+            uint32_t                                      MeshCount                                        = 0;
+            uuids::uuid                                   Meshes[SceneGeometryMeshCapacity]                = {};
+            MeshGeometryPin                               Pins[SceneGeometryMeshCapacity]                  = {};
+            bool                                          Cooked                                           = false;
+            Core::Hash::Digest256                         CookedManifest                                   = {};
+            uuids::uuid                                   CookedScene                                      = {};
+            uint32_t                                      CookedMaterialCount                              = 0;
+            uuids::uuid                                   CookedMaterials[SceneMaterialCapacity]           = {};
+            MaterialVersionPin                            CookedMaterialPins[SceneMaterialCapacity]        = {};
+            uint32_t                                      CookedTextureCount                               = 0;
+            uuids::uuid                                   CookedTextures[SceneCookedTextureCapacity]       = {};
+            Textures::TextureHandle                       CookedTextureHandles[SceneCookedTextureCapacity] = {};
+            TextureVersionPin                             CookedTexturePins[SceneCookedTextureCapacity]    = {};
+            TextureVersionPin                             CookedEnvironmentPin                             = {};
+            Textures::TextureHandle                       CookedEnvironment                                = {};
+            uint32_t                                      CookedEnvironmentFace                            = 0;
+            uint64_t                                      CookedEnvironmentHash                            = 0;
+            bool                                          CookedEnvironmentOwned                           = false;
+            ScenePreparationContent                       Content                                          = ScenePreparationContent::GeometryOnly;
+            SceneEnvironmentInput                         EnvironmentInput                                 = {};
             std::atomic<SceneEnvironmentPreparationState> Environment{SceneEnvironmentPreparationState::NotRequested};
             std::atomic<SceneResourcePreparationError>    EnvironmentError{SceneResourcePreparationError::None};
             // Render-owner-only retention/index/progress; never exposed while
@@ -1158,6 +1389,7 @@ namespace ZEngine::Rendering
         bool                               BeginTextureUploadRecording(Textures::TextureHandle handle, bool graphics_upload);
         QueueType                          TextureUploadQueue(Textures::TextureHandle handle, Specifications::ImageLayout layout) const;
         bool                               TextureProducerComplete(Textures::TextureHandle handle, bool* failed = nullptr);
+        bool                               TextureConsumerWorkRetired(Textures::TextureHandle handle, bool* failed = nullptr);
         static void                        OnStreamingUploadSubmitted(void* context, const Hardwares::StreamingUploadTicket& ticket);
         static void                        OnStreamingUploadRejected(void* context, const Hardwares::StreamingUploadTicket& ticket);
         void                               RejectTextureUpload(const Hardwares::StreamingUploadTicket& ticket);
@@ -1165,10 +1397,15 @@ namespace ZEngine::Rendering
 
         void                               BeginBatchUpload(uint8_t frame_index);
         void                               EndBatchUpload();
+        void                               DiscardUnsubmittedBatchStaging();
 
         /// @brief Reuse this slot's open batch, or submit the previous slot's batch
         ///        before opening a new one. Every upload joins through this method.
         void                               EnsureBatchOpen(uint8_t frame_index);
+        CookedMeshAdmission                TryEnsureCookedBatchOpen(uint8_t frame_index);
+        void                               PollCookedMeshUploads();
+        void                               ReleaseCookedMeshResources(CookedMeshUploadRecord& record);
+        void                               ReleaseCookedMeshUploadsAfterIdle();
 
         /// @brief Free frame-index batch stagings once m_batch_timeline reaches LastSignal.
         ///        Called once per frame from BeginFrame.
@@ -1199,7 +1436,7 @@ namespace ZEngine::Rendering
         void                               AdmitTextureVersionRetirements();
         void                               ReplaceMeshGeometry(MeshSlot& geometry, const MeshSlot& replacement);
         void                               ReleaseMeshGeometryPin(uint32_t record, uint64_t version);
-        void                               TickSceneResourcePreparations(uint64_t completed, bool upload_failed);
+        void                               TickSceneResourcePreparations(uint64_t completed, bool upload_failed, bool invalidate_ready = true);
         static uint32_t                    PreparedMaterialBucket(const SceneResourcePreparation& record, const uuids::uuid& material);
         const MeshGeometryPin*             FindPreparedSceneGeometry(SceneResourcePreparationId id, const uuids::uuid& mesh) const;
         const MaterialVersionPin*          FindPreparedSceneMaterial(SceneResourcePreparationId id, const uuids::uuid& material) const;
@@ -1277,7 +1514,11 @@ namespace ZEngine::Rendering
         Core::Containers::Array<BatchFrameState> m_batch_frames                                      = {};
         uint64_t                                 m_batch_next_value                                  = 0;
         uint64_t                                 m_batch_accepted_value                              = 0;
+        uint32_t                                 m_batch_staging_base_count                          = 0;
         bool                                     m_batch_submission_failed                           = false;
+        std::atomic<bool>                        m_reject_cooked_batch_probe                         = false;
+        CookedMeshUploadRecord                   m_cooked_mesh_uploads[CookedMeshUploadCapacity]     = {};
+        uint64_t                                 m_cooked_mesh_upload_serial                         = 0;
         SceneResourcePreparation                 m_scene_resources[SceneResourcePreparationCapacity] = {};
         uint64_t                                 m_scene_resources_sequence                          = 0;
         uint32_t                                 m_scene_resources_turn                              = 0;
@@ -1452,6 +1693,11 @@ namespace ZEngine::Rendering
             bool                    PendingSubmission  = false;
             bool                    AcquirePending     = false;
             bool                    GraphicsUploadOnly = false;
+            Primitives::Semaphore*  ConsumerTimeline   = nullptr;
+            uint64_t                ConsumerValue      = 0;
+            uint32_t                ConsumerFamily     = VK_QUEUE_FAMILY_IGNORED;
+            bool                    ConsumerAcquired   = false;
+            bool                    ConsumerDiscarded  = false;
         };
         TextureProducerCompletion m_texture_producer_completions[TextureVersionCapacity] = {};
         uint32_t                  m_tex_total_cmd_count                                  = 0;

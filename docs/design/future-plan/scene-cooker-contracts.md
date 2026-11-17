@@ -13,7 +13,7 @@ format, asset migration, CLI, or game packager is introduced by this design.
 
 ## 1. Manifest v1
 
-The machine-readable shape is [manifest-v1.schema.json](scene-cooker-contracts/manifest-v1.schema.json).
+The machine-readable shape is [manifest-v1.schema.json](scene-cooker-manifest-v1.schema.json).
 Every listed property is required, unknown properties are rejected at every
 level, and `null` is never an alternative to omission or an empty collection.
 JSON Schema checks shape; the semantic and byte-level rules below also apply.
@@ -1740,11 +1740,11 @@ establish three-host or shipping readiness.
 
 ### 9.1. Reviewed wire and package fixtures
 
-[manifest-v1.golden.json](scene-cooker-contracts/manifest-v1.golden.json) fixes
+[manifest-v1.golden.json](https://github.com/JeanPhilippeKernel/RendererEngine/blob/0532bb35d45f2aae42fa2dbb3cd9e3d3711e1165/ZEngine/tests/Cook/Fixtures/manifest-v1.golden.json) fixes
 canonical wire shape, key ordering, the real settings digest, and the final LF.
 Its synthetic scene digests have no corresponding binary scene or source tree;
 it is not evidence of a valid package. The
-[negative cases](scene-cooker-contracts/manifest-v1.negative-cases.json) specify
+[negative cases](https://github.com/JeanPhilippeKernel/RendererEngine/blob/0532bb35d45f2aae42fa2dbb3cd9e3d3711e1165/ZEngine/tests/Cook/Fixtures/manifest-v1.negative-cases.json) specify
 raw inputs, mutations, and expected outcomes. Keep shape validation separate
 from graph, fingerprint, byte-integrity, and codec validation.
 

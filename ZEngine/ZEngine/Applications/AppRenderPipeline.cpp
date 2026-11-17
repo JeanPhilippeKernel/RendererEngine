@@ -265,11 +265,17 @@ namespace ZEngine::Applications
     void AppRenderPipeline::RenderScene(const RenderFrameState& state, const Rendering::Renderers::ZUIRenderPayload* overlay)
     {
         ZENGINE_PROFILE_SCOPE("SceneLoad.Render.RecordScene");
-        const auto&                           scene             = state.Scene;
-        auto                                  swpachain         = Device->SwapchainPtr;
-        auto                                  frame_index       = swpachain->CurrentFrame->Index;
-        auto                                  thread_index      = RenderMainThreadIndex;
-        auto*                                 rrm               = Device->RRM ? static_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+        const auto&                                                      scene              = state.Scene;
+        auto                                                             swpachain          = Device->SwapchainPtr;
+        auto                                                             frame_index        = swpachain->CurrentFrame->Index;
+        auto                                                             thread_index       = RenderMainThreadIndex;
+        auto*                                                            rrm                = Device->RRM ? static_cast<Rendering::RenderResourceManager*>(Device->RRM) : nullptr;
+        Rendering::RenderResourceManager::SceneResourcePreparationResult retained_resources = {};
+        if (state.SceneResources && (!rrm || !rrm->PollSceneResourcePreparation(state.SceneResources, &retained_resources)))
+        {
+            return;
+        }
+        const bool                            cooked_resources  = state.SceneResources && retained_resources.Cooked;
         Rendering::Scenes::PreparedSceneFrame initial_frame     = {};
         const bool                            use_initial_frame = rrm && state.SceneResources && rrm->GetPreparedSceneFrame(state.SceneResources, &initial_frame);
         if (use_initial_frame && !rrm->GetFramePreparedSceneFrame(state.SceneResources, &initial_frame))
@@ -384,6 +390,11 @@ namespace ZEngine::Applications
                 }
                 else
                 {
+                    if (cooked_resources)
+                    {
+                        prepared_frame_complete = false;
+                        continue;
+                    }
                     // Ordinary frames, including assets added by authoring after
                     // activation, keep the existing streaming path. Initial
                     // prepared meshes never resolve their newer public handles.
@@ -553,6 +564,10 @@ namespace ZEngine::Applications
             hover_pick.Submitted(hover_pick.Context);
         }
         SceneRenderer->BeginSkyFrame(camera);
+        if (prepared_frame_complete && state.SceneCapture.Context && state.SceneCapture.Begin && state.SceneCapture.Complete && state.SceneCapture.Cancelled && state.SceneCapture.Begin(state.SceneCapture.Context, state.RenderTargetW, state.RenderTargetH, state.SceneGeneration))
+        {
+            SceneRenderer->RequestSceneColorCapture(state.SceneCapture.Complete, state.SceneCapture.Cancelled, state.SceneCapture.Context);
+        }
         auto* const recorded = SceneRenderer->DrawScene(frame_index, thread_index, CurrentCmdBuf, camera, use_initial_frame ? &initial_frame : nullptr);
         if (recorded)
         {
@@ -573,11 +588,12 @@ namespace ZEngine::Applications
         ZUIRenderPass->SetPayload(nullptr);
     }
 
-    void AppRenderPipeline::OnSceneFrameSubmitted(void* context, Rendering::Primitives::Semaphore*, uint64_t)
+    void AppRenderPipeline::OnSceneFrameSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value)
     {
-        auto&      owner = *static_cast<AppRenderPipeline*>(context);
-        const auto now   = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-        owner.m_scene_submissions.Record(owner.m_recorded_scene_generation, static_cast<uint64_t>(now), owner.m_recorded_scene_draw_count);
+        auto&      owner             = *static_cast<AppRenderPipeline*>(context);
+        const auto now               = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        const bool expected_timeline = owner.Device && owner.Device->SwapchainPtr && owner.Device->SwapchainPtr->RenderTimeline == timeline;
+        owner.m_scene_submissions.Record(owner.m_recorded_scene_generation, static_cast<uint64_t>(now), owner.m_recorded_scene_draw_count, expected_timeline ? timeline_value : 0);
     }
 
     void AppRenderPipeline::BeginOverlayFrame(float dt)

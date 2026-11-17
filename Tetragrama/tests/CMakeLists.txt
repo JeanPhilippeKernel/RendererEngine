@@ -12,6 +12,12 @@ target_sources(TetragramaTests PRIVATE ThumbnailService_test.cpp)
 target_sources(TetragramaTests PRIVATE DirectoryListing_test.cpp)
 target_link_libraries(TetragramaTests PRIVATE Tetragrama GTest::gtest_main)
 
+# Reconstruction fixtures and their callees can exceed the Windows default
+# thread stack. Reserve virtual address space; pages commit only as used.
+if(MSVC)
+    target_link_options(TetragramaTests PRIVATE /STACK:8388608)
+endif()
+
 # Explicit real-editor smoke/soak runner. Not a CTest fixture: it requires a
 # desktop Vulkan session, packaged engine assets and a caller-owned project.
 add_executable(SceneLifecycleProcess EXCLUDE_FROM_ALL SceneLifecycleProcess.cpp)
@@ -35,8 +41,10 @@ if(BUILD_TESTING)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         add_test(NAME SceneLifecycleEvidenceTests
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/Scripts/tests/test_scene_lifecycle.py")
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/scene/unit/test_scene_lifecycle.py")
         add_test(NAME SceneCaptureComparisonTests
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/Scripts/tests/test_scene_capture.py")
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/scene/unit/test_scene_capture.py")
+        add_test(NAME CookedRuntimeTraceEvidenceTests
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/scene/unit/test_cooked_runtime_trace.py")
     endif()
 endif()

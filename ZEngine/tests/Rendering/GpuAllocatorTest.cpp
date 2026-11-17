@@ -1,16 +1,24 @@
 #include <SPIRV/GlslangToSpv.h>
 #include <ZEngine/Applications/AppRenderPipeline.h>
+#include <ZEngine/Cook/CookCodecAllocationRoute.h>
 #include <ZEngine/Core/Memory/GpuAllocator.h>
 #include <ZEngine/Core/Memory/MemoryManager.h>
+#include <ZEngine/Core/Memory/SlabAllocationRoute.h>
 #include <ZEngine/Core/VFS/VFSContext.h>
 #include <ZEngine/Core/VFS/VFSMemoryBackend.h>
+#include <ZEngine/ECS/BuiltInSceneComponentSchemas.h>
 #include <ZEngine/ECS/SceneGridSettings.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Helpers/ThreadPool.h>
 #include <ZEngine/Logging/Logger.h>
 #include <ZEngine/Logging/LoggerConfiguration.h>
 #include <ZEngine/Managers/AssetManager.h>
+#include <ZEngine/Managers/CookedCpuClosureCache.h>
 #include <ZEngine/Rendering/Cameras/FlyCamera.h>
+#include <ZEngine/Rendering/CookedSceneGpuMailbox.h>
+#include <ZEngine/Rendering/CookedSceneGpuPreparation.h>
+#include <ZEngine/Rendering/Meshes/CookedMeshStaging.h>
+#include <ZEngine/Rendering/Meshes/CookedSceneMeshBatch.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GizmoPass.h>
 #include <ZEngine/Rendering/Renderers/Graphics/GridLabelPass.h>
@@ -18,9 +26,14 @@
 #include <ZEngine/Rendering/Renderers/RendererContracts.h>
 #include <ZEngine/Rendering/Scenes/RenderScene.h>
 #include <ZEngine/Rendering/Shaders/Shader.h>
+#include <ZEngine/Rendering/Textures/CookedEnvironmentUpload.h>
+#include <ZEngine/Rendering/Textures/CookedSceneEnvironmentBatch.h>
+#include <ZEngine/Rendering/Textures/CookedSceneTextureBatch.h>
+#include <ZEngine/Rendering/Textures/CookedTextureUpload.h>
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/Public/ShaderLang.h>
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 #include <stb/stb_image_write.h>
 #include <array>
 #include <atomic>
@@ -31,6 +44,9 @@
 #include <limits>
 #include <memory>
 #include <thread>
+#include <utility>
+#include "../Cook/CookTestAllocator.h"
+#include "CookManifestGolden.h"
 #include "GizmoShaderSources.h"
 #include "GridLabelShaderSources.h"
 
@@ -1306,12 +1322,14 @@ TEST_F(GpuAllocatorTest, ByteAdmissionChargesRequirementsBeforeBackingAndReturns
     EXPECT_EQ(LiveAllocationBytes(), baseline);
     EXPECT_EQ(local->GetAllocationStatistics().ReservedRecords, 0u);
     EXPECT_EQ(local->GetAllocationStatistics().AdmittedBytes, 0u);
+    EXPECT_EQ(local->GetAllocationStatistics().DomainBudgetRefusals[domain_index], 1u);
     EXPECT_EQ(queue->GetStatistics().Reserved, 0u);
     limits.TotalBytes                = ZMega(1);
     limits.DomainBytes[domain_index] = 0;
     ASSERT_TRUE(local->SetAllocationLimits(limits));
     EXPECT_FALSE(local->TryAllocateBuffer(64, usage, domain, nullptr, &status));
     EXPECT_EQ(status, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+    EXPECT_EQ(local->GetAllocationStatistics().DomainBudgetRefusals[domain_index], 2u);
     limits.DomainBytes[domain_index] = ZMega(1);
     ASSERT_TRUE(local->SetAllocationLimits(limits));
     auto buffer = local->TryAllocateBuffer(64, usage, domain);
@@ -1319,8 +1337,9 @@ TEST_F(GpuAllocatorTest, ByteAdmissionChargesRequirementsBeforeBackingAndReturns
     VkMemoryRequirements requirements = {};
     vkGetBufferMemoryRequirements(s_vk->Device, buffer.Handle, &requirements);
     const auto live = local->GetAllocationStatistics();
-    EXPECT_EQ(live.AdmittedBytes, requirements.size);
-    EXPECT_EQ(live.DomainAdmittedBytes[domain_index], requirements.size);
+    EXPECT_GE(live.AdmittedBytes, requirements.size);
+    EXPECT_EQ(live.DomainAdmittedBytes[domain_index], live.AdmittedBytes);
+    EXPECT_EQ(live.DomainPeakAdmittedBytes[domain_index], live.DomainAdmittedBytes[domain_index]);
     EXPECT_LE(live.AllocationBytes, live.AdmittedBytes);
     limits.TotalBytes = live.AdmittedBytes - 1;
     EXPECT_FALSE(local->SetAllocationLimits(limits));
@@ -1333,6 +1352,7 @@ TEST_F(GpuAllocatorTest, ByteAdmissionChargesRequirementsBeforeBackingAndReturns
     EXPECT_EQ(queue->GetStatistics().Reserved, 2u);
     EXPECT_FALSE(local->TryAllocateBuffer(1, usage, domain, nullptr, &status));
     EXPECT_EQ(status, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+    EXPECT_EQ(local->GetAllocationStatistics().DomainBudgetRefusals[domain_index], 3u);
     EXPECT_EQ(local->GetAllocationStatistics().ReservedRecords, 1u);
     EXPECT_EQ(queue->GetStatistics().Reserved, 2u);
     local->FreeBuffer(buffer);
@@ -1340,8 +1360,32 @@ TEST_F(GpuAllocatorTest, ByteAdmissionChargesRequirementsBeforeBackingAndReturns
     local->FreeBuffer(alias);
     EXPECT_EQ(local->GetAllocationStatistics().ReservedRecords, 0u);
     EXPECT_EQ(local->GetAllocationStatistics().AdmittedBytes, 0u);
+    EXPECT_EQ(local->GetAllocationStatistics().DomainPeakAdmittedBytes[domain_index], live.AdmittedBytes);
     EXPECT_EQ(queue->GetStatistics().Reserved, 0u);
     EXPECT_EQ(LiveAllocationBytes(), baseline);
+}
+
+TEST_F(GpuAllocatorTest, UnalignedBufferBackingIsAdmittedAndRetiredWithoutExceedingTheLedger)
+{
+    auto local                    = std::make_unique<GpuAllocator>();
+    local->Allocator              = allocator().Allocator;
+    constexpr VkDeviceSize size   = 64 * 1024 + 17;
+    auto                   buffer = local->TryAllocateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging);
+    ASSERT_TRUE(buffer);
+    const auto live = local->GetAllocationStatistics();
+    EXPECT_GE(live.AdmittedBytes, local->GetAllocationSize(buffer.Allocation));
+    EXPECT_GE(live.AdmittedBytes, size);
+    local->FreeBuffer(buffer);
+    auto limits                                                             = local->GetAllocationLimits();
+    limits.DomainBytes[static_cast<uint32_t>(GpuMemoryDomain::HostStaging)] = live.AdmittedBytes - 1;
+    ASSERT_TRUE(local->SetAllocationLimits(limits));
+    VkResult status = VK_SUCCESS;
+    EXPECT_FALSE(local->TryAllocateBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging, nullptr, &status));
+    EXPECT_EQ(status, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+    const auto after = local->GetAllocationStatistics();
+    EXPECT_EQ(after.AdmittedBytes, 0u);
+    EXPECT_EQ(after.ReservedRecords, 0u);
+    EXPECT_EQ(after.AllocationCount, 0u);
 }
 
 TEST_F(GpuAllocatorTest, RetirementSaturationRefusesNativeCreationAndAliasesThenRecovers)
@@ -1752,6 +1796,31 @@ struct RRMUploadBatchTestHelper
         manager.m_streaming_upload_tickets.init(&arena, 8);
         manager.PublishStreamingUploadTicket(ticket);
     }
+    static void MarkTextureSubmitted(RRM& manager, ZEngine::Rendering::Textures::TextureHandle texture)
+    {
+        EXPECT_TRUE(manager.TrackTextureDecode(texture));
+        manager.MarkTextureUploadSubmitted(texture);
+    }
+    static void AcknowledgeGraphAcquires(ZEngine::Rendering::Renderers::RenderGraph& graph, ZEngine::Rendering::Primitives::Semaphore* timeline, uint64_t value)
+    {
+        graph.AcknowledgeStreamingAcquires(0, static_cast<uint32_t>(graph.SortedPassIndices.size()), timeline, value);
+    }
+    static void SetMeshSliceTestSource(ZEngine::Rendering::Meshes::CookedMeshStaging& staging, const ZEngine::Importers::AssetMesh& mesh)
+    {
+        // Source capture and its real closure lease are tested separately in a
+        // cooker process; this fixture supplies a large immutable stream to the
+        // GPU staging path without constructing another package.
+        staging.m_mesh            = &mesh;
+        staging.m_vertex_bytes    = mesh.Vertices.size() * sizeof(float);
+        staging.m_index_bytes     = mesh.Indices.size() * sizeof(uint32_t);
+        staging.m_identity        = {ZEngine::Cook::CookAssetKind::Mesh, *uuids::uuid::from_string("00000000-0000-4000-8000-000000000042")};
+        staging.m_digest.Bytes[0] = 42;
+        staging.m_phase           = ZEngine::Rendering::Meshes::CookedMeshStaging::Phase::SourceReady;
+    }
+    static const BufferView& MeshStagingBuffer(const ZEngine::Rendering::Meshes::CookedMeshStaging& staging)
+    {
+        return staging.m_staging.m_buffer;
+    }
     static bool SceneTextureReady(RRM& manager, const RRM::MaterialVersionPin& material, bool* failed)
     {
         return manager.SceneTextureProducersReady(material, failed);
@@ -1786,6 +1855,10 @@ struct RRMUploadBatchTestHelper
     {
         return manager.PrepareMaterialDescriptorVersions(pin);
     }
+    static ZEngine::Rendering::ISceneTextureDescriptorPreparation* SetTextureDescriptorPreparation(RRM& manager, ZEngine::Rendering::ISceneTextureDescriptorPreparation* replacement)
+    {
+        return std::exchange(manager.m_scene_descriptor_preparation, replacement);
+    }
     static ZEngine::Rendering::SceneTextureDescriptorState PrepareFrameMaterialDescriptors(RRM& manager, uint32_t index)
     {
         return manager.PrepareMaterialDescriptorVersions(manager.m_frame_materials[index].Pin);
@@ -1793,6 +1866,80 @@ struct RRMUploadBatchTestHelper
     static void InitializeGeometry(ZEngine::Rendering::RenderResourceManager& manager, ArenaAllocator& arena)
     {
         manager.m_pool.Initialize(&arena, 64, 64, 32);
+    }
+
+    static void InitializeCookedGeometry(RRM& manager, ArenaAllocator& arena, BufferView vertex, BufferView index)
+    {
+        manager.m_pool.Initialize(&arena, vertex.Size, index.Size, 32);
+        manager.m_pool.VertexBuffer = vertex;
+        manager.m_pool.IndexBuffer  = index;
+    }
+
+    static void ReleaseCookedGeometryAfterIdle(RRM& manager)
+    {
+        manager.ReleaseCookedMeshUploadsAfterIdle();
+        manager.ResetGeometryBuffersInternal();
+        manager.m_pool.VertexBuffer = {};
+        manager.m_pool.IndexBuffer  = {};
+    }
+
+    static uint32_t OutstandingCookedMeshUploads(const RRM& manager)
+    {
+        uint32_t count = 0;
+        for (const auto& upload : manager.m_cooked_mesh_uploads)
+        {
+            count += upload.State != RRM::CookedMeshUploadState::Invalid;
+        }
+        return count;
+    }
+
+    // Model a batch rejected before queue acceptance, after recording is
+    // complete. No GPU command from this batch is submitted.
+    static bool RejectRecordedCookedBatch(RRM& manager)
+    {
+        if (!manager.m_batch_mode || !manager.m_batch_cmd)
+            return false;
+        if (vkEndCommandBuffer(manager.m_batch_cmd->GetHandle()) != VK_SUCCESS)
+            return false;
+        manager.m_batch_cmd->SetState(ZEngine::Hardwares::CommandBufferState::Executable);
+        manager.m_batch_mode              = false;
+        manager.m_batch_cmd               = nullptr;
+        manager.m_batch_submission_failed = true;
+        manager.DiscardUnsubmittedBatchStaging();
+        manager.PollCookedMeshUploads();
+        return true;
+    }
+
+    static void SetInjectedBatchRejection(RRM& manager)
+    {
+        manager.m_batch_submission_failed = true;
+    }
+    static bool BatchSubmissionFailed(const RRM& manager)
+    {
+        return manager.m_batch_submission_failed;
+    }
+    static uint32_t BatchStagingCount(const RRM& manager, uint32_t frame)
+    {
+        return manager.m_batch_frames[frame].StagingCount;
+    }
+    static VkBuffer BatchStagingHandle(const RRM& manager, uint32_t frame, uint32_t index)
+    {
+        return manager.m_batch_frames[frame].StagingBuffers[index].Handle;
+    }
+    static uint64_t BatchLastSignal(const RRM& manager, uint32_t frame)
+    {
+        return manager.m_batch_frames[frame].LastSignal;
+    }
+    static void AppendBatchStaging(RRM& manager, uint32_t frame, BufferView buffer)
+    {
+        auto& state                                = manager.m_batch_frames[frame];
+        state.StagingBuffers[state.StagingCount++] = buffer;
+    }
+    static void DiscardStagingTail(RRM& manager, uint8_t frame, uint32_t base)
+    {
+        manager.m_batch_frame_index        = frame;
+        manager.m_batch_staging_base_count = base;
+        manager.DiscardUnsubmittedBatchStaging();
     }
 
     static void InitializeSceneResidency(RRM& manager, ArenaAllocator& arena, BufferView vertex, BufferView index, ZEngine::Core::VFS::AssetRegistry* registry)
@@ -4323,18 +4470,220 @@ protected:
         EXPECT_EQ(vmaCopyAllocationToMemory(allocator().Allocator, Target.Allocation, offset, &value, sizeof(value)), VK_SUCCESS);
         return value;
     }
-    ZEngine::Rendering::Textures::TextureHandle CreateProducerTestTexture(cstring name)
+    void CheckTextureReadback(ZEngine::Rendering::Textures::TextureHandle texture, std::span<const uint8_t, 4> expected)
     {
-        Device->MaxGlobalTexture = 8;
-        Device->GlobalTextures.Initialize(&Memory.MainArena, 8);
-        Device->ImageBufferManager.Initialize(&Memory.MainArena, 8);
+        const auto* resource = Device->GlobalTextures.Access(texture);
+        ASSERT_NE(resource, nullptr);
+        const auto               image   = Device->ImageBufferManager.Access(resource->BufferHandle)->GetHandle();
+        const auto               command = Commands[1]->GetHandle();
+        VkCommandBufferBeginInfo begin   = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        ASSERT_EQ(vkBeginCommandBuffer(command, &begin), VK_SUCCESS);
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_READ_BIT, .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT, .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = image, .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
+        };
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        const VkBufferImageCopy copy = {
+            .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+              .imageExtent = {1, 1, 1}
+        };
+        vkCmdCopyImageToBuffer(command, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, Target.Handle, 1, &copy);
+        barrier.srcAccessMask              = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.dstAccessMask              = VK_ACCESS_SHADER_READ_BIT;
+        barrier.oldLayout                  = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.newLayout                  = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkBufferMemoryBarrier host_barrier = {.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .buffer = Target.Handle, .offset = 0, .size = expected.size()};
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &host_barrier, 1, &barrier);
+        ASSERT_EQ(vkEndCommandBuffer(command), VK_SUCCESS);
+        const uint64_t                value         = 1;
+        const auto                    timeline      = Timeline->GetHandle();
+        VkTimelineSemaphoreSubmitInfo timeline_info = {.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, .signalSemaphoreValueCount = 1, .pSignalSemaphoreValues = &value};
+        VkSubmitInfo                  submit        = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .pNext = &timeline_info, .commandBufferCount = 1, .pCommandBuffers = &command, .signalSemaphoreCount = 1, .pSignalSemaphores = &timeline};
+        ASSERT_EQ(vkQueueSubmit(Device->GetQueue(ZEngine::Rendering::QueueType::GRAPHIC_QUEUE).Handle, 1, &submit, VK_NULL_HANDLE), VK_SUCCESS);
+        Timeline->Wait(value);
+        uint8_t result[4] = {};
+        ASSERT_EQ(vmaCopyAllocationToMemory(allocator().Allocator, Target.Allocation, 0, result, sizeof(result)), VK_SUCCESS);
+        EXPECT_TRUE(std::equal(expected.begin(), expected.end(), std::begin(result)));
+    }
+
+    ZEngine::Rendering::Textures::TextureHandle CreateProducerTestTexture(cstring name, bool transfer_source = false, uint32_t capacity = 8)
+    {
+        Device->MaxGlobalTexture = capacity;
+        Device->GlobalTextures.Initialize(&Memory.MainArena, capacity);
+        Device->ImageBufferManager.Initialize(&Memory.MainArena, capacity);
         Device->ImageViewCacheSlab.Init(&Memory.MainArena, 32 * 1024);
         Device->RRM                                                            = Manager.get();
         ResourceTexturesInitialized                                            = true;
         ZEngine::Rendering::Specifications::TextureSpecification specification = {};
         specification.Width = specification.Height = 1;
         specification.Format                       = ZEngine::Rendering::Specifications::ImageFormat::R8G8B8A8_UNORM;
+        specification.IsUsageTransferSource        = transfer_source;
         return Device->CreateTexture(specification, name);
+    }
+
+    void CheckTextureConsumerAcquire(bool cancel, bool wrong_family = false)
+    {
+        using DescriptorState = ZEngine::Rendering::SceneTextureDescriptorState;
+        using Graph           = ZEngine::Rendering::Renderers::RenderGraph;
+        const auto texture    = CreateProducerTestTexture("texture-acquire-proof");
+        ASSERT_TRUE(texture.Valid());
+        RRMUploadBatchTestHelper::InitializeTextureUploadSlots(*Manager, *Device, UploadCommands, false);
+        TextureUploadSlotsInitialized = true;
+        uint8_t pixels[4]             = {17, 53, 127, 255};
+        ASSERT_TRUE(Manager->UploadTextureBuffer(0, 0, texture, pixels, sizeof(pixels)).Valid());
+        Manager->SubmitAsyncUploads();
+        const auto* upload_ticket = Manager->FindStreamingUploadTicket(texture);
+        ASSERT_NE(upload_ticket, nullptr);
+        const auto ticket = *upload_ticket;
+        ticket.CompletionTimeline->Wait(ticket.CompletionValue);
+        RRMUploadBatchTestHelper::RetireTextureUploadSlots(*Manager);
+        auto pin = Manager->PinTextureVersion(texture);
+        ASSERT_TRUE(pin);
+        EXPECT_EQ(Manager->PollSubmittedTextureAcquire(pin), DescriptorState::Pending);
+
+        Graph graph  = {};
+        graph.Device = Device.get();
+        graph.Passes.init(&Memory.MainArena, 1);
+        auto& pass = graph.Passes.push_use({});
+        pass.Queue = ZEngine::Rendering::QueueType::GRAPHIC_QUEUE;
+        pass.StreamingAcquirePlans.init(&Memory.MainArena, 1);
+        pass.StreamingAcquirePlans.push({.Ticket = ticket});
+        graph.SortedPassIndices.init(&Memory.MainArena, 1);
+        graph.SortedPassIndices.push(0);
+        RRMUploadBatchTestHelper::AcknowledgeGraphAcquires(graph, Timeline.get(), 1);
+        EXPECT_NE(Manager->FindStreamingUploadTicket(texture), nullptr); // No barrier recorded.
+        auto stale = ticket;
+        ++stale.CompletionValue;
+        EXPECT_FALSE(Manager->AcknowledgeStreamingUploadAcquire(stale, Timeline.get(), 1, Device->GraphicFamilyIndex));
+        stale                   = ticket;
+        stale.PostReleaseLayout = VK_IMAGE_LAYOUT_GENERAL;
+        EXPECT_FALSE(Manager->AcknowledgeStreamingUploadAcquire(stale, Timeline.get(), 1, Device->GraphicFamilyIndex));
+        EXPECT_FALSE(Manager->AcknowledgeStreamingUploadAcquire(ticket, nullptr, 1, Device->GraphicFamilyIndex));
+        EXPECT_FALSE(Manager->AcknowledgeStreamingUploadAcquire(ticket, Timeline.get(), 0, Device->GraphicFamilyIndex));
+
+        const auto* resource = Device->GlobalTextures.Access(texture);
+        ASSERT_NE(resource, nullptr);
+        const auto               image   = Device->ImageBufferManager.Access(resource->BufferHandle)->GetHandle();
+        const auto               command = Commands[1]->GetHandle();
+        VkCommandBufferBeginInfo begin   = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        ASSERT_EQ(vkBeginCommandBuffer(command, &begin), VK_SUCCESS);
+        VkImageMemoryBarrier2 barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2, .srcStageMask = VK_PIPELINE_STAGE_2_NONE, .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT, .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = image, .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
+        };
+        VkDependencyInfo dependency = {.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &barrier};
+        vkCmdPipelineBarrier2(command, &dependency);
+        ASSERT_EQ(vkEndCommandBuffer(command), VK_SUCCESS);
+        auto gate = std::make_unique<ZEngine::Rendering::Primitives::Semaphore>(Device.get(), true);
+        struct GateGuard
+        {
+            ZEngine::Rendering::Primitives::Semaphore* Gate     = nullptr;
+            bool                                       Released = false;
+            void                                       Release()
+            {
+                if (Gate && !Released)
+                {
+                    Gate->Signal(1);
+                    Released = true;
+                }
+            }
+            ~GateGuard()
+            {
+                Release();
+            }
+        } gate_guard{gate.get()};
+        const auto                    wait          = gate->GetHandle();
+        const auto                    signal        = Timeline->GetHandle();
+        const uint64_t                value         = 1;
+        const VkPipelineStageFlags    wait_stage    = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        VkTimelineSemaphoreSubmitInfo timeline_info = {.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, .waitSemaphoreValueCount = 1, .pWaitSemaphoreValues = &value, .signalSemaphoreValueCount = 1, .pSignalSemaphoreValues = &value};
+        VkSubmitInfo                  submit        = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .pNext = &timeline_info, .waitSemaphoreCount = 1, .pWaitSemaphores = &wait, .pWaitDstStageMask = &wait_stage, .commandBufferCount = 1, .pCommandBuffers = &command, .signalSemaphoreCount = 1, .pSignalSemaphores = &signal};
+        ASSERT_EQ(vkQueueSubmit(Device->GetQueue(ZEngine::Rendering::QueueType::GRAPHIC_QUEUE).Handle, 1, &submit, VK_NULL_HANDLE), VK_SUCCESS);
+        pass.StreamingAcquirePlans[0].BarrierRecorded = true;
+        if (wrong_family)
+        {
+            // Inject a mismatched receipt; this fixture has only one queue family.
+            EXPECT_TRUE(Manager->AcknowledgeStreamingUploadAcquire(ticket, Timeline.get(), value, Device->GraphicFamilyIndex + 1));
+        }
+        else
+        {
+            RRMUploadBatchTestHelper::AcknowledgeGraphAcquires(graph, Timeline.get(), value);
+            EXPECT_TRUE(pass.StreamingAcquirePlans[0].Acknowledged);
+        }
+        EXPECT_EQ(Manager->FindStreamingUploadTicket(texture), nullptr);
+        EXPECT_FALSE(Manager->AcknowledgeStreamingUploadAcquire(ticket, Timeline.get(), value, Device->GraphicFamilyIndex));
+        EXPECT_EQ(Manager->PollSubmittedTextureAcquire(pin), DescriptorState::Pending);
+        EXPECT_FALSE(Manager->ForgetResourceTimeline(Timeline.get()));
+        if (cancel)
+        {
+            Manager->ReleaseTexture(texture);
+            pin.Reset();
+            RRMUploadBatchTestHelper::FlushTextureReleases(*Manager);
+            EXPECT_TRUE(Device->GlobalTextures.IsLive(texture));
+            EXPECT_TRUE(Device->TextureHandleToDispose.empty());
+            EXPECT_FALSE(Manager->CanWriteTextureVersion(texture));
+        }
+        gate_guard.Release();
+        Timeline->Wait(value);
+        EXPECT_TRUE(Manager->ForgetResourceTimeline(Timeline.get()));
+        if (cancel)
+        {
+            RRMUploadBatchTestHelper::FlushTextureReleases(*Manager);
+            ZEngine::Hardwares::TextureDisposeEntry entry = {};
+            EXPECT_TRUE(Device->TextureHandleToDispose.pop(entry));
+            EXPECT_EQ(entry.Handle, texture);
+        }
+        else if (wrong_family)
+        {
+            EXPECT_EQ(Manager->PollSubmittedTextureAcquire(pin), DescriptorState::Failed);
+            pin.Reset();
+            EXPECT_FALSE(Manager->BeginTextureVersionWrite(texture));
+        }
+        else
+        {
+            EXPECT_EQ(Manager->PollSubmittedTextureAcquire(pin), DescriptorState::Ready);
+            pin.Reset();
+            EXPECT_TRUE(Manager->BeginTextureVersionWrite(texture));
+        }
+    }
+
+    void CheckTextureStagingAdmission(bool transfer)
+    {
+        const auto texture = CreateProducerTestTexture("bounded-texture-staging");
+        ASSERT_TRUE(texture.Valid());
+        RRMUploadBatchTestHelper::InitializeTextureUploadSlots(*Manager, *Device, UploadCommands, transfer);
+        TextureUploadSlotsInitialized = true;
+        auto* resource                = Device->GlobalTextures.Access(texture);
+        ASSERT_NE(resource, nullptr);
+        auto* image = Device->ImageBufferManager.Access(resource->BufferHandle);
+        ASSERT_NE(image, nullptr);
+        const auto initial_layout  = image->Layout;
+        const auto before          = Device->GpuMem.GetAllocationStatistics();
+        const auto original_limits = Device->GpuMem.GetAllocationLimits();
+        auto       limits          = original_limits;
+        const auto domain          = static_cast<uint32_t>(GpuMemoryDomain::HostStaging);
+        limits.DomainBytes[domain] = before.DomainAdmittedBytes[domain];
+        ASSERT_TRUE(Device->GpuMem.SetAllocationLimits(limits));
+        uint8_t pixels[4] = {17, 53, 127, 255};
+        EXPECT_FALSE(Manager->UploadTextureBuffer(0, 0, texture, pixels, sizeof(pixels)).Valid());
+        EXPECT_EQ(image->Layout, initial_layout);
+        EXPECT_EQ(Commands[0]->GetState(), ZEngine::Hardwares::CommandBufferState::Idle);
+        EXPECT_EQ(RRMUploadBatchTestHelper::TextureUploadSlotValue(*Manager, transfer), 0u);
+        EXPECT_FALSE(RRMUploadBatchTestHelper::TextureUploadSlotHasStaging(*Manager, transfer));
+        EXPECT_FALSE(RRMUploadBatchTestHelper::TextureUploadPending(*Manager, texture));
+        EXPECT_EQ(Manager->GetTextureDecodeState(texture), RRM::TextureDecodeState::Untracked);
+        EXPECT_TRUE(Manager->CanWriteTextureVersion(texture));
+        const auto refused = Device->GpuMem.GetAllocationStatistics();
+        EXPECT_EQ(refused.AdmittedBytes, before.AdmittedBytes);
+        EXPECT_EQ(refused.ReservedRecords, before.ReservedRecords);
+        EXPECT_EQ(refused.AllocationCount, before.AllocationCount);
+        ASSERT_TRUE(Device->GpuMem.SetAllocationLimits(original_limits));
+        ASSERT_TRUE(Manager->UploadTextureBuffer(0, 0, texture, pixels, sizeof(pixels)).Valid());
+        EXPECT_TRUE(RRMUploadBatchTestHelper::TextureUploadPending(*Manager, texture));
+        RRMUploadBatchTestHelper::ClearTextureUploadJobs(*Manager);
+        const auto reclaimed = Device->GpuMem.GetAllocationStatistics();
+        EXPECT_EQ(reclaimed.AdmittedBytes, before.AdmittedBytes);
+        EXPECT_EQ(reclaimed.ReservedRecords, before.ReservedRecords);
+        EXPECT_EQ(reclaimed.AllocationCount, before.AllocationCount);
+        EXPECT_EQ(image->Layout, initial_layout);
     }
 
     void CheckRejectedTextureUploadReclamation(bool transfer)
@@ -4368,10 +4717,9 @@ protected:
             EXPECT_EQ(after.total.statistics.allocationCount, before.total.statistics.allocationCount);
             EXPECT_EQ(after.total.statistics.allocationBytes, before.total.statistics.allocationBytes);
         }
-        // Queue-capacity rejection happens inline, before UploadTextureBuffer
-        // returns. It must not restore a layout belonging to discarded commands.
+        // Queue capacity is checked before claiming the image or recording.
         RRMUploadBatchTestHelper::SaturateTextureUploadQueue(*Manager);
-        ASSERT_TRUE(Manager->UploadTextureBuffer(0, 0, texture, pixels, sizeof(pixels)).Valid());
+        EXPECT_FALSE(Manager->UploadTextureBuffer(0, 0, texture, pixels, sizeof(pixels)).Valid());
         EXPECT_EQ(RRMUploadBatchTestHelper::TextureUploadSlotValue(*Manager, transfer), 0u);
         EXPECT_FALSE(RRMUploadBatchTestHelper::TextureUploadSlotHasStaging(*Manager, transfer));
         const auto* resource = Device->GlobalTextures.Access(texture);
@@ -4415,6 +4763,11 @@ protected:
         uint8_t pixels[4]             = {17, 53, 127, 255};
         // Invalid input must not leave a hold which would strand destruction.
         EXPECT_FALSE(Manager->UploadTextureBuffer(0, 0, texture, pixels, 5).Valid());
+        for (size_t size = 1; size < sizeof(pixels); ++size)
+        {
+            EXPECT_FALSE(Manager->UploadTextureBuffer(0, 0, texture, pixels, size).Valid());
+            EXPECT_FALSE(Device->WriteTextureData(Commands[0].get(), texture, pixels, nullptr, false, size));
+        }
         EXPECT_FALSE(RRMUploadBatchTestHelper::TextureUploadPending(*Manager, texture));
         EXPECT_TRUE(Manager->CanWriteTextureVersion(texture));
         EXPECT_TRUE(RRMUploadBatchTestHelper::RefuseUploadWithBusyTextureSlots(*Manager, texture, pixels, sizeof(pixels), transfer));
@@ -4538,6 +4891,36 @@ protected:
     }
 };
 
+TEST_F(RenderResourceManagerBatchTest, CookedAssetImageUsesTextureBudgetDespiteAttachmentCapability)
+{
+    const auto regular = CreateProducerTestTexture("regular-target");
+    ASSERT_TRUE(regular.Valid());
+    const auto                                               before        = Device->GpuMem.GetAllocationStatistics();
+    ZEngine::Rendering::Specifications::TextureSpecification specification = {};
+    specification.Width = specification.Height = 1;
+    specification.Format                       = ZEngine::Rendering::Specifications::ImageFormat::R8G8B8A8_UNORM;
+    specification.IsCookedAsset                = true;
+    const auto asset                           = Device->TryCreateTexture(specification, "cooked-asset");
+    ASSERT_TRUE(asset.Valid());
+    const auto after          = Device->GpuMem.GetAllocationStatistics();
+    const auto texture_domain = static_cast<uint32_t>(GpuMemoryDomain::DeviceTexture);
+    const auto target_domain  = static_cast<uint32_t>(GpuMemoryDomain::RenderTarget);
+    EXPECT_GT(after.DomainAdmittedBytes[texture_domain], before.DomainAdmittedBytes[texture_domain]);
+    EXPECT_EQ(after.DomainAdmittedBytes[target_domain], before.DomainAdmittedBytes[target_domain]);
+    const auto original_limits          = Device->GpuMem.GetAllocationLimits();
+    auto       limited                  = original_limits;
+    limited.DomainBytes[texture_domain] = after.DomainAdmittedBytes[texture_domain];
+    ASSERT_TRUE(Device->GpuMem.SetAllocationLimits(limited));
+    VkResult   status   = VK_SUCCESS;
+    const auto refused  = Device->TryCreateTexture(specification, "cooked-asset-over-budget", 0, &status);
+    const bool restored = Device->GpuMem.SetAllocationLimits(original_limits);
+    EXPECT_TRUE(restored);
+    EXPECT_FALSE(refused.Valid());
+    EXPECT_EQ(status, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+    Device->DestroyTexture(asset);
+    Device->DestroyTexture(regular);
+}
+
 TEST_F(RenderResourceManagerBatchTest, BufferAliasExecutesAfterBackingRetiresAndKeepsChargeUntilCompletion)
 {
     const auto before = allocator().GetAllocationStatistics();
@@ -4659,6 +5042,39 @@ TEST_F(RenderResourceManagerBatchTest, InitialBufferBundleIsPreparedBeforeReadyA
     EXPECT_FALSE(Manager->PollSceneResourcePreparation(id, &result));
     EXPECT_LT(LiveAllocationBytes(), allocation_count);
     EXPECT_TRUE(Manager->ForgetResourceTimeline(second.get()));
+}
+
+TEST_F(RenderResourceManagerBatchTest, DeviceLossDuringRetirementDoesNotImplyConsumerCompletion)
+{
+    RRM::SceneInitialFrameInput     input = {};
+    RRM::SceneResourcePreparationId id    = {};
+    ASSERT_TRUE(Manager->PrepareSceneResources({1, 1}, 1, {}, &id, RRM::ScenePreparationContent::MeshMaterials, nullptr, &input));
+    ASSERT_EQ(FinishScenePreparation(id).State, RRM::SceneResourcePreparationState::ResourcesRetained);
+    ZEngine::Rendering::Scenes::PreparedSceneFrame frame = {};
+    ASSERT_TRUE(Manager->GetFramePreparedSceneFrame(id, &frame));
+    ASSERT_NE(frame.TransformBuffer, nullptr);
+    const auto allocations = LiveAllocationBytes();
+    auto       consumer    = std::make_unique<ZEngine::Rendering::Primitives::Semaphore>(Device.get(), true);
+    ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(id));
+    Manager->NotifyResourceSubmission(0, consumer.get(), 4);
+    Manager->FinishResourceFrame();
+
+    // Simulate the host observing loss while an accepted consumer is pending.
+    // The real device remains healthy so the test can finish and clean up.
+    Device->IsDeviceLost.store(true, std::memory_order_release);
+    Manager->PollSceneResourcePreparations();
+    RRM::SceneResourcePreparationResult result = {};
+    EXPECT_TRUE(Manager->PollSceneResourcePreparation(id, &result));
+    EXPECT_EQ(LiveAllocationBytes(), allocations);
+    EXPECT_FALSE(Manager->ForgetResourceTimeline(consumer.get()));
+    Device->IsDeviceLost.store(false, std::memory_order_release);
+
+    consumer->Signal(4);
+    Manager->BeginFrame(0);
+    Manager->PollSceneResourcePreparations();
+    EXPECT_FALSE(Manager->PollSceneResourcePreparation(id, &result));
+    EXPECT_LT(LiveAllocationBytes(), allocations);
+    EXPECT_TRUE(Manager->ForgetResourceTimeline(consumer.get()));
 }
 
 TEST_F(RenderResourceManagerBatchTest, InitialBufferBundleSurvivesMailboxCancellationAndUnsubmittedRecordingReclaimsWithoutAGpuWait)
@@ -6506,8 +6922,13 @@ TEST_F(RenderResourceManagerBatchTest, SceneTexturePreparationObservesProducerCo
     Swapchain.RenderTimelineNextValue = 1;
     Manager->EndFrame(); // Accepted producer work remains blocked on the host gate.
     RRMUploadBatchTestHelper::PublishSceneTextureProducer(*Manager, Memory.MainArena, {.Texture = texture, .CompletionTimeline = Timeline.get(), .CompletionValue = 1, .ProducerQueueFamily = Device->GraphicFamilyIndex});
+    RRMUploadBatchTestHelper::MarkTextureSubmitted(*Manager, texture);
     // No fatal assertions may leave this accepted submission stranded.
-    bool failed = false;
+    bool                   failed      = false;
+    RRM::TextureVersionPin prepared    = {};
+    uint64_t               publication = 0;
+    EXPECT_EQ(Manager->PrepareSubmittedTextureVersion(texture, &prepared, &publication), ZEngine::Rendering::SceneTextureDescriptorState::Pending);
+    EXPECT_TRUE(prepared);
     EXPECT_FALSE(RRMUploadBatchTestHelper::SceneTextureReady(*Manager, retained, &failed));
     EXPECT_FALSE(failed);
     // Accepted consumer work can wait on this still-blocked producer. Removing
@@ -6515,6 +6936,8 @@ TEST_F(RenderResourceManagerBatchTest, SceneTexturePreparationObservesProducerCo
     const auto ticket = *Manager->FindStreamingUploadTicket(texture);
     Manager->AcknowledgeStreamingUploadTicket(ticket);
     EXPECT_EQ(Manager->FindStreamingUploadTicket(texture), nullptr);
+    EXPECT_EQ(Manager->PollSubmittedTextureAcquire(prepared), ZEngine::Rendering::SceneTextureDescriptorState::Failed);
+    EXPECT_EQ(Manager->PrepareSubmittedTextureVersion(texture, &prepared, &publication), ZEngine::Rendering::SceneTextureDescriptorState::Pending);
     EXPECT_FALSE(RRMUploadBatchTestHelper::SceneTextureReady(*Manager, retained, &failed));
     EXPECT_FALSE(failed);
     gate->Signal(1);
@@ -6524,12 +6947,28 @@ TEST_F(RenderResourceManagerBatchTest, SceneTexturePreparationObservesProducerCo
     EXPECT_EQ(Manager->FindStreamingUploadTicket(texture), nullptr);
     Swapchain.RenderTimeline          = nullptr;
     Swapchain.RenderTimelineNextValue = 0;
+    prepared.Reset();
     retained.Reset();
 }
 
 TEST_F(RenderResourceManagerBatchTest, TextureReleaseRetainsAcknowledgedProducerUntilGpuCompletion)
 {
     CheckAcknowledgedProducerRetirement(false);
+}
+
+TEST_F(RenderResourceManagerBatchTest, TextureConsumerAcquireNeedsCompletedGraphSubmission)
+{
+    CheckTextureConsumerAcquire(false);
+}
+
+TEST_F(RenderResourceManagerBatchTest, CancelledTextureWaitsForAcceptedConsumerAcquire)
+{
+    CheckTextureConsumerAcquire(true);
+}
+
+TEST_F(RenderResourceManagerBatchTest, TextureAcquireFromAnotherFamilyCannotQualifyGraphicsUse)
+{
+    CheckTextureConsumerAcquire(false, true);
 }
 
 TEST_F(RenderResourceManagerBatchTest, DirectTextureDestroyRetainsAcknowledgedProducerAcrossReleaseOwners)
@@ -6540,6 +6979,1411 @@ TEST_F(RenderResourceManagerBatchTest, DirectTextureDestroyRetainsAcknowledgedPr
 TEST_F(RenderResourceManagerBatchTest, RejectedGraphicsTextureJobsReclaimSlotsAndStagingBeforeRetry)
 {
     CheckRejectedTextureUploadReclamation(false);
+}
+
+TEST_F(RenderResourceManagerBatchTest, GraphicsTextureStagingRefusalPreservesStateAndAllowsRetry)
+{
+    CheckTextureStagingAdmission(false);
+}
+
+TEST_F(RenderResourceManagerBatchTest, RejectedTextureProducerCannotPrepareAnExactVersion)
+{
+    const auto texture = CreateProducerTestTexture("rejected-cooked-producer");
+    ASSERT_TRUE(texture.Valid());
+    RRMUploadBatchTestHelper::InitializeTextureUploadSlots(*Manager, *Device, UploadCommands, false);
+    TextureUploadSlotsInitialized = true;
+    uint8_t pixels[4]             = {17, 53, 127, 255};
+    ASSERT_TRUE(Manager->UploadTextureBuffer(0, 0, texture, pixels, sizeof(pixels)).Valid());
+    RRM::TextureVersionPin pin         = {};
+    uint64_t               publication = 0;
+    EXPECT_EQ(Manager->PrepareSubmittedTextureVersion(texture, &pin, &publication), ZEngine::Rendering::SceneTextureDescriptorState::Pending);
+    EXPECT_FALSE(pin);
+    RRMUploadBatchTestHelper::ClearTextureUploadJobs(*Manager);
+    EXPECT_EQ(Manager->PrepareSubmittedTextureVersion(texture, &pin, &publication), ZEngine::Rendering::SceneTextureDescriptorState::Failed);
+    EXPECT_FALSE(pin);
+    EXPECT_EQ(publication, 0u);
+}
+
+TEST_F(RenderResourceManagerBatchTest, TextureStagingSlicesAndCancellationKeepCreditsBounded)
+{
+    using Staging                = RRM::UploadStaging;
+    const auto           before  = Device->GpuMem.GetAllocationStatistics();
+    Staging              staging = {};
+    std::vector<uint8_t> pixels(Staging::MaxSliceBytes + 17, 0x5a);
+    ASSERT_TRUE(Manager->PrepareUploadStaging(pixels.size(), &staging));
+    EXPECT_FALSE(staging.Ready());
+    size_t consumed = 123;
+    EXPECT_FALSE(staging.Append({}, &consumed));
+    EXPECT_EQ(consumed, 0u);
+    bool        worker_success = false;
+    std::thread worker([&] { worker_success = staging.Append(pixels, &consumed); });
+    worker.join();
+    ASSERT_TRUE(worker_success);
+    EXPECT_EQ(consumed, Staging::MaxSliceBytes);
+    EXPECT_EQ(staging.Written(), Staging::MaxSliceBytes);
+    EXPECT_FALSE(staging.Ready());
+    EXPECT_FALSE(Manager->PrepareUploadStaging(0, &staging));
+    EXPECT_EQ(staging.Written(), Staging::MaxSliceBytes);
+    Staging moved = std::move(staging);
+    EXPECT_EQ(staging.Size(), 0u);
+    ASSERT_TRUE(moved.Append({pixels.data() + consumed, pixels.size() - consumed}, &consumed));
+    EXPECT_EQ(consumed, 17u);
+    EXPECT_TRUE(moved.Ready());
+    EXPECT_FALSE(moved.Append(pixels, &consumed));
+    EXPECT_EQ(consumed, 0u);
+    moved.Reset();
+    moved.Reset();
+    const auto after = Device->GpuMem.GetAllocationStatistics();
+    EXPECT_EQ(after.AdmittedBytes, before.AdmittedBytes);
+    EXPECT_EQ(after.ReservedRecords, before.ReservedRecords);
+    EXPECT_EQ(after.AllocationCount, before.AllocationCount);
+}
+
+TEST_F(RenderResourceManagerBatchTest, CookedMeshStagingSlicesBothStreamsAndReclaimsOnCancellation)
+{
+    using Staging                               = ZEngine::Rendering::Meshes::CookedMeshStaging;
+    ZEngine::Importers::AssetMesh mesh          = {};
+    constexpr size_t              vertex_floats = RRM::UploadStaging::MaxSliceBytes / sizeof(float) + 8;
+    mesh.Vertices.init(&Memory.MainArena, vertex_floats, vertex_floats);
+    for (size_t index = 0; index < vertex_floats; ++index)
+    {
+        mesh.Vertices[index] = static_cast<float>(index % 97);
+    }
+    mesh.Indices.init(&Memory.MainArena, 3);
+    mesh.Indices.push(2);
+    mesh.Indices.push(1);
+    mesh.Indices.push(0);
+    Staging staging = {};
+    RRMUploadBatchTestHelper::SetMeshSliceTestSource(staging, mesh);
+    const auto before          = Device->GpuMem.GetAllocationStatistics();
+    const auto original_limits = Device->GpuMem.GetAllocationLimits();
+    auto       limits          = original_limits;
+    const auto domain          = static_cast<uint32_t>(GpuMemoryDomain::HostStaging);
+    limits.DomainBytes[domain] = before.DomainAdmittedBytes[domain];
+    ASSERT_TRUE(Device->GpuMem.SetAllocationLimits(limits));
+    VkResult status = VK_SUCCESS;
+    EXPECT_FALSE(staging.Prepare(*Manager, &status));
+    EXPECT_EQ(status, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+    EXPECT_EQ(staging.State(), Staging::Phase::SourceReady);
+    ASSERT_TRUE(Device->GpuMem.SetAllocationLimits(original_limits));
+    ASSERT_TRUE(staging.Prepare(*Manager));
+    bool        staged = false;
+    std::thread worker([&] { staged = staging.StageOne(); });
+    worker.join();
+    ASSERT_TRUE(staged);
+    EXPECT_EQ(staging.StagedBytes(), RRM::UploadStaging::MaxSliceBytes);
+    EXPECT_EQ(staging.State(), Staging::Phase::Staging);
+    ASSERT_TRUE(staging.StageOne());
+    EXPECT_EQ(staging.StagedBytes(), vertex_floats * sizeof(float));
+    EXPECT_EQ(staging.State(), Staging::Phase::Staging);
+    ASSERT_TRUE(staging.StageOne());
+    EXPECT_EQ(staging.State(), Staging::Phase::Staged);
+    EXPECT_EQ(staging.StagedBytes(), staging.VertexBytes() + staging.IndexBytes());
+    EXPECT_FALSE(staging.StageOne());
+    const auto&          buffer = RRMUploadBatchTestHelper::MeshStagingBuffer(staging);
+    std::vector<uint8_t> bytes(staging.VertexBytes() + staging.IndexBytes());
+    ASSERT_EQ(vmaCopyAllocationToMemory(Device->GpuMem.Allocator, buffer.Allocation, 0, bytes.data(), bytes.size()), VK_SUCCESS);
+    const auto* vertices = reinterpret_cast<const uint8_t*>(mesh.Vertices.data());
+    const auto* indices  = reinterpret_cast<const uint8_t*>(mesh.Indices.data());
+    EXPECT_TRUE(std::equal(vertices, vertices + staging.VertexBytes(), bytes.data()));
+    EXPECT_TRUE(std::equal(indices, indices + staging.IndexBytes(), bytes.data() + staging.VertexBytes()));
+    staging.Reset();
+    staging.Reset();
+    EXPECT_EQ(staging.State(), Staging::Phase::Empty);
+    const auto after = Device->GpuMem.GetAllocationStatistics();
+    EXPECT_EQ(after.AdmittedBytes, before.AdmittedBytes);
+    EXPECT_EQ(after.ReservedRecords, before.ReservedRecords);
+    EXPECT_EQ(after.AllocationCount, before.AllocationCount);
+}
+
+class CookedMeshUploadTest : public RenderResourceManagerBatchTest
+{
+protected:
+    using Staging                                                                  = ZEngine::Rendering::Meshes::CookedMeshStaging;
+    using Admission                                                                = RRM::CookedMeshAdmission;
+    using State                                                                    = RRM::CookedMeshUploadState;
+    TLSFSlab                                                   Metadata            = {};
+    BufferView                                                 Vertices            = {};
+    BufferView                                                 Indices             = {};
+    ZEngine::Importers::AssetMesh                              Mesh                = {};
+    std::unique_ptr<ZEngine::Rendering::Primitives::Semaphore> Gate                = {};
+    bool                                                       GateSignalled       = false;
+    bool                                                       GeometryInitialized = false;
+
+    void                                                       SetUp() override
+    {
+        RenderResourceManagerBatchTest::SetUp();
+        if (!Initialized)
+        {
+            return;
+        }
+        Metadata.Init(&Memory.MainArena, 16 * 1024);
+        Vertices = allocator().AllocateBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::HostReadback, "cooked-vertices");
+        Indices  = allocator().AllocateBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::HostReadback, "cooked-indices");
+        RRMUploadBatchTestHelper::InitializeCookedGeometry(*Manager, Memory.MainArena, Vertices, Indices);
+        GeometryInitialized = true;
+        Mesh.Vertices.init(&Memory.MainArena, 8, 8);
+        for (uint32_t i = 0; i < 8; ++i)
+        {
+            Mesh.Vertices[i] = float(i + 1);
+        }
+        Mesh.Indices.init(&Memory.MainArena, 1);
+        Mesh.Indices.push(17);
+        Mesh.BoundsRadius = 3.f;
+    }
+
+    void TearDown() override
+    {
+        if (GeometryInitialized)
+        {
+            if (Gate && !GateSignalled)
+            {
+                Gate->Signal(1);
+            }
+            Manager->EndFrame();
+            vkDeviceWaitIdle(s_vk->Device);
+            RRMUploadBatchTestHelper::ReleaseCookedGeometryAfterIdle(*Manager);
+            Swapchain.RenderTimeline          = nullptr;
+            Swapchain.RenderTimelineNextValue = 0;
+            Gate.reset();
+            allocator().FreeBuffer(Vertices);
+            allocator().FreeBuffer(Indices);
+            Metadata.Shutdown();
+        }
+        RenderResourceManagerBatchTest::TearDown();
+    }
+
+    bool Stage(Staging& staging)
+    {
+        RRMUploadBatchTestHelper::SetMeshSliceTestSource(staging, Mesh);
+        return staging.Prepare(*Manager) && staging.StageOne() && staging.StageOne();
+    }
+
+    void DelaySubmission()
+    {
+        Gate                              = std::make_unique<ZEngine::Rendering::Primitives::Semaphore>(Device.get(), true);
+        Swapchain.RenderTimeline          = Gate.get();
+        Swapchain.RenderTimelineNextValue = 1;
+    }
+
+    void Unblock()
+    {
+        Gate->Signal(1);
+        GateSignalled = true;
+    }
+};
+
+TEST_F(CookedMeshUploadTest, CopiesBytesAndRetainsExactMetadataUntilTaken)
+{
+    Staging staging;
+    ASSERT_TRUE(Stage(staging));
+    RRM::CookedMeshUploadId id = {};
+    ASSERT_EQ(Manager->RecordCookedMeshUpload(0, staging, Metadata, &id), Admission::Recorded);
+    EXPECT_EQ(Manager->PollCookedMeshUpload(id).State, State::Pending);
+    DelaySubmission();
+    Manager->EndFrame();
+    EXPECT_EQ(Manager->PollCookedMeshUpload(id).State, State::Pending);
+    Unblock();
+    Timeline->Wait(1);
+    const auto completed = Manager->PollCookedMeshUpload(id);
+    ASSERT_EQ(completed.State, State::Ready);
+    RRM::CookedMeshVersion version = {};
+    ASSERT_TRUE(Manager->TakeCookedMeshUpload(id, &version));
+    EXPECT_EQ(version.Identity(), completed.Identity);
+    EXPECT_EQ(version.Digest(), completed.Digest);
+    EXPECT_TRUE(version.Identity().IsValid());
+    EXPECT_EQ(version.Digest().Bytes[0], 42);
+    EXPECT_FALSE(Manager->TakeCookedMeshUpload(id, &version));
+    RRM::CookedMeshVersion moved = std::move(version);
+    EXPECT_FALSE(version);
+    ASSERT_TRUE(moved.Geometry());
+    EXPECT_FLOAT_EQ(moved.Geometry()->DrawMetadata->BoundsRadius, 3.f);
+    std::array<float, 8> vertices = {};
+    uint32_t             index    = 0;
+    ASSERT_EQ(vmaCopyAllocationToMemory(allocator().Allocator, Vertices.Allocation, moved.Geometry()->Region.VtxByteOffset, vertices.data(), sizeof(vertices)), VK_SUCCESS);
+    ASSERT_EQ(vmaCopyAllocationToMemory(allocator().Allocator, Indices.Allocation, moved.Geometry()->Region.IdxByteOffset, &index, sizeof(index)), VK_SUCCESS);
+    EXPECT_TRUE(std::equal(vertices.begin(), vertices.end(), Mesh.Vertices.data()));
+    EXPECT_EQ(index, 17u);
+    EXPECT_EQ(RRMUploadBatchTestHelper::GeometryBytes(*Manager), 32u);
+    moved.Reset();
+    EXPECT_EQ(RRMUploadBatchTestHelper::GeometryBytes(*Manager), 0u);
+}
+
+TEST_F(CookedMeshUploadTest, CancellationKeepsAcceptedCopiesPinnedUntilCompletion)
+{
+    Staging staging;
+    ASSERT_TRUE(Stage(staging));
+    RRM::CookedMeshUploadId id = {};
+    ASSERT_EQ(Manager->RecordCookedMeshUpload(0, staging, Metadata, &id), Admission::Recorded);
+    ASSERT_TRUE(Manager->CancelCookedMeshUpload(id));
+    EXPECT_TRUE(Manager->PollCookedMeshUpload(id).CleanupPending);
+    DelaySubmission();
+    Manager->EndFrame();
+    EXPECT_FALSE(Manager->ReleaseCookedMeshUpload(id));
+    EXPECT_EQ(RRMUploadBatchTestHelper::GeometryBytes(*Manager), 32u);
+    Unblock();
+    Timeline->Wait(1);
+    const auto result = Manager->PollCookedMeshUpload(id);
+    EXPECT_EQ(result.State, State::Cancelled);
+    EXPECT_FALSE(result.CleanupPending);
+    EXPECT_EQ(RRMUploadBatchTestHelper::GeometryBytes(*Manager), 0u);
+    EXPECT_TRUE(Manager->ReleaseCookedMeshUpload(id));
+}
+
+TEST_F(CookedMeshUploadTest, CancellationAfterSubmissionWaitsForTheGpu)
+{
+    Staging staging;
+    ASSERT_TRUE(Stage(staging));
+    RRM::CookedMeshUploadId id = {};
+    ASSERT_EQ(Manager->RecordCookedMeshUpload(0, staging, Metadata, &id), Admission::Recorded);
+    DelaySubmission();
+    Manager->EndFrame();
+    ASSERT_TRUE(Manager->CancelCookedMeshUpload(id));
+    const auto pending = Manager->PollCookedMeshUpload(id);
+    EXPECT_EQ(pending.State, State::Cancelled);
+    EXPECT_TRUE(pending.CleanupPending);
+    EXPECT_EQ(RRMUploadBatchTestHelper::GeometryBytes(*Manager), 32u);
+    EXPECT_FALSE(Manager->ReleaseCookedMeshUpload(id));
+    Unblock();
+    Timeline->Wait(1);
+    EXPECT_FALSE(Manager->PollCookedMeshUpload(id).CleanupPending);
+    EXPECT_EQ(RRMUploadBatchTestHelper::GeometryBytes(*Manager), 0u);
+    EXPECT_TRUE(Manager->ReleaseCookedMeshUpload(id));
+}
+
+TEST_F(CookedMeshUploadTest, ResetInvalidatesReadyResultWithoutReleasingReplacement)
+{
+    Staging staging;
+    ASSERT_TRUE(Stage(staging));
+    RRM::CookedMeshUploadId id = {};
+    ASSERT_EQ(Manager->RecordCookedMeshUpload(0, staging, Metadata, &id), Admission::Recorded);
+    Manager->EndFrame();
+    Timeline->Wait(1);
+    ASSERT_EQ(Manager->PollCookedMeshUpload(id).State, State::Ready);
+    RRMUploadBatchTestHelper::ResetGeometry(*Manager);
+    const auto replacement = RRMUploadBatchTestHelper::InstallGeometry(*Manager);
+    ASSERT_TRUE(replacement.IsValid());
+    ZEngine::Rendering::BufferHandle handle = {};
+    RRM::MeshGeometryPin             pin    = {};
+    EXPECT_FALSE(Manager->TakeCookedMeshUpload(id, &handle, &pin));
+    EXPECT_EQ(Manager->PollCookedMeshUpload(id).State, State::Failed);
+    EXPECT_TRUE(Manager->ReleaseCookedMeshUpload(id));
+    EXPECT_EQ(RRMUploadBatchTestHelper::GeometryBytes(*Manager), 32u);
+    Manager->Release(replacement);
+}
+
+TEST_F(CookedMeshUploadTest, FullRecordTableRefusesWithoutConsumingStaging)
+{
+    std::array<RRM::CookedMeshUploadId, RRM::CookedMeshUploadCapacity> ids = {};
+    for (auto& id : ids)
+    {
+        Staging staging;
+        ASSERT_TRUE(Stage(staging));
+        ASSERT_EQ(Manager->RecordCookedMeshUpload(0, staging, Metadata, &id), Admission::Recorded);
+    }
+    Staging extra;
+    ASSERT_TRUE(Stage(extra));
+    RRM::CookedMeshUploadId extra_id = {};
+    EXPECT_EQ(Manager->RecordCookedMeshUpload(0, extra, Metadata, &extra_id), Admission::Retry);
+    EXPECT_EQ(extra.State(), Staging::Phase::Staged);
+    for (const auto& id : ids)
+    {
+        EXPECT_TRUE(Manager->CancelCookedMeshUpload(id));
+    }
+    Manager->EndFrame();
+    Timeline->Wait(1);
+    for (const auto& id : ids)
+    {
+        EXPECT_TRUE(Manager->ReleaseCookedMeshUpload(id));
+    }
+    EXPECT_EQ(RRMUploadBatchTestHelper::GeometryBytes(*Manager), 0u);
+}
+
+TEST_F(CookedMeshUploadTest, BusyBatchSlotReturnsRetryWithoutConsumingStaging)
+{
+    Staging first;
+    ASSERT_TRUE(Stage(first));
+    RRM::CookedMeshUploadId id = {};
+    ASSERT_EQ(Manager->RecordCookedMeshUpload(0, first, Metadata, &id), Admission::Recorded);
+    DelaySubmission();
+    Manager->EndFrame();
+    Staging second;
+    ASSERT_TRUE(Stage(second));
+    RRM::CookedMeshUploadId second_id = {};
+    EXPECT_EQ(Manager->RecordCookedMeshUpload(0, second, Metadata, &second_id), Admission::Retry);
+    EXPECT_EQ(second.State(), Staging::Phase::Staged);
+    Unblock();
+    Timeline->Wait(1);
+    Manager->BeginFrame(0);
+    ASSERT_EQ(Manager->RecordCookedMeshUpload(0, second, Metadata, &second_id), Admission::Recorded);
+    EXPECT_TRUE(Manager->CancelCookedMeshUpload(id));
+    EXPECT_TRUE(Manager->CancelCookedMeshUpload(second_id));
+    Manager->EndFrame();
+    Timeline->Wait(2);
+    EXPECT_TRUE(Manager->ReleaseCookedMeshUpload(id));
+    EXPECT_TRUE(Manager->ReleaseCookedMeshUpload(second_id));
+}
+
+TEST_F(CookedMeshUploadTest, MetadataAndPoolRefusalPreserveStaging)
+{
+    Staging staging;
+    ASSERT_TRUE(Stage(staging));
+    TLSFSlab                unavailable = {};
+    RRM::CookedMeshUploadId id          = {};
+    EXPECT_EQ(Manager->RecordCookedMeshUpload(0, staging, unavailable, &id), Admission::Failed);
+    EXPECT_EQ(staging.State(), Staging::Phase::Staged);
+    std::array<RRM::CookedMeshUploadId, RRM::CookedMeshUploadCapacity> ids = {};
+    for (auto& recorded : ids)
+    {
+        Staging candidate;
+        ASSERT_TRUE(Stage(candidate));
+        ASSERT_EQ(Manager->RecordCookedMeshUpload(0, candidate, Metadata, &recorded), Admission::Recorded);
+    }
+    // The bounded table is full; retire its records while leaving the geometry
+    // registered through transferred pins, then exhaust the geometry pool.
+    Manager->EndFrame();
+    Timeline->Wait(1);
+    std::array<ZEngine::Rendering::BufferHandle, RRM::CookedMeshUploadCapacity> handles = {};
+    std::array<RRM::MeshGeometryPin, RRM::CookedMeshUploadCapacity>             pins    = {};
+    for (size_t i = 0; i < ids.size(); ++i)
+    {
+        ASSERT_TRUE(Manager->TakeCookedMeshUpload(ids[i], &handles[i], &pins[i]));
+    }
+    // This pool has 1024 vertex bytes; another sixteen 32-byte versions fill it.
+    Manager->BeginFrame(1);
+    for (auto& recorded : ids)
+    {
+        Staging candidate;
+        ASSERT_TRUE(Stage(candidate));
+        ASSERT_EQ(Manager->RecordCookedMeshUpload(1, candidate, Metadata, &recorded), Admission::Recorded);
+    }
+    Manager->EndFrame();
+    Timeline->Wait(2);
+    for (const auto& recorded : ids)
+    {
+        ASSERT_EQ(Manager->PollCookedMeshUpload(recorded).State, State::Ready);
+    }
+    // Free a table slot without reclaiming its region.
+    ZEngine::Rendering::BufferHandle last_handle = {};
+    RRM::MeshGeometryPin             last_pin    = {};
+    ASSERT_TRUE(Manager->TakeCookedMeshUpload(ids[0], &last_handle, &last_pin));
+    EXPECT_EQ(Manager->RecordCookedMeshUpload(2, staging, Metadata, &id), Admission::Failed);
+    EXPECT_EQ(staging.State(), Staging::Phase::Staged);
+    Manager->Release(last_handle);
+    last_pin.Reset();
+    for (size_t i = 0; i < handles.size(); ++i)
+    {
+        Manager->Release(handles[i]);
+        pins[i].Reset();
+    }
+    for (size_t i = 1; i < ids.size(); ++i)
+    {
+        EXPECT_TRUE(Manager->ReleaseCookedMeshUpload(ids[i]));
+    }
+}
+
+TEST_F(RenderResourceManagerBatchTest, GraphicsTextureStagingUploadsTheSuppliedPixels)
+{
+    const auto texture = CreateProducerTestTexture("texture-staging-readback", true);
+    ASSERT_TRUE(texture.Valid());
+    RRMUploadBatchTestHelper::InitializeTextureUploadSlots(*Manager, *Device, UploadCommands, false);
+    TextureUploadSlotsInitialized = true;
+    uint8_t            pixels[4]  = {17, 53, 127, 255};
+    RRM::UploadStaging wrong_size = {};
+    ASSERT_TRUE(Manager->PrepareUploadStaging(8, &wrong_size));
+    const uint8_t longer[8] = {};
+    size_t        consumed  = 0;
+    ASSERT_TRUE(wrong_size.Append(longer, &consumed));
+    EXPECT_FALSE(Manager->UploadPreparedTextureBuffer(0, 0, texture, wrong_size).Valid());
+    EXPECT_TRUE(wrong_size.Ready());
+    EXPECT_FALSE(RRMUploadBatchTestHelper::TextureUploadPending(*Manager, texture));
+    wrong_size.Reset();
+    RRM::UploadStaging staging = {};
+    ASSERT_TRUE(Manager->PrepareUploadStaging(sizeof(pixels), &staging));
+    ASSERT_TRUE(staging.Append({pixels, 1}, &consumed));
+    EXPECT_EQ(consumed, 1u);
+    EXPECT_FALSE(Manager->UploadPreparedTextureBuffer(0, 0, texture, staging).Valid());
+    EXPECT_EQ(staging.Written(), 1u);
+    EXPECT_FALSE(RRMUploadBatchTestHelper::TextureUploadPending(*Manager, texture));
+    ASSERT_TRUE(staging.Append({pixels + 1, 3}, &consumed));
+    EXPECT_TRUE(staging.Ready());
+    RRMUploadBatchTestHelper::SaturateTextureUploadQueue(*Manager);
+    EXPECT_FALSE(Manager->UploadPreparedTextureBuffer(0, 0, texture, staging).Valid());
+    EXPECT_TRUE(staging.Ready());
+    EXPECT_FALSE(RRMUploadBatchTestHelper::TextureUploadPending(*Manager, texture));
+    RRMUploadBatchTestHelper::ClearTextureUploadJobs(*Manager);
+    ASSERT_TRUE(Manager->UploadPreparedTextureBuffer(0, 0, texture, staging).Valid());
+    EXPECT_FALSE(staging.Ready());
+    EXPECT_EQ(staging.Size(), 0u);
+    Manager->SubmitAsyncUploads();
+    const auto* ticket = Manager->FindStreamingUploadTicket(texture);
+    ASSERT_NE(ticket, nullptr);
+    ticket->CompletionTimeline->Wait(ticket->CompletionValue);
+    RRMUploadBatchTestHelper::RetireTextureUploadSlots(*Manager);
+
+    CheckTextureReadback(texture, pixels);
+}
+
+TEST_F(RenderResourceManagerBatchTest, CookedTextureStagesVerifiedPixelsAndSubmitsItsExactVersion)
+{
+    namespace Cook            = ZEngine::Cook;
+    namespace VFS             = ZEngine::Core::VFS;
+    namespace ECS             = ZEngine::ECS;
+    using Cache               = ZEngine::Managers::CookedCpuClosureCache;
+    using Upload              = ZEngine::Rendering::Textures::CookedTextureUpload;
+    using JSON                = nlohmann::json;
+    MemoryManager cook_memory = {};
+    cook_memory.Initialize(ZMega(8), {});
+    auto                              allocator         = std::make_unique<Cook::Tests::FixedAllocator<ZKilo(256), 12>>();
+    ECS::SceneComponentSchemaRegistry schemas           = {};
+    ECS::SceneDiagnostics             scene_diagnostics = {};
+    schemas.Initialize(&cook_memory.MainArena);
+    ASSERT_TRUE(ECS::RegisterBuiltInSceneComponentSchemas(schemas, &scene_diagnostics));
+    ASSERT_TRUE(schemas.FreezeForWorker(&scene_diagnostics));
+    VFS::VFSMemoryBackend backend = {};
+    ASSERT_TRUE(backend.InitializeOwned(ZMega(2), 128).Succeeded());
+    ASSERT_TRUE(backend.CreateDir(VFS::VFSPath::Parse("/output").Value()).Succeeded());
+    ASSERT_TRUE(backend.CreateDir(VFS::VFSPath::Parse("/output/objects").Value()).Succeeded());
+    ASSERT_TRUE(backend.CreateDir(VFS::VFSPath::Parse("/assets").Value()).Succeeded());
+    VFS::VFSContext context = {};
+    context.Initialize(&cook_memory.MainArena);
+    ASSERT_TRUE(context.Mount(&backend, VFS::VFSPath::Root(), 0).Succeeded());
+    struct ContextGuard
+    {
+        VFS::VFSContext& Context;
+        ~ContextGuard()
+        {
+            Context.Shutdown();
+        }
+    } context_guard{context};
+
+    JSON       manifest = JSON::parse(Cook::Tests::ManifestGolden.begin(), Cook::Tests::ManifestGolden.end());
+    const auto words    = Cook::CookSchemaKeyWorkspaceWords(schemas);
+    ASSERT_TRUE(words.Succeeded());
+    std::vector<uint32_t> workspace(words.Value());
+    Cook::Digest256       schema_key = {};
+    ASSERT_TRUE(Cook::ComputeCookSchemaKey(*allocator, schemas, {workspace.data(), workspace.size()}, &schema_key).Succeeded());
+    const auto schema_hex                = schema_key.Hex();
+    manifest["schema_key"]               = std::string(schema_hex.data(), 64);
+    const std::array<uint8_t, 58> bmp    = {0x42, 0x4d, 58, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 24, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 20, 30, 0};
+    ZEngine::Core::Hash::SHA256   hash   = {};
+    Cook::Digest256               digest = {};
+    ASSERT_TRUE(hash.Update({bmp.data(), bmp.size()}).Succeeded());
+    ASSERT_TRUE(hash.Finalize(&digest).Succeeded());
+    Cook::CookObjectDescriptor object = {};
+    ASSERT_TRUE(Cook::MakeCookObjectDescriptor(digest, bmp.size(), "bmp", &object).Succeeded());
+    const std::string object_path = std::string("/output/") + object.Path.CStr();
+    ASSERT_TRUE(backend.WriteFile(VFS::VFSPath::Parse(object_path.c_str()).Value(), {bmp.data(), bmp.size()}).Succeeded());
+    const auto                                               texture_id           = *uuids::uuid::from_string("00000000-0000-4000-8000-000000000002");
+    const auto                                               scene_id             = *uuids::uuid::from_string("00000000-0000-4000-8000-000000000001");
+    const auto                                               material_id          = *uuids::uuid::from_string("00000000-0000-4000-8000-000000000003");
+    const auto                                               mesh_id              = *uuids::uuid::from_string("00000000-0000-4000-8000-000000000004");
+    const auto                                               environment_id       = *uuids::uuid::from_string("00000000-0000-4000-8000-000000000006");
+    const Cook::CookAssetIdentity                            identity             = {Cook::CookAssetKind::Texture, texture_id};
+    const Cook::CookAssetIdentity                            material_identity    = {Cook::CookAssetKind::Material, material_id};
+    const Cook::CookAssetIdentity                            environment_identity = {Cook::CookAssetKind::EnvironmentMap, environment_id};
+    ZEngine::Importers::AssetCodec::EnvironmentMapFileHeader environment_header   = {.MagicNumber = ZENVMAP_MAGIC, .Version = 2, .HeaderByteSize = sizeof(environment_header), .ImporterVersion = 1, .SourceHash = 1, .FaceWidth = 1, .FaceHeight = 1, .Channel = 4, .LayerCount = 6, .MipCount = 1, .ColorSpace = 1, .Orientation = 1, .MipPolicy = 1, .Exposure = 1, .BufferByteSize = 96};
+    std::array<uint8_t, sizeof(environment_header) + 96>     environment_bytes    = {};
+    std::memcpy(environment_bytes.data(), &environment_header, sizeof(environment_header));
+    for (uint32_t i = 0; i < 24; ++i)
+    {
+        const float value = float(i + 1);
+        std::memcpy(environment_bytes.data() + sizeof(environment_header) + i * sizeof(float), &value, sizeof(value));
+    }
+    ZEngine::Core::Hash::SHA256 environment_hash   = {};
+    Cook::Digest256             environment_digest = {};
+    ASSERT_TRUE(environment_hash.Update({environment_bytes.data(), environment_bytes.size()}).Succeeded());
+    ASSERT_TRUE(environment_hash.Finalize(&environment_digest).Succeeded());
+    Cook::CookObjectDescriptor environment_object = {};
+    ASSERT_TRUE(Cook::MakeCookObjectDescriptor(environment_digest, environment_bytes.size(), "zenvmap", &environment_object).Succeeded());
+    const std::string environment_path = std::string("/output/") + environment_object.Path.CStr();
+    ASSERT_TRUE(backend.WriteFile(VFS::VFSPath::Parse(environment_path.c_str()).Value(), {environment_bytes.data(), environment_bytes.size()}).Succeeded());
+    ZEngine::Importers::AssetMesh mesh = {};
+    mesh.MeshUUID                      = mesh_id;
+    mesh.Vertices.init(&cook_memory.MainArena, 24, 24);
+    mesh.Vertices[8]  = 1.f;
+    mesh.Vertices[17] = 1.f;
+    mesh.Indices.init(&cook_memory.MainArena, 3);
+    mesh.Indices.push(0);
+    mesh.Indices.push(1);
+    mesh.Indices.push(2);
+    mesh.SubMeshes.init(&cook_memory.MainArena, 1);
+    mesh.SubMeshes.push({.MaterialUUID = material_id, .VertexCount = 3, .IndexCount = 3, .VertexUnitStreamSize = 32, .IndexUnitStreamSize = 4, .TotalByteSize = 108});
+    ZEngine::Importers::AssetNodeHierarchy hierarchy = {};
+    hierarchy.NodeHierarchyUUID                      = *uuids::uuid::from_string("00000000-0000-4000-8000-000000000005");
+    hierarchy.MeshUUID                               = mesh_id;
+    hierarchy.Hierarchies.init(&cook_memory.MainArena, 1);
+    hierarchy.LocalTransforms.init(&cook_memory.MainArena, 1);
+    hierarchy.GlobalTransforms.init(&cook_memory.MainArena, 1);
+    hierarchy.Names.init(&cook_memory.MainArena, 1);
+    hierarchy.MaterialNames.init(&cook_memory.MainArena, 0);
+    hierarchy.NodeNames.init(&cook_memory.MainArena, 16);
+    hierarchy.NodeMeshes.init(&cook_memory.MainArena, 16);
+    hierarchy.NodeMaterials.init(&cook_memory.MainArena, 16);
+    ASSERT_EQ(ZEngine::Importers::AddNode(hierarchy, -1, 0), 0);
+    hierarchy.Names.push_use({}).init(&cook_memory.MainArena, "Root");
+    hierarchy.NodeNames.insert(0, 0);
+    hierarchy.NodeMeshes.insert(0, 0);
+    ZEngine::Importers::AssetCodec::ImportConfiguration config = {};
+    config.VFS                                                 = &context;
+    config.OutputAssetsPath.init(&cook_memory.MainArena, "/assets");
+    config.OutputAssetFile.init(&cook_memory.MainArena, "mesh.zemesh");
+    ASSERT_TRUE(ZEngine::Importers::AssetCodec::SerializeMeshAssetFile(&cook_memory.MainArena, mesh, hierarchy, config).Succeeded());
+    auto mesh_file = context.Open(VFS::VFSPath::Parse("/assets/mesh.zemesh").Value(), VFS::VFSOpenFlags::Read);
+    ASSERT_TRUE(mesh_file.Succeeded());
+    auto mesh_size = mesh_file.Value()->Size();
+    ASSERT_TRUE(mesh_size.Succeeded());
+    std::vector<uint8_t> mesh_bytes(static_cast<size_t>(mesh_size.Value()));
+    ASSERT_TRUE(mesh_file.Value()->ReadAll({mesh_bytes.data(), mesh_bytes.size()}).Succeeded());
+    ASSERT_TRUE(context.CloseChecked(mesh_file.Value()).Succeeded());
+    ZEngine::Core::Hash::SHA256 mesh_hash   = {};
+    Cook::Digest256             mesh_digest = {};
+    ASSERT_TRUE(mesh_hash.Update({mesh_bytes.data(), mesh_bytes.size()}).Succeeded());
+    ASSERT_TRUE(mesh_hash.Finalize(&mesh_digest).Succeeded());
+    Cook::CookObjectDescriptor mesh_object = {};
+    ASSERT_TRUE(Cook::MakeCookObjectDescriptor(mesh_digest, mesh_bytes.size(), "zemesh", &mesh_object).Succeeded());
+    const std::string mesh_path = std::string("/output/") + mesh_object.Path.CStr();
+    ASSERT_TRUE(backend.WriteFile(VFS::VFSPath::Parse(mesh_path.c_str()).Value(), {mesh_bytes.data(), mesh_bytes.size()}).Succeeded());
+    std::string material_bytes =
+        R"({"material_version":1,"uuid":"00000000-0000-4000-8000-000000000003","name":"Cooked","textures":{"albedo":{"uuid":"00000000-0000-4000-8000-000000000002","path":"assets/pixel.bmp"},"emissive":{"uuid":"00000000-0000-0000-0000-000000000000","path":""},"normal":{"uuid":"00000000-0000-0000-0000-000000000000","path":""},"opacity":{"uuid":"00000000-0000-0000-0000-000000000000","path":""},"specular":{"uuid":"00000000-0000-0000-0000-000000000000","path":""}},"ambient_color":[0,0,0,0],"albedo_color":[1,0.5,1,1],"emissive_color":[0,0,0,1],"roughness_color":[1,0.5,0,0],"specular_color":[0,0,0,0],"factors":[0,0,0.5,0],"alpha_mode":"BLEND","alpha_cutoff":0.5})";
+    material_bytes.replace(material_bytes.find("assets/pixel.bmp"), sizeof("assets/pixel.bmp") - 1, object.Path.CStr());
+    ZEngine::Core::Hash::SHA256 material_hash   = {};
+    Cook::Digest256             material_digest = {};
+    ASSERT_TRUE(material_hash.Update({reinterpret_cast<const uint8_t*>(material_bytes.data()), material_bytes.size()}).Succeeded());
+    ASSERT_TRUE(material_hash.Finalize(&material_digest).Succeeded());
+    Cook::CookObjectDescriptor material_object = {};
+    ASSERT_TRUE(Cook::MakeCookObjectDescriptor(material_digest, material_bytes.size(), "zematerial", &material_object).Succeeded());
+    const std::string material_path = std::string("/output/") + material_object.Path.CStr();
+    ASSERT_TRUE(backend.WriteFile(VFS::VFSPath::Parse(material_path.c_str()).Value(), {reinterpret_cast<const uint8_t*>(material_bytes.data()), material_bytes.size()}).Succeeded());
+    const auto object_hex   = digest.Hex();
+    const auto material_hex = material_digest.Hex();
+    manifest["assets"]      = JSON::array({
+        {{"kind", "material"}, {"uuid", uuids::to_string(material_id)}, {"format", "zematerial-v1-json"}, {"adapter_revision", 1}, {"input_key", std::string(64, '2')}, {"object", {{"path", material_object.Path.CStr()}, {"digest", std::string(material_hex.data(), 64)}, {"size", material_object.Size}}}, {"dependencies", JSON::array({{{"kind", "texture"}, {"uuid", uuids::to_string(texture_id)}, {"slot", "albedo"}}})}},
+        { {"kind", "texture"},  {"uuid", uuids::to_string(texture_id)},          {"format", "image-bmp"}, {"adapter_revision", 1}, {"input_key", std::string(64, '1')},                     {"object", {{"path", object.Path.CStr()}, {"digest", std::string(object_hex.data(), 64)}, {"size", object.Size}}},                                                                                    {"dependencies", JSON::array()}}
+    });
+    const auto mesh_hex     = mesh_digest.Hex();
+    manifest["assets"].push_back({
+        {"kind", "mesh"},
+        {"uuid", uuids::to_string(mesh_id)},
+        {"format", "zemesh-v1-le64"},
+        {"adapter_revision", 1},
+        {"input_key", std::string(64, '3')},
+        {"object", {{"path", mesh_object.Path.CStr()}, {"digest", std::string(mesh_hex.data(), 64)}, {"size", mesh_object.Size}}},
+        {"dependencies", JSON::array({{{"kind", "material"}, {"uuid", uuids::to_string(material_id)}, {"slot", "submeshes/0/material"}}})}
+    });
+    const auto environment_hex = environment_digest.Hex();
+    manifest["assets"].push_back({
+        {"kind", "environment-map"},
+        {"uuid", uuids::to_string(environment_id)},
+        {"format", "zenvmap-v2-le64"},
+        {"adapter_revision", 1},
+        {"input_key", std::string(64, '4')},
+        {"object", {{"path", environment_object.Path.CStr()}, {"digest", std::string(environment_hex.data(), 64)}, {"size", environment_object.Size}}},
+        {"dependencies", JSON::array()}
+    });
+    std::sort(manifest["assets"].begin(), manifest["assets"].end(), [](const JSON& a, const JSON& b) { return a["kind"].get<std::string>() < b["kind"].get<std::string>(); });
+    manifest["scenes"][0]["roots"] = JSON::array({
+        {{"kind", "environment-map"}, {"uuid", uuids::to_string(environment_id)}},
+        {           {"kind", "mesh"},        {"uuid", uuids::to_string(mesh_id)}}
+    });
+    const auto text                = manifest.dump();
+    ASSERT_TRUE(backend.WriteFile(VFS::VFSPath::Parse("/output/manifest.json").Value(), {reinterpret_cast<const uint8_t*>(text.data()), text.size()}).Succeeded());
+    VFS::VFSReadRootLease root = {};
+    ASSERT_TRUE(context.AcquireReadRoot(VFS::VFSPath::Parse("/output").Value(), &root).Succeeded());
+    Cook::CookDiagnostics                    diagnostics = {};
+    Cook::CookLimits                         cook_limits = {.MaxWorkingBytes = ZKilo(256)};
+    ZEngine::Managers::CookedPackageSnapshot package     = {};
+    ASSERT_TRUE(ZEngine::Managers::CookedPackageSnapshot::Capture(std::move(root), scene_id, schemas, cook_limits, *allocator, &diagnostics, &package).Succeeded());
+    SlabAllocationRoute route = {};
+    ASSERT_TRUE(route.Initialize(&cook_memory.MainArena, ZMega(1)));
+    const ZEngine::Managers::CookedCpuAssetLimits limits = {.MaxAssets = 4, .MaxObjectBytes = ZKilo(8), .MaxMeshWorkspaceBytes = ZKilo(64)};
+    Cache                                         cache  = {};
+    ASSERT_TRUE(cache.Initialize(route, schemas, limits, 1, 10, 5));
+    struct CacheGuard
+    {
+        Cache& Owner;
+        ~CacheGuard()
+        {
+            while (Owner.PumpOne())
+            {
+            }
+            EXPECT_TRUE(Owner.Shutdown());
+        }
+    } cache_guard{cache};
+    Cache::Lease lease = {}, cancel_lease = {}, material_lease = {}, mesh_lease = {}, environment_lease = {};
+    ASSERT_TRUE(cache.Request(std::move(package), &lease));
+    ASSERT_TRUE(lease.Retain(&cancel_lease));
+    ASSERT_TRUE(lease.Retain(&material_lease));
+    ASSERT_TRUE(lease.Retain(&mesh_lease));
+    ASSERT_TRUE(lease.Retain(&environment_lease));
+    ASSERT_TRUE(cache.PumpOne());
+    Cache::Result material_assets = {};
+    ASSERT_TRUE(material_lease.Poll(&material_assets));
+    ASSERT_EQ(material_assets.StateValue, Cache::State::Ready);
+    ASSERT_NE(material_assets.Assets, nullptr);
+    Upload upload = {};
+    ASSERT_TRUE(upload.Capture(std::move(lease), identity));
+    std::array<Upload*, 1>                               material_uploads = {&upload};
+    ZEngine::Rendering::Materials::CookedMaterialVersion cooked_material  = {};
+    using DescriptorState                                                 = ZEngine::Rendering::SceneTextureDescriptorState;
+    EXPECT_EQ(ZEngine::Rendering::Materials::PrepareCookedMaterial(*material_assets.Assets, material_identity, material_uploads, *Manager, &cooked_material), DescriptorState::Pending);
+    EXPECT_FALSE(cooked_material);
+    EXPECT_EQ(ZEngine::Rendering::Materials::PrepareCookedMaterial(*material_assets.Assets, material_identity, {}, *Manager, &cooked_material), DescriptorState::Failed);
+    const std::array<Upload*, 2> duplicate_uploads = {&upload, &upload};
+    EXPECT_EQ(ZEngine::Rendering::Materials::PrepareCookedMaterial(*material_assets.Assets, material_identity, duplicate_uploads, *Manager, &cooked_material), DescriptorState::Failed);
+    EXPECT_EQ(upload.Digest(), digest);
+    Upload cancelled = {};
+    ASSERT_TRUE(cancelled.Capture(std::move(cancel_lease), identity));
+    const auto before_cancel = Device->GpuMem.GetAllocationStatistics();
+    ASSERT_TRUE(cancelled.Prepare(*Manager));
+    ASSERT_TRUE(cancelled.StageOne());
+    cancelled.Reset();
+    EXPECT_EQ(Device->GpuMem.GetAllocationStatistics().AdmittedBytes, before_cancel.AdmittedBytes);
+    EXPECT_EQ(upload.State(), Upload::Phase::SourceReady);
+    auto replaced_object = bmp;
+    replaced_object[54]  = 200;
+    ASSERT_TRUE(backend.WriteFile(VFS::VFSPath::Parse(object_path.c_str()).Value(), {replaced_object.data(), replaced_object.size()}).Succeeded());
+    ASSERT_TRUE(upload.Prepare(*Manager));
+    bool        staged = false;
+    std::thread worker([&] { staged = upload.StageOne(); });
+    worker.join();
+    ASSERT_TRUE(staged);
+    EXPECT_EQ(upload.State(), Upload::Phase::Staged);
+    EXPECT_EQ(upload.StagedBytes(), 4u);
+
+    const auto incompatible = CreateProducerTestTexture("cooked-wrong-format", true, 16);
+    ASSERT_TRUE(incompatible.Valid());
+    RRMUploadBatchTestHelper::InitializeTextureUploadSlots(*Manager, *Device, UploadCommands, false);
+    TextureUploadSlotsInitialized = true;
+    {
+        using Batch              = ZEngine::Rendering::Textures::CookedSceneTextureBatch;
+        Cache::Lease batch_lease = {};
+        ASSERT_TRUE(material_lease.Retain(&batch_lease));
+        RRM::SceneResourcePreparationId batch_scene = {};
+        ASSERT_TRUE(Manager->PrepareSceneResources({87, 1}, 1, {}, &batch_scene, RRM::ScenePreparationContent::MeshMaterials, nullptr, nullptr, false, material_assets.Assets));
+        Batch batch = {};
+        EXPECT_FALSE(batch.Initialize(std::move(batch_lease), route, *Manager, *Device, batch_scene, 0));
+        EXPECT_TRUE(batch_lease);
+        ASSERT_TRUE(batch.Initialize(std::move(batch_lease), route, *Manager, *Device, batch_scene, 1));
+        EXPECT_FALSE(batch_lease);
+        ASSERT_EQ(batch.Step(0, 0), Batch::State::Pending);
+        ASSERT_NE(batch.Find(identity), nullptr);
+        ASSERT_EQ(batch.Step(0, 0), Batch::State::Pending);
+        EXPECT_EQ(batch.Find(identity)->State(), Upload::Phase::Staged);
+        batch.Reset();
+        ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(batch_scene));
+        Manager->PollSceneResourcePreparations();
+        RRMUploadBatchTestHelper::FlushTextureReleases(*Manager);
+        EXPECT_EQ(batch.Status(), Batch::State::Empty);
+    }
+    {
+        {
+            Cache::Lease invalid_target_lease = {};
+            ASSERT_TRUE(environment_lease.Retain(&invalid_target_lease));
+            ZEngine::Rendering::Textures::CookedEnvironmentUpload upload_environment = {};
+            ASSERT_TRUE(upload_environment.Capture(std::move(invalid_target_lease), environment_identity));
+            EXPECT_EQ(upload_environment.Digest(), environment_digest);
+            ASSERT_TRUE(upload_environment.Prepare(*Manager));
+            ASSERT_TRUE(upload_environment.StageOne());
+            EXPECT_EQ(upload_environment.StagedBytes(), 96u);
+            EXPECT_FALSE(upload_environment.Submit(0, 0, incompatible));
+            EXPECT_EQ(upload_environment.State(), ZEngine::Rendering::Textures::CookedEnvironmentUpload::Phase::Staged);
+        }
+        RRM::SceneEnvironmentInput sky = {};
+        sky.Sky.Mode                   = ZEngine::Rendering::Scenes::SkyMode::HDRI;
+        sky.Sky.EnvironmentMap         = environment_id;
+        sky.SkyRevision                = 1;
+        {
+            using EnvironmentBatch          = ZEngine::Rendering::Textures::CookedSceneEnvironmentBatch;
+            Cache::Lease cancellation_lease = {};
+            ASSERT_TRUE(environment_lease.Retain(&cancellation_lease));
+            RRM::SceneResourcePreparationId cancellation_scene = {};
+            ASSERT_TRUE(Manager->PrepareSceneResources({86, 1}, 1, {}, &cancellation_scene, RRM::ScenePreparationContent::MeshMaterials, &sky, nullptr, false, material_assets.Assets));
+            EnvironmentBatch cancelled = {};
+            EXPECT_FALSE(cancelled.Initialize(std::move(cancellation_lease), identity, *Manager, *Device, cancellation_scene));
+            EXPECT_TRUE(cancellation_lease);
+            ASSERT_TRUE(cancelled.Initialize(std::move(cancellation_lease), environment_identity, *Manager, *Device, cancellation_scene));
+            ASSERT_EQ(cancelled.Step(0, 0), EnvironmentBatch::State::Pending);
+            ASSERT_EQ(cancelled.Step(0, 0), EnvironmentBatch::State::Pending);
+            const auto cancelled_target = cancelled.Texture();
+            ASSERT_TRUE(cancelled_target.Valid());
+            cancelled.Reset();
+            ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(cancellation_scene));
+            Manager->PollSceneResourcePreparations();
+            RRMUploadBatchTestHelper::FlushTextureReleases(*Manager);
+            EXPECT_FALSE(Manager->CanWriteTextureVersion(cancelled_target)); // Destruction is queued for device retirement.
+        }
+        RRM::SceneResourcePreparationId environment_scene = {};
+        ASSERT_TRUE(Manager->PrepareSceneResources({88, 1}, 1, {}, &environment_scene, RRM::ScenePreparationContent::MeshMaterials, &sky, nullptr, false, material_assets.Assets));
+        EXPECT_FALSE(Manager->FinishCookedSceneResources(environment_scene));
+        using EnvironmentBatch       = ZEngine::Rendering::Textures::CookedSceneEnvironmentBatch;
+        EnvironmentBatch environment = {};
+        ASSERT_TRUE(environment.Initialize(std::move(environment_lease), environment_identity, *Manager, *Device, environment_scene, true));
+        ASSERT_EQ(environment.Step(0, 0), EnvironmentBatch::State::Pending);
+        ASSERT_EQ(environment.Step(0, 0), EnvironmentBatch::State::Pending);
+        ASSERT_EQ(environment.Step(0, 0), EnvironmentBatch::State::Pending);
+        const auto cube_target = environment.Texture();
+        ASSERT_TRUE(cube_target.Valid());
+        Manager->SubmitAsyncUploads();
+        const auto* cube_ticket = Manager->FindStreamingUploadTicket(cube_target);
+        ASSERT_NE(cube_ticket, nullptr);
+        ASSERT_NE(cube_ticket->CompletionTimeline, nullptr);
+        cube_ticket->CompletionTimeline->Wait(cube_ticket->CompletionValue);
+        RRMUploadBatchTestHelper::RetireTextureUploadSlots(*Manager);
+        EXPECT_EQ(Manager->GetTextureDecodeState(cube_target), RRM::TextureDecodeState::Succeeded);
+        ASSERT_EQ(environment.Step(0, 0), EnvironmentBatch::State::Ready);
+        auto readback = this->allocator().AllocateBuffer(96, VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::HostReadback, "cooked-environment-readback");
+        ASSERT_TRUE(readback);
+        const auto* cube_texture = Device->GlobalTextures.Access(cube_target);
+        ASSERT_NE(cube_texture, nullptr);
+        const auto               image   = Device->ImageBufferManager.Access(cube_texture->BufferHandle)->GetHandle();
+        const auto               command = Commands[2]->GetHandle();
+        VkCommandBufferBeginInfo begin   = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        ASSERT_EQ(vkBeginCommandBuffer(command, &begin), VK_SUCCESS);
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_SHADER_READ_BIT, .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT, .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = image, .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6}
+        };
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        const VkBufferImageCopy copy = {
+            .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 6},
+              .imageExtent = {1, 1, 1}
+        };
+        vkCmdCopyImageToBuffer(command, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback.Handle, 1, &copy);
+        barrier.srcAccessMask              = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.dstAccessMask              = VK_ACCESS_SHADER_READ_BIT;
+        barrier.oldLayout                  = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.newLayout                  = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkBufferMemoryBarrier host_barrier = {.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_HOST_READ_BIT, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .buffer = readback.Handle, .offset = 0, .size = 96};
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 1, &host_barrier, 1, &barrier);
+        ASSERT_EQ(vkEndCommandBuffer(command), VK_SUCCESS);
+        VkSubmitInfo submit = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .commandBufferCount = 1, .pCommandBuffers = &command};
+        const auto   queue  = Device->GetQueue(ZEngine::Rendering::QueueType::GRAPHIC_QUEUE).Handle;
+        ASSERT_EQ(vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE), VK_SUCCESS);
+        ASSERT_EQ(vkQueueWaitIdle(queue), VK_SUCCESS);
+        std::array<float, 24> pixels = {};
+        ASSERT_EQ(vmaCopyAllocationToMemory(this->allocator().Allocator, readback.Allocation, 0, pixels.data(), 96), VK_SUCCESS);
+        for (uint32_t i = 0; i < pixels.size(); ++i)
+        {
+            EXPECT_FLOAT_EQ(pixels[i], float(i + 1));
+        }
+        this->allocator().FreeBuffer(readback);
+        ASSERT_TRUE(Manager->FinishCookedSceneResources(environment_scene));
+        Manager->PollSceneResourcePreparations();
+        RRM::SceneEnvironmentPreparation pending_environment = {};
+        auto                             environment_reader  = Manager->ClaimSceneEnvironmentPreparation(&pending_environment);
+        ASSERT_TRUE(environment_reader);
+        EXPECT_EQ(pending_environment.CookedSource, cube_target);
+        EXPECT_EQ(pending_environment.CookedFaceWidth, 1u);
+        EXPECT_EQ(pending_environment.CookedSourceHash, environment_header.SourceHash);
+        ZEngine::Rendering::Textures::TextureHandle taken_source = {};
+        ASSERT_TRUE(Manager->TakeCookedSceneEnvironment(environment_scene, &taken_source));
+        EXPECT_EQ(taken_source, cube_target);
+        ZEngine::Rendering::Textures::TextureHandle duplicate_source = {};
+        EXPECT_FALSE(Manager->TakeCookedSceneEnvironment(environment_scene, &duplicate_source));
+        environment_reader.Reset();
+        ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(environment_scene));
+        Manager->PollSceneResourcePreparations();
+        Manager->ReleaseTexture(taken_source);
+        environment.Reset();
+    }
+    EXPECT_FALSE(upload.Submit(0, 0, incompatible));
+    EXPECT_EQ(upload.State(), Upload::Phase::Staged);
+    auto specification   = Device->GlobalTextures.Access(incompatible)->Specification;
+    specification.Format = ZEngine::Rendering::Specifications::ImageFormat::R8G8B8A8_SRGB;
+    const auto target    = Device->CreateTexture(specification, "cooked-texture");
+    ASSERT_TRUE(target.Valid());
+    struct DescriptorPreparation final : ZEngine::Rendering::ISceneTextureDescriptorPreparation
+    {
+        ZEngine::Rendering::SceneTextureDescriptorState           State   = ZEngine::Rendering::SceneTextureDescriptorState::Pending;
+        ZEngine::Rendering::Textures::TextureHandle               Texture = {};
+        ZEngine::Helpers::Handle<ZEngine::Hardwares::ImageBuffer> Image   = {};
+        bool                                                      Current = false;
+        ZEngine::Rendering::SceneTextureDescriptorState           PrepareSceneTextureDescriptor(ZEngine::Rendering::Textures::TextureHandle texture, ZEngine::Helpers::Handle<ZEngine::Hardwares::ImageBuffer> image, uint64_t* publication) override
+        {
+            Texture = texture;
+            Image   = image;
+            if (State == ZEngine::Rendering::SceneTextureDescriptorState::Ready)
+            {
+                *publication = 42;
+            }
+            return State;
+        }
+        bool IsSceneTextureDescriptorCurrent(ZEngine::Rendering::Textures::TextureHandle texture, ZEngine::Helpers::Handle<ZEngine::Hardwares::ImageBuffer> image, uint64_t publication) override
+        {
+            return Current && texture == Texture && image == Image && publication == 42;
+        }
+    } descriptor;
+    struct DescriptorRestore
+    {
+        RRM&                                                    Manager;
+        ZEngine::Rendering::ISceneTextureDescriptorPreparation* Previous = nullptr;
+        ~DescriptorRestore()
+        {
+            RRMUploadBatchTestHelper::SetTextureDescriptorPreparation(Manager, Previous);
+        }
+    } restore{*Manager, RRMUploadBatchTestHelper::SetTextureDescriptorPreparation(*Manager, &descriptor)};
+    Cache::Statistics leases_before_submit = {};
+    ASSERT_TRUE(cache.TryGetStatistics(&leases_before_submit));
+    RRMUploadBatchTestHelper::SaturateTextureUploadQueue(*Manager);
+    EXPECT_FALSE(upload.Submit(0, 0, target));
+    EXPECT_EQ(upload.State(), Upload::Phase::Staged);
+    EXPECT_EQ(upload.SubmittedBinding(), nullptr);
+    Cache::Statistics leases_after_refusal = {};
+    ASSERT_TRUE(cache.TryGetStatistics(&leases_after_refusal));
+    EXPECT_EQ(leases_after_refusal.Leases, leases_before_submit.Leases);
+    RRMUploadBatchTestHelper::ClearTextureUploadJobs(*Manager);
+    ASSERT_TRUE(upload.Submit(0, 0, target));
+    Cache::Statistics leases_after_submit = {};
+    ASSERT_TRUE(cache.TryGetStatistics(&leases_after_submit));
+    EXPECT_EQ(leases_after_submit.Leases + 1, leases_before_submit.Leases);
+    const auto* binding = upload.SubmittedBinding();
+    ASSERT_NE(binding, nullptr);
+    EXPECT_EQ(binding->Identity, identity);
+    EXPECT_EQ(binding->ObjectDigest, digest);
+    EXPECT_EQ(binding->Handle, target);
+    EXPECT_EQ(Manager->FindStreamingUploadTicket(target), nullptr); // Not submitted to the GPU yet.
+    EXPECT_EQ(upload.Poll(), Upload::Readiness::Pending);
+    EXPECT_FALSE(Manager->IsTextureVersionPinned(target));
+    EXPECT_EQ(upload.ProducerDescriptorBinding(), nullptr);
+    Manager->SubmitAsyncUploads();
+    const auto* ticket = Manager->FindStreamingUploadTicket(target);
+    ASSERT_NE(ticket, nullptr);
+    ticket->CompletionTimeline->Wait(ticket->CompletionValue);
+    RRMUploadBatchTestHelper::RetireTextureUploadSlots(*Manager);
+    EXPECT_EQ(upload.Poll(), Upload::Readiness::Pending); // Descriptor not yet published.
+    EXPECT_TRUE(Manager->IsTextureVersionPinned(target));
+    EXPECT_FALSE(Manager->CanWriteTextureVersion(target));
+    descriptor.State   = ZEngine::Rendering::SceneTextureDescriptorState::Ready;
+    descriptor.Current = true;
+    EXPECT_EQ(upload.Poll(), Upload::Readiness::AwaitingConsumer);
+    ASSERT_NE(upload.ProducerDescriptorBinding(), nullptr);
+    EXPECT_EQ(upload.ProducerDescriptorBinding()->ObjectDigest, digest);
+    auto retained = upload.RetainPreparedVersion();
+    ASSERT_TRUE(retained);
+    ZEngine::Rendering::Meshes::MeshMaterial explicit_values = {};
+    ASSERT_TRUE(ZEngine::Rendering::Materials::BuildCookedMaterial(*material_assets.Assets, material_identity, {upload.ProducerDescriptorBinding(), 1}, &explicit_values));
+    const RRM::TextureVersionPin* explicit_pins[5] = {&retained, nullptr, nullptr, nullptr, nullptr};
+    RRM::MaterialVersionPin       explicit_result  = {};
+    EXPECT_EQ(Manager->PrepareExplicitMaterialVersion(explicit_values, explicit_pins, &explicit_result), DescriptorState::Pending);
+    EXPECT_FALSE(explicit_result);
+    auto wrong_values      = explicit_values;
+    wrong_values.AlbedoMap = INVALID_MAP_HANDLE;
+    EXPECT_EQ(Manager->PrepareExplicitMaterialVersion(wrong_values, explicit_pins, &explicit_result), DescriptorState::Failed);
+    EXPECT_FALSE(explicit_result);
+    descriptor.Current = false;
+    EXPECT_EQ(upload.ProducerDescriptorBinding(), nullptr);
+    EXPECT_FALSE(upload.RetainPreparedVersion());
+    descriptor.State = ZEngine::Rendering::SceneTextureDescriptorState::Pending;
+    EXPECT_EQ(upload.Poll(), Upload::Readiness::Pending);
+    descriptor.State   = ZEngine::Rendering::SceneTextureDescriptorState::Ready;
+    descriptor.Current = true;
+    EXPECT_EQ(upload.Poll(), Upload::Readiness::AwaitingConsumer);
+    EXPECT_EQ(upload.ReadyBinding(), nullptr);
+    EXPECT_EQ(ZEngine::Rendering::Materials::PrepareCookedMaterial(*material_assets.Assets, material_identity, material_uploads, *Manager, &cooked_material), DescriptorState::Pending);
+    EXPECT_FALSE(cooked_material);
+    const uint8_t expected[4] = {30, 20, 10, 255};
+    CheckTextureReadback(target, expected);
+    const auto acknowledged = *ticket;
+    ASSERT_TRUE(Manager->AcknowledgeStreamingUploadAcquire(acknowledged, Timeline.get(), 1, Device->GraphicFamilyIndex));
+    EXPECT_EQ(upload.Poll(), Upload::Readiness::Ready);
+    ASSERT_NE(upload.ReadyBinding(), nullptr);
+    EXPECT_EQ(upload.ReadyBinding()->ObjectDigest, digest);
+    ASSERT_EQ(ZEngine::Rendering::Materials::PrepareCookedMaterial(*material_assets.Assets, material_identity, material_uploads, *Manager, &cooked_material), DescriptorState::Ready);
+    EXPECT_EQ(ZEngine::Rendering::Materials::PrepareCookedMaterial(*material_assets.Assets, material_identity, material_uploads, *Manager, &cooked_material), DescriptorState::Failed);
+    EXPECT_EQ(cooked_material.Identity(), material_identity);
+    EXPECT_EQ(cooked_material.Digest(), material_digest);
+    ASSERT_TRUE(cooked_material.Pin().Get());
+    EXPECT_EQ(cooked_material.Pin().Get()->Material.AlbedoMap, target.Index);
+    EXPECT_FLOAT_EQ(cooked_material.Pin().Get()->Material.AlbedoColor.y, 0.5f);
+    EXPECT_EQ(cooked_material.Pin().Get()->Material.AlphaMode, ZEngine::Rendering::Materials::AlphaMode::Blend);
+    ASSERT_NE(cooked_material.Pin().GetTexture(0), nullptr);
+    EXPECT_EQ(cooked_material.Pin().GetTexture(0)->Handle, target);
+    {
+        TLSFSlab metadata = {};
+        metadata.Init(&Memory.MainArena, ZKilo(16));
+        auto vertices = this->allocator().AllocateBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::HostReadback, "cooked-scene-vertices");
+        auto indices  = this->allocator().AllocateBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::HostReadback, "cooked-scene-indices");
+        RRMUploadBatchTestHelper::InitializeCookedGeometry(*Manager, Memory.MainArena, vertices, indices);
+        struct GeometryGuard
+        {
+            RRM&          Manager;
+            GpuAllocator& Allocator;
+            TLSFSlab&     Metadata;
+            BufferView&   Vertices;
+            BufferView&   Indices;
+            VkDevice      Device;
+            ~GeometryGuard()
+            {
+                Manager.EndFrame();
+                vkDeviceWaitIdle(Device);
+                RRMUploadBatchTestHelper::ReleaseSceneBuffersAfterIdle(Manager);
+                RRMUploadBatchTestHelper::ReleaseCookedGeometryAfterIdle(Manager);
+                Allocator.FreeBuffer(Vertices);
+                Allocator.FreeBuffer(Indices);
+                Metadata.Shutdown();
+            }
+        } geometry_guard{*Manager, this->allocator(), metadata, vertices, indices, s_vk->Device};
+        using MeshBatch = ZEngine::Rendering::Meshes::CookedSceneMeshBatch;
+        {
+            Cache::Lease cancellation_lease = {};
+            ASSERT_TRUE(material_lease.Retain(&cancellation_lease));
+            RRM::SceneResourcePreparationId cancellation_scene = {};
+            ASSERT_TRUE(Manager->PrepareSceneResources({94, 1}, 1, std::span(&mesh_id, 1), &cancellation_scene, RRM::ScenePreparationContent::MeshMaterials, nullptr, nullptr, false, material_assets.Assets));
+            MeshBatch        cancelled_batch  = {};
+            const std::array duplicate_meshes = {mesh_id, mesh_id};
+            EXPECT_FALSE(cancelled_batch.Initialize(std::move(cancellation_lease), duplicate_meshes, route, *Manager, metadata, cancellation_scene));
+            EXPECT_TRUE(cancellation_lease);
+            ASSERT_TRUE(cancelled_batch.Initialize(std::move(cancellation_lease), std::span(&mesh_id, 1), route, *Manager, metadata, cancellation_scene));
+            for (uint32_t i = 0; i < 4; ++i)
+                ASSERT_EQ(cancelled_batch.Step(0), MeshBatch::State::Pending);
+            cancelled_batch.Cancel();
+            EXPECT_EQ(cancelled_batch.Status(), MeshBatch::State::Draining);
+            EXPECT_FALSE(cancelled_batch.Reset());
+            Manager->EndFrame();
+            ASSERT_EQ(vkDeviceWaitIdle(s_vk->Device), VK_SUCCESS);
+            ASSERT_EQ(cancelled_batch.Step(0), MeshBatch::State::Cancelled);
+            ASSERT_TRUE(cancelled_batch.Reset());
+            Manager->BeginFrame(0);
+            ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(cancellation_scene));
+            Manager->PollSceneResourcePreparations();
+        }
+        {
+            // Model an older accepted batch's retained staging alongside new
+            // staging recorded by the generic batch path.
+            auto prior    = Device->GpuMem.AllocateBuffer(64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging, "prior-batch-staging");
+            auto rejected = Device->GpuMem.AllocateBuffer(64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, GpuMemoryDomain::HostStaging, "rejected-batch-staging");
+            ASSERT_TRUE(prior);
+            ASSERT_TRUE(rejected);
+            ASSERT_EQ(RRMUploadBatchTestHelper::BatchStagingCount(*Manager, 0), 0u);
+            const auto prior_signal = RRMUploadBatchTestHelper::BatchLastSignal(*Manager, 0);
+            ASSERT_NE(prior_signal, 0u);
+            RRMUploadBatchTestHelper::AppendBatchStaging(*Manager, 0, prior);
+            RRMUploadBatchTestHelper::AppendBatchStaging(*Manager, 0, rejected);
+            RRMUploadBatchTestHelper::DiscardStagingTail(*Manager, 0, 1);
+            EXPECT_EQ(RRMUploadBatchTestHelper::BatchStagingCount(*Manager, 0), 1u);
+            EXPECT_EQ(RRMUploadBatchTestHelper::BatchStagingHandle(*Manager, 0, 0), prior.Handle);
+            EXPECT_EQ(RRMUploadBatchTestHelper::BatchLastSignal(*Manager, 0), prior_signal);
+            Manager->BeginFrame(0);
+            EXPECT_EQ(RRMUploadBatchTestHelper::BatchStagingCount(*Manager, 0), 0u);
+        }
+        {
+            Cache::Lease failure_lease = {};
+            ASSERT_TRUE(material_lease.Retain(&failure_lease));
+            RRM::SceneResourcePreparationId failed_scene = {};
+            ASSERT_TRUE(Manager->PrepareSceneResources({94, 2}, 1, std::span(&mesh_id, 1), &failed_scene, RRM::ScenePreparationContent::MeshMaterials, nullptr, nullptr, false, material_assets.Assets));
+            MeshBatch failed_batch = {};
+            ASSERT_TRUE(failed_batch.Initialize(std::move(failure_lease), std::span(&mesh_id, 1), route, *Manager, metadata, failed_scene));
+            for (uint32_t i = 0; i < 4; ++i)
+                ASSERT_EQ(failed_batch.Step(0), MeshBatch::State::Pending);
+            ASSERT_TRUE(failed_batch.HasRecordedUpload());
+            ASSERT_EQ(RRMUploadBatchTestHelper::BatchStagingCount(*Manager, 0), 1u);
+            ASSERT_TRUE(RRMUploadBatchTestHelper::RejectRecordedCookedBatch(*Manager));
+            EXPECT_EQ(RRMUploadBatchTestHelper::BatchStagingCount(*Manager, 0), 0u);
+            EXPECT_EQ(failed_batch.Step(0), MeshBatch::State::Draining);
+            EXPECT_FALSE(failed_batch.Reset());
+            EXPECT_EQ(failed_batch.Step(0), MeshBatch::State::Failed);
+            EXPECT_TRUE(failed_batch.Reset());
+            EXPECT_EQ(RRMUploadBatchTestHelper::OutstandingCookedMeshUploads(*Manager), 0u);
+            Manager->PollSceneResourcePreparations();
+            EXPECT_TRUE(RRMUploadBatchTestHelper::BatchSubmissionFailed(*Manager));
+            ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(failed_scene));
+            Manager->PollSceneResourcePreparations();
+            EXPECT_FALSE(RRMUploadBatchTestHelper::BatchSubmissionFailed(*Manager));
+        }
+        ZEngine::Rendering::Scenes::MeshInstance instance = {};
+        instance.MeshUUID                                 = mesh_id;
+        instance.Transform(0, 3)                          = 7.f;
+        RRM::SceneInitialFrameInput initial               = {};
+        initial.Instances                                 = {&instance, 1};
+        RRM::SceneResourcePreparationId scene             = {};
+        ASSERT_TRUE(Manager->PrepareSceneResources({89, 1}, 1, std::span(&mesh_id, 1), &scene, RRM::ScenePreparationContent::MeshMaterials, nullptr, &initial, false, material_assets.Assets));
+        MeshBatch batch = {};
+        ASSERT_TRUE(batch.Initialize(std::move(mesh_lease), std::span(&mesh_id, 1), route, *Manager, metadata, scene));
+        ASSERT_EQ(batch.Step(0), MeshBatch::State::Pending);
+        ASSERT_EQ(batch.Step(0), MeshBatch::State::Pending);
+        ASSERT_EQ(batch.Step(0), MeshBatch::State::Pending);
+        ASSERT_EQ(batch.Step(0), MeshBatch::State::Pending);
+        Manager->EndFrame();
+        ASSERT_EQ(vkDeviceWaitIdle(s_vk->Device), VK_SUCCESS);
+        ASSERT_EQ(batch.Step(0), MeshBatch::State::Ready);
+        ASSERT_TRUE(batch.Reset());
+        ASSERT_TRUE(Manager->AppendCookedSceneMaterial(scene, *material_assets.Assets, cooked_material));
+        ASSERT_TRUE(Manager->FinishCookedSceneResources(scene));
+        const auto ready = FinishScenePreparation(scene);
+        ASSERT_EQ(ready.State, RRM::SceneResourcePreparationState::ResourcesRetained);
+        EXPECT_TRUE(ready.Cooked);
+        EXPECT_EQ(ready.InitialDrawCount, 1u);
+        EXPECT_TRUE(ready.InitialBuffersPrepared);
+        // A later candidate's rejected batch must not invalidate an already
+        // retained outgoing scene when the device itself remains healthy.
+        RRMUploadBatchTestHelper::SetInjectedBatchRejection(*Manager);
+        Manager->PollSceneResourcePreparations();
+        RRM::SceneResourcePreparationResult still_ready = {};
+        ASSERT_TRUE(Manager->PollSceneResourcePreparation(scene, &still_ready));
+        EXPECT_EQ(still_ready.State, RRM::SceneResourcePreparationState::ResourcesRetained);
+        EXPECT_FALSE(RRMUploadBatchTestHelper::BatchSubmissionFailed(*Manager));
+        ZEngine::Rendering::Scenes::PreparedSceneFrame prepared_frame = {};
+        ASSERT_TRUE(Manager->GetPreparedSceneFrame(scene, &prepared_frame));
+        ASSERT_EQ(prepared_frame.Draws.size(), 1u);
+        EXPECT_TRUE(prepared_frame.Draws[0].Transparent);
+        ASSERT_EQ(prepared_frame.Transforms.size(), 1u);
+        EXPECT_FLOAT_EQ(prepared_frame.Transforms[0](0, 3), 7.f);
+        RRM::MeshGeometrySnapshot    geometry = {};
+        RRM::MaterialVersionSnapshot material = {};
+        ASSERT_TRUE(Manager->GetPreparedSceneGeometry(scene, mesh_id, &geometry));
+        ASSERT_TRUE(Manager->GetPreparedSceneMaterial(scene, material_id, &material));
+        EXPECT_NE(geometry.Version, 0u);
+        EXPECT_EQ(material.Material.AlphaMode, ZEngine::Rendering::Materials::AlphaMode::Blend);
+        const auto geometry_version = geometry.Version;
+        auto       scene_reader     = Manager->AcquireSceneResourceLease(scene, 2);
+        ASSERT_TRUE(scene_reader);
+        Manager->NotifyPreparedSceneFrameRecorded(scene);
+        EXPECT_FALSE(Manager->GetPreparedSceneFrame(scene, &prepared_frame));
+        ASSERT_TRUE(Manager->GetPreparedSceneGeometry(scene, mesh_id, &geometry));
+        ASSERT_TRUE(Manager->GetPreparedSceneMaterial(scene, material_id, &material));
+        EXPECT_EQ(geometry.Version, geometry_version);
+        EXPECT_EQ(material.Material.AlbedoMap, target.Index);
+        scene_reader.Reset();
+        ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(scene));
+        RRM::SceneResourcePreparationResult retiring = {};
+        for (uint32_t i = 0; i < 100 && Manager->PollSceneResourcePreparation(scene, &retiring); ++i)
+        {
+            Manager->PollSceneResourcePreparations();
+        }
+        EXPECT_FALSE(Manager->PollSceneResourcePreparation(scene, &retiring));
+    }
+    {
+        TLSFSlab metadata = {};
+        metadata.Init(&Memory.MainArena, ZKilo(16));
+        auto vertices = this->allocator().AllocateBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::HostReadback, "cooked-driver-vertices");
+        auto indices  = this->allocator().AllocateBuffer(1024, VK_BUFFER_USAGE_TRANSFER_DST_BIT, GpuMemoryDomain::HostReadback, "cooked-driver-indices");
+        RRMUploadBatchTestHelper::InitializeCookedGeometry(*Manager, Memory.MainArena, vertices, indices);
+        struct DriverGeometryGuard
+        {
+            RRM&          Manager;
+            GpuAllocator& Allocator;
+            TLSFSlab&     Metadata;
+            BufferView&   Vertices;
+            BufferView&   Indices;
+            VkDevice      Device;
+            ~DriverGeometryGuard()
+            {
+                Manager.EndFrame();
+                vkDeviceWaitIdle(Device);
+                RRMUploadBatchTestHelper::ReleaseSceneBuffersAfterIdle(Manager);
+                RRMUploadBatchTestHelper::ReleaseCookedGeometryAfterIdle(Manager);
+                Allocator.FreeBuffer(Vertices);
+                Allocator.FreeBuffer(Indices);
+                Metadata.Shutdown();
+            }
+        } geometry_guard{*Manager, this->allocator(), metadata, vertices, indices, s_vk->Device};
+        ZEngine::Rendering::Scenes::MeshInstance instance = {};
+        instance.MeshUUID                                 = mesh_id;
+        RRM::SceneInitialFrameInput initial               = {};
+        initial.Instances                                 = {&instance, 1};
+        RRM::SceneEnvironmentInput sky                    = {};
+        sky.Sky.Mode                                      = ZEngine::Rendering::Scenes::SkyMode::HDRI;
+        sky.Sky.EnvironmentMap                            = environment_id;
+        sky.SkyRevision                                   = 1;
+        RRM::SceneResourcePreparationId scene             = {};
+        ASSERT_TRUE(Manager->PrepareSceneResources({95, 1}, 1, std::span(&mesh_id, 1), &scene, RRM::ScenePreparationContent::MeshMaterials, &sky, &initial, false, material_assets.Assets));
+        using Mailbox           = ZEngine::Rendering::CookedSceneGpuMailbox;
+        Mailbox         mailbox = {};
+        Mailbox::Ticket request = {};
+        ASSERT_TRUE(mailbox.Begin(material_lease, std::span(&mesh_id, 1), environment_identity, route, metadata, *Manager, *Device, scene, 1, &request));
+        Mailbox::Ticket duplicate_request = {};
+        EXPECT_FALSE(mailbox.Begin(material_lease, std::span(&mesh_id, 1), environment_identity, route, metadata, *Manager, *Device, scene, 1, &duplicate_request));
+        EXPECT_FALSE(duplicate_request);
+        ZEngine::Rendering::Primitives::Semaphore acquired(Device.get(), true);
+        bool                                      acknowledged_batch = false;
+        Mailbox::Outcome                          outcome            = Mailbox::Outcome::Pending;
+        for (uint32_t i = 0; i < 100 && outcome == Mailbox::Outcome::Pending; ++i)
+        {
+            ASSERT_TRUE(mailbox.PumpOne(0, 0));
+            ASSERT_TRUE(mailbox.Poll(request, &outcome));
+            Manager->EndFrame();
+            Manager->SubmitAsyncUploads();
+            ASSERT_EQ(vkDeviceWaitIdle(s_vk->Device), VK_SUCCESS);
+            RRMUploadBatchTestHelper::RetireTextureUploadSlots(*Manager);
+            Manager->BeginFrame(0);
+            auto*       texture = mailbox.FindTexture(request, identity);
+            const auto* binding = texture ? texture->SubmittedBinding() : nullptr;
+            const auto* ticket  = binding ? Manager->FindStreamingUploadTicket(binding->Handle) : nullptr;
+            if (!acknowledged_batch && ticket)
+            {
+                const auto  accepted = *ticket;
+                const auto* resource = Device->GlobalTextures.Access(binding->Handle);
+                ASSERT_NE(resource, nullptr);
+                const auto image   = Device->ImageBufferManager.Access(resource->BufferHandle)->GetHandle();
+                const auto command = Commands[2]->GetHandle();
+                ASSERT_EQ(vkResetCommandBuffer(command, 0), VK_SUCCESS);
+                VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+                ASSERT_EQ(vkBeginCommandBuffer(command, &begin), VK_SUCCESS);
+                VkImageMemoryBarrier barrier = {
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT, .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = image, .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
+                };
+                vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+                ASSERT_EQ(vkEndCommandBuffer(command), VK_SUCCESS);
+                const uint64_t                signal    = 1;
+                const auto                    semaphore = acquired.GetHandle();
+                VkTimelineSemaphoreSubmitInfo timeline  = {.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, .signalSemaphoreValueCount = 1, .pSignalSemaphoreValues = &signal};
+                VkSubmitInfo                  submit    = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .pNext = &timeline, .commandBufferCount = 1, .pCommandBuffers = &command, .signalSemaphoreCount = 1, .pSignalSemaphores = &semaphore};
+                ASSERT_EQ(vkQueueSubmit(Device->GetQueue(ZEngine::Rendering::QueueType::GRAPHIC_QUEUE).Handle, 1, &submit, VK_NULL_HANDLE), VK_SUCCESS);
+                acquired.Wait(signal);
+                ASSERT_TRUE(Manager->AcknowledgeStreamingUploadAcquire(accepted, &acquired, signal, Device->GraphicFamilyIndex));
+                acknowledged_batch = true;
+            }
+        }
+        ASSERT_EQ(outcome, Mailbox::Outcome::Submitted);
+        EXPECT_TRUE(acknowledged_batch);
+        EXPECT_FALSE(mailbox.Cancel(request));
+        ASSERT_TRUE(mailbox.Drained());
+        ASSERT_TRUE(mailbox.Acknowledge(request));
+        EXPECT_FALSE(mailbox.Poll(request, &outcome));
+        RRM::SceneEnvironmentPreparation environment        = {};
+        RRM::SceneResourceLease          environment_reader = {};
+        for (uint32_t i = 0; i < 100 && !environment_reader; ++i)
+        {
+            Manager->PollSceneResourcePreparations();
+            environment_reader = Manager->ClaimSceneEnvironmentPreparation(&environment);
+        }
+        ASSERT_TRUE(environment_reader);
+        ZEngine::Rendering::Textures::TextureHandle source = {};
+        ASSERT_TRUE(Manager->TakeCookedSceneEnvironment(scene, &source));
+        ASSERT_TRUE(Manager->CompleteSceneEnvironmentPreparation(scene, true)); // The sky bake is exercised separately.
+        RRM::SceneResourcePreparationResult ready = {};
+        ASSERT_TRUE(Manager->PollSceneResourcePreparation(scene, &ready));
+        ASSERT_EQ(ready.State, RRM::SceneResourcePreparationState::ResourcesRetained);
+        EXPECT_EQ(ready.InitialDrawCount, 1u);
+        ZEngine::Rendering::Scenes::PreparedSceneFrame frame = {};
+        ASSERT_TRUE(Manager->GetPreparedSceneFrame(scene, &frame));
+        ASSERT_EQ(frame.Draws.size(), 1u);
+        EXPECT_TRUE(frame.Draws[0].Transparent);
+        environment_reader.Reset();
+        ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(scene));
+        for (uint32_t i = 0; i < 100 && Manager->PollSceneResourcePreparation(scene, &ready); ++i)
+            Manager->PollSceneResourcePreparations();
+        EXPECT_FALSE(Manager->PollSceneResourcePreparation(scene, &ready));
+        Manager->ReleaseTexture(source);
+        RRMUploadBatchTestHelper::FlushTextureReleases(*Manager);
+        RRM::SceneResourcePreparationId cancelled_scene = {};
+        ASSERT_TRUE(Manager->PrepareSceneResources({96, 1}, 1, std::span(&mesh_id, 1), &cancelled_scene, RRM::ScenePreparationContent::MeshMaterials, &sky, &initial, false, material_assets.Assets));
+        Mailbox::Ticket cancelled = {};
+        ASSERT_EQ(mailbox.TryBegin(material_lease, std::span(&mesh_id, 1), environment_identity, route, metadata, *Manager, *Device, cancelled_scene, 1, &cancelled, true), Mailbox::Admission::Queued);
+        EXPECT_NE(cancelled.Serial, request.Serial);
+        EXPECT_FALSE(mailbox.PumpOne(0, 0, true)); // No new uploads without a valid frame.
+        auto gate = std::make_unique<ZEngine::Rendering::Primitives::Semaphore>(Device.get(), true);
+        for (uint32_t i = 0; i < 11 && !mailbox.MeshUploadRecorded(cancelled); ++i)
+        {
+            ASSERT_TRUE(mailbox.PumpOne(0, 0));
+            if (mailbox.MeshUploadRecorded(cancelled))
+            {
+                Swapchain.RenderTimeline          = gate.get();
+                Swapchain.RenderTimelineNextValue = 1;
+                Manager->EndFrame(); // Accepted upload waits on the unsignalled timeline.
+                break;
+            }
+            Manager->EndFrame();
+            Manager->SubmitAsyncUploads();
+            ASSERT_EQ(vkDeviceWaitIdle(s_vk->Device), VK_SUCCESS);
+            RRMUploadBatchTestHelper::RetireTextureUploadSlots(*Manager);
+            Manager->BeginFrame(0);
+        }
+        // Always release the GPU gate before any fatal assertion or teardown.
+        EXPECT_TRUE(mailbox.MeshUploadRecorded(cancelled));
+        EXPECT_GT(RRMUploadBatchTestHelper::OutstandingCookedMeshUploads(*Manager), 0u);
+        EXPECT_TRUE(mailbox.Cancel(cancelled));
+        outcome = Mailbox::Outcome::Pending;
+        EXPECT_TRUE(mailbox.PumpOne(0, 0, true));
+        EXPECT_TRUE(mailbox.Poll(cancelled, &outcome));
+        EXPECT_EQ(outcome, Mailbox::Outcome::Pending);
+        gate->Signal(1);
+        EXPECT_EQ(vkDeviceWaitIdle(s_vk->Device), VK_SUCCESS);
+        Swapchain.RenderTimeline          = nullptr;
+        Swapchain.RenderTimelineNextValue = 0;
+        for (uint32_t i = 0; i < 100 && outcome == Mailbox::Outcome::Pending; ++i)
+        {
+            ASSERT_TRUE(mailbox.PumpOne(0, 0, true)); // No new frame is begun during cleanup.
+            ASSERT_TRUE(mailbox.Poll(cancelled, &outcome));
+        }
+        EXPECT_EQ(outcome, Mailbox::Outcome::Cancelled);
+        EXPECT_TRUE(mailbox.Acknowledge(cancelled));
+        Manager->PollSceneResourcePreparations();
+        EXPECT_FALSE(Manager->PollSceneResourcePreparation(cancelled_scene, &ready));
+        RRMUploadBatchTestHelper::FlushTextureReleases(*Manager);
+        RRM::SceneResourcePreparationId shutdown_scene = {};
+        ASSERT_TRUE(Manager->PrepareSceneResources({97, 1}, 1, std::span(&mesh_id, 1), &shutdown_scene, RRM::ScenePreparationContent::MeshMaterials, &sky, &initial, false, material_assets.Assets));
+        Mailbox::Ticket shutdown_request = {};
+        ASSERT_EQ(mailbox.TryBegin(material_lease, std::span(&mesh_id, 1), environment_identity, route, metadata, *Manager, *Device, shutdown_scene, 1, &shutdown_request, true), Mailbox::Admission::Queued);
+        for (uint32_t i = 0; i < 11; ++i)
+        {
+            ASSERT_TRUE(mailbox.PumpOne(0, 0));
+            Manager->EndFrame();
+            Manager->SubmitAsyncUploads();
+            ASSERT_EQ(vkDeviceWaitIdle(s_vk->Device), VK_SUCCESS);
+            RRMUploadBatchTestHelper::RetireTextureUploadSlots(*Manager);
+            Manager->BeginFrame(0);
+        }
+        EXPECT_GT(RRMUploadBatchTestHelper::OutstandingCookedMeshUploads(*Manager), 0u);
+        EXPECT_TRUE(mailbox.MeshUploadRecorded(shutdown_request));
+        mailbox.Seal();
+        ASSERT_TRUE(mailbox.DrainAfterDeviceIdle());
+        ASSERT_TRUE(mailbox.Poll(shutdown_request, &outcome));
+        EXPECT_EQ(outcome, Mailbox::Outcome::Cancelled);
+        ASSERT_TRUE(mailbox.Acknowledge(shutdown_request));
+        Manager->PollSceneResourcePreparations();
+        EXPECT_FALSE(Manager->PollSceneResourcePreparation(shutdown_scene, &ready));
+        Mailbox::Ticket refused = {};
+        EXPECT_FALSE(mailbox.Begin(material_lease, std::span(&mesh_id, 1), environment_identity, route, metadata, *Manager, *Device, cancelled_scene, 1, &refused));
+        EXPECT_FALSE(refused);
+        EXPECT_TRUE(mailbox.Drained());
+        descriptor.Texture = target;
+        descriptor.Image   = Device->GlobalTextures.Access(target)->BufferHandle;
+    }
+    auto moved_material = std::move(cooked_material);
+    EXPECT_FALSE(cooked_material);
+    EXPECT_EQ(moved_material.Identity(), material_identity);
+    EXPECT_EQ(moved_material.Digest(), material_digest);
+    cooked_material = std::move(moved_material);
+    EXPECT_FALSE(moved_material);
+    RRM::SceneResourcePreparationId incomplete_scene = {};
+    const auto                      missing_mesh     = *uuids::uuid::from_string("00000000-0000-4000-8000-000000000004");
+    ASSERT_TRUE(Manager->PrepareSceneResources({90, 1}, 1, std::span(&missing_mesh, 1), &incomplete_scene, RRM::ScenePreparationContent::MeshMaterials, nullptr, nullptr, false, material_assets.Assets));
+    EXPECT_FALSE(Manager->FinishCookedSceneResources(incomplete_scene));
+    RRM::CookedMeshVersion empty_mesh = {};
+    EXPECT_FALSE(Manager->AppendCookedSceneMesh(incomplete_scene, *material_assets.Assets, empty_mesh));
+    ASSERT_TRUE(Manager->AppendCookedSceneMaterial(incomplete_scene, *material_assets.Assets, cooked_material));
+    ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(incomplete_scene));
+    Manager->PollSceneResourcePreparations();
+    RRM::SceneResourcePreparationResult cancelled_scene = {};
+    EXPECT_FALSE(Manager->PollSceneResourcePreparation(incomplete_scene, &cancelled_scene));
+    RRM::SceneResourcePreparationId cooked_scene = {};
+    ASSERT_TRUE(Manager->PrepareSceneResources({91, 1}, 1, {}, &cooked_scene, RRM::ScenePreparationContent::MeshMaterials, nullptr, nullptr, false, material_assets.Assets));
+    ASSERT_TRUE(Manager->AppendCookedSceneMaterial(cooked_scene, *material_assets.Assets, cooked_material));
+    EXPECT_FALSE(Manager->AppendCookedSceneMaterial(cooked_scene, *material_assets.Assets, cooked_material));
+    ASSERT_TRUE(Manager->FinishCookedSceneResources(cooked_scene));
+    EXPECT_EQ(FinishScenePreparation(cooked_scene).State, RRM::SceneResourcePreparationState::ResourcesRetained);
+    ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(cooked_scene));
+    Manager->PollSceneResourcePreparations();
+    RRM::SceneResourcePreparationResult retired_scene = {};
+    EXPECT_FALSE(Manager->PollSceneResourcePreparation(cooked_scene, &retired_scene));
+    RRM::SceneResourcePreparationId texture_owner = {};
+    ASSERT_TRUE(Manager->PrepareSceneResources({92, 1}, 1, {}, &texture_owner, RRM::ScenePreparationContent::MeshMaterials, nullptr, nullptr, false, material_assets.Assets));
+    ASSERT_TRUE(Manager->AppendCookedSceneTexture(texture_owner, *material_assets.Assets, upload));
+    EXPECT_FALSE(Manager->AppendCookedSceneTexture(texture_owner, *material_assets.Assets, upload));
+    ASSERT_TRUE(Manager->FinishCookedSceneResources(texture_owner));
+    EXPECT_EQ(FinishScenePreparation(texture_owner).State, RRM::SceneResourcePreparationState::ResourcesRetained);
+    {
+        using Batch              = ZEngine::Rendering::Textures::CookedSceneTextureBatch;
+        Cache::Lease batch_lease = {};
+        ASSERT_TRUE(material_lease.Retain(&batch_lease));
+        RRM::SceneResourcePreparationId batch_scene = {};
+        ASSERT_TRUE(Manager->PrepareSceneResources({93, 1}, 1, {}, &batch_scene, RRM::ScenePreparationContent::MeshMaterials, nullptr, nullptr, false, material_assets.Assets));
+        Batch batch = {};
+        ASSERT_TRUE(batch.Initialize(std::move(batch_lease), route, *Manager, *Device, batch_scene, 1));
+        ASSERT_EQ(batch.Step(0, 0), Batch::State::Pending);
+        ASSERT_EQ(batch.Step(0, 0), Batch::State::Pending);
+        ASSERT_EQ(batch.Step(0, 0), Batch::State::Pending);
+        auto* staged_texture = batch.Find(identity);
+        ASSERT_NE(staged_texture, nullptr);
+        ASSERT_NE(staged_texture->SubmittedBinding(), nullptr);
+        const auto batch_target = staged_texture->SubmittedBinding()->Handle;
+        Manager->SubmitAsyncUploads();
+        const auto* batch_ticket = Manager->FindStreamingUploadTicket(batch_target);
+        ASSERT_NE(batch_ticket, nullptr);
+        const auto accepted = *batch_ticket;
+        accepted.CompletionTimeline->Wait(accepted.CompletionValue);
+        RRMUploadBatchTestHelper::RetireTextureUploadSlots(*Manager);
+        EXPECT_EQ(batch.Step(0, 0), Batch::State::Pending);
+        EXPECT_EQ(batch.StepMaterials(), Batch::State::Pending);
+        EXPECT_EQ(staged_texture->Poll(), Upload::Readiness::AwaitingConsumer);
+        const auto* batch_texture = Device->GlobalTextures.Access(batch_target);
+        ASSERT_NE(batch_texture, nullptr);
+        const auto image   = Device->ImageBufferManager.Access(batch_texture->BufferHandle)->GetHandle();
+        const auto command = Commands[2]->GetHandle();
+        ASSERT_EQ(vkResetCommandBuffer(command, 0), VK_SUCCESS);
+        VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        ASSERT_EQ(vkBeginCommandBuffer(command, &begin), VK_SUCCESS);
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, .dstAccessMask = VK_ACCESS_SHADER_READ_BIT, .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = image, .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}
+        };
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        ASSERT_EQ(vkEndCommandBuffer(command), VK_SUCCESS);
+        ZEngine::Rendering::Primitives::Semaphore acquire(Device.get(), true);
+        const uint64_t                            signal        = 1;
+        const auto                                semaphore     = acquire.GetHandle();
+        VkTimelineSemaphoreSubmitInfo             timeline_info = {.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO, .signalSemaphoreValueCount = 1, .pSignalSemaphoreValues = &signal};
+        VkSubmitInfo                              submission    = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .pNext = &timeline_info, .commandBufferCount = 1, .pCommandBuffers = &command, .signalSemaphoreCount = 1, .pSignalSemaphores = &semaphore};
+        ASSERT_EQ(vkQueueSubmit(Device->GetQueue(ZEngine::Rendering::QueueType::GRAPHIC_QUEUE).Handle, 1, &submission, VK_NULL_HANDLE), VK_SUCCESS);
+        acquire.Wait(signal);
+        ASSERT_TRUE(Manager->AcknowledgeStreamingUploadAcquire(accepted, &acquire, signal, Device->GraphicFamilyIndex));
+        ASSERT_EQ(batch.Step(0, 0), Batch::State::Ready);
+        auto material_state = Batch::State::Pending;
+        for (uint32_t i = 0; i <= material_assets.Assets->Size() && material_state == Batch::State::Pending; ++i)
+        {
+            material_state = batch.StepMaterials();
+        }
+        ASSERT_EQ(material_state, Batch::State::Ready);
+        ASSERT_TRUE(Manager->FinishCookedSceneResources(batch_scene));
+        EXPECT_EQ(FinishScenePreparation(batch_scene).State, RRM::SceneResourcePreparationState::ResourcesRetained);
+        batch.Reset();
+        EXPECT_TRUE(Manager->IsTextureVersionPinned(batch_target));
+        ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(batch_scene));
+        Manager->PollSceneResourcePreparations();
+        EXPECT_FALSE(Manager->IsTextureVersionPinned(batch_target));
+        RRMUploadBatchTestHelper::FlushTextureReleases(*Manager);
+    }
+    descriptor.Current                             = false;
+    uint32_t                     material_index    = 0;
+    RRM::MaterialVersionSnapshot material_snapshot = {};
+    EXPECT_FALSE(Manager->GetFrameMaterialVersion(cooked_material.Pin(), &material_index, &material_snapshot));
+    descriptor.Current            = true;
+    Cache::Lease retained_closure = {};
+    ASSERT_TRUE(material_lease.Retain(&retained_closure));
+    material_lease.Reset();
+    descriptor.State = ZEngine::Rendering::SceneTextureDescriptorState::Failed;
+    EXPECT_EQ(upload.Poll(), Upload::Readiness::Failed);
+    EXPECT_EQ(upload.State(), Upload::Phase::Failed);
+    EXPECT_EQ(upload.ProducerDescriptorBinding(), nullptr);
+    EXPECT_FALSE(upload.RetainPreparedVersion());
+    descriptor.State                    = ZEngine::Rendering::SceneTextureDescriptorState::Ready;
+    VFS::VFSReadRootLease rejected_root = {};
+    ASSERT_TRUE(context.AcquireReadRoot(VFS::VFSPath::Parse("/output").Value(), &rejected_root).Succeeded());
+    ZEngine::Managers::CookedPackageSnapshot rejected_package = {};
+    ASSERT_TRUE(ZEngine::Managers::CookedPackageSnapshot::Capture(std::move(rejected_root), scene_id, schemas, cook_limits, *allocator, &diagnostics, &rejected_package).Succeeded());
+    Cache::Lease rejected_lease = {};
+    ASSERT_TRUE(cache.Request(std::move(rejected_package), &rejected_lease));
+    rejected_package.Reset();
+    Upload rejected = {};
+    ASSERT_TRUE(rejected.Capture(std::move(rejected_lease), identity));
+    retained_closure.Reset();
+    ASSERT_TRUE(rejected.Prepare(*Manager));
+    ASSERT_TRUE(rejected.StageOne());
+    const auto rejected_target = Device->CreateTexture(specification, "cooked-rejected-texture");
+    ASSERT_TRUE(rejected_target.Valid());
+    ASSERT_TRUE(rejected.Submit(0, 0, rejected_target));
+    RRMUploadBatchTestHelper::ClearTextureUploadJobs(*Manager);
+    EXPECT_EQ(Manager->GetTextureDecodeState(rejected_target), RRM::TextureDecodeState::Failed);
+    EXPECT_EQ(rejected.Poll(), Upload::Readiness::Failed);
+    EXPECT_EQ(rejected.SubmittedBinding(), nullptr);
+    EXPECT_FALSE(Manager->IsTextureVersionPinned(rejected_target));
+    rejected.Reset();
+    upload.Reset();
+    EXPECT_TRUE(Manager->IsTextureVersionPinned(target));
+    retained.Reset();
+    EXPECT_TRUE(Manager->IsTextureVersionPinned(target));
+    cooked_material.Reset();
+    EXPECT_TRUE(Manager->IsTextureVersionPinned(target));
+    ASSERT_TRUE(Manager->ReleaseSceneResourcePreparation(texture_owner));
+    Manager->PollSceneResourcePreparations();
+    EXPECT_FALSE(Manager->IsTextureVersionPinned(target));
+    ASSERT_TRUE(cache.PumpOne());
+    ASSERT_TRUE(cache.Shutdown());
+}
+
+TEST_F(RenderResourceManagerBatchTest, TransferTextureStagingRefusalPreservesStateAndAllowsRetry)
+{
+    CheckTextureStagingAdmission(true);
 }
 
 TEST_F(RenderResourceManagerBatchTest, RejectedTransferTextureJobsReclaimSlotsAndStagingBeforeRetry)

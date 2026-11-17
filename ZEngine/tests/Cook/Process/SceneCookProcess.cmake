@@ -141,6 +141,36 @@ foreach(root_kind IN LISTS root_kinds)
     check_inputs("${reverse}")
     check_manifest("${reverse}")
 
+    # The standalone visual smoke needs an authored camera in both semantic
+    # variants. Check the produced source and package on every CI platform;
+    # rendered parity remains a separate desktop Vulkan exercise.
+    foreach(variant blend hierarchy)
+        set(semantic "${run_root}/semantic-${variant}")
+        file(MAKE_DIRECTORY "${semantic}")
+        run_child("write-${variant}-camera" "${semantic}")
+        file(GLOB semantic_scenes "${semantic}/scenes/*.scene")
+        list(LENGTH semantic_scenes semantic_scene_count)
+        if(NOT semantic_scene_count EQUAL 1 OR NOT EXISTS "${semantic}/output/desktop-vulkan-le64/manifest.json")
+            message(FATAL_ERROR "Missing semantic fixture scene or cooked package: ${semantic}")
+        endif()
+        list(GET semantic_scenes 0 semantic_scene)
+        file(READ "${semantic_scene}" semantic_text)
+        if(NOT semantic_text MATCHES "CameraComponent" OR NOT semantic_text MATCHES "\"is_main\": true")
+            message(FATAL_ERROR "Semantic fixture lacks its main camera: ${semantic}")
+        endif()
+        if(variant STREQUAL "hierarchy")
+            if(NOT semantic_text MATCHES "\"parent_uuid\": \"80000000-0000-0000-0000-000000000008\"")
+                message(FATAL_ERROR "Hierarchy fixture lacks its expected parent: ${semantic}")
+            endif()
+        else()
+            file(READ "${semantic}/assets/material.zematerial" semantic_material)
+            string(JSON semantic_alpha GET "${semantic_material}" alpha_mode)
+            if(NOT semantic_alpha STREQUAL "BLEND")
+                message(FATAL_ERROR "Transparent fixture lacks its blend material: ${semantic}")
+            endif()
+        endif()
+    endforeach()
+
     # A real application-defined component persists a typed texture UUID/float,
     # but not its runtime cache. It is registered before/after built-ins and gets
     # different real process-local type IDs in independent producers/consumers.
@@ -319,6 +349,11 @@ foreach(root_kind IN LISTS root_kinds)
     run_child(read "${run_root}/old-snapshot")
     run_child(read "${reverse}/output/desktop-vulkan-le64")
     run_child(read-changed "${package}")
+    execute_process(COMMAND "${HELPER}" cross-version "${run_root}/old-snapshot" "${package}"
+        RESULT_VARIABLE shared_result OUTPUT_VARIABLE shared_output ERROR_VARIABLE shared_errors TIMEOUT 30)
+    if(NOT shared_result EQUAL 0 OR NOT shared_output MATCHES "ZE_COOK_SHARED_VERSIONS_VERIFIED")
+        message(FATAL_ERROR "Source-free cross-version sharing failed (${shared_result})\n${shared_output}\n${shared_errors}")
+    endif()
 
     # CMake pipelines execute both children concurrently. The writer waits for
     # the reader's acquired-handle marker, then publishes and signals completion.

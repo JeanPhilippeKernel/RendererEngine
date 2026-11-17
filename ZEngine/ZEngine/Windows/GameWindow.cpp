@@ -1,6 +1,7 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Windows/Platform/DesktopFileDialog.h>
 #include <stb/stb_image.h>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -13,9 +14,14 @@
 // and returns immediately; on_complete fires later on the main run loop.
 // Implemented in Windows/Platform/MacOSAppIcon.mm
 extern "C" void ZEngineSetDockIcon(const char* path);
+extern "C" int  ZEngineConfigureMetalLayerDelegate(void* window);
+#if ZENGINE_PROFILING
+extern "C" int ZEngineWindowOcclusionVisible(void* window);
+#endif
 #endif
 #include <ZEngine/Event/EngineClosedEvent.h>
 #include <ZEngine/Logging/LoggerDefinition.h>
+#include <ZEngine/Profiling/Profiling.h>
 #include <ZEngine/Windows/GameWindow.h>
 #include <ZEngine/Windows/Inputs/IDevice.h>
 #include <ZEngine/Windows/Inputs/KeyCode.h>
@@ -113,6 +119,7 @@ namespace ZEngine::Windows
         }
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        glfwWindowHint(GLFW_RESIZABLE, cfg.Resizable ? GLFW_TRUE : GLFW_FALSE);
 
         glfwSetErrorCallback([](int error, const char* description) {
             ZENGINE_CORE_CRITICAL("{}", description)
@@ -200,12 +207,51 @@ namespace ZEngine::Windows
         glfwSetCursorPosCallback(m_native_window, GameWindow::__OnGlfwCursorMoved);
         glfwSetCharCallback(m_native_window, GameWindow::__OnGlfwTextInputRaised);
 
-        glfwMaximizeWindow(m_native_window);
+        if (cfg.Maximize)
+            glfwMaximizeWindow(m_native_window);
+#if defined(__APPLE__) && ZENGINE_PROFILING
+        if (cfg.WaitForVisibleTestWindow)
+        {
+            // Test-only gate: pump platform events before the timed scene
+            // admission, rather than crediting hidden-window frames as visible.
+            const double deadline = glfwGetTime() + 15.0;
+            while (ZEngineWindowOcclusionVisible(glfwGetCocoaWindow(m_native_window)) != 1 && glfwGetTime() < deadline && !glfwWindowShouldClose(m_native_window))
+                glfwWaitEventsTimeout(0.05);
+            if (ZEngineWindowOcclusionVisible(glfwGetCocoaWindow(m_native_window)) != 1)
+            {
+                ZENGINE_CORE_ERROR("Timed out waiting for the test window to become visible")
+                ZENGINE_EXIT_FAILURE();
+            }
+        }
+        m_previous_occlusion = ZEngineWindowOcclusionVisible(glfwGetCocoaWindow(m_native_window));
+        m_log_test_occlusion = cfg.WaitForVisibleTestWindow;
+        if (m_log_test_occlusion)
+        {
+            const auto now          = std::chrono::steady_clock::now().time_since_epoch();
+            const auto timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+            ZENGINE_CORE_INFO("[CookedWindowVisibility] timestamp_ns={} visible={}", timestamp_ns, m_previous_occlusion < 0 ? 2 : m_previous_occlusion)
+        }
+        ZENGINE_PROFILE_VALUE("SceneLoad.Main.WindowOcclusionVisible", static_cast<double>(m_previous_occlusion < 0 ? 2 : m_previous_occlusion));
+#endif
     }
 
     void GameWindow::PollEvent()
     {
         glfwPollEvents();
+#if defined(__APPLE__) && ZENGINE_PROFILING
+        const int visible = ZEngineWindowOcclusionVisible(glfwGetCocoaWindow(m_native_window));
+        if (visible != m_previous_occlusion)
+        {
+            m_previous_occlusion = visible;
+            if (m_log_test_occlusion)
+            {
+                const auto now          = std::chrono::steady_clock::now().time_since_epoch();
+                const auto timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+                ZENGINE_CORE_INFO("[CookedWindowVisibility] timestamp_ns={} visible={}", timestamp_ns, visible < 0 ? 2 : visible)
+            }
+            ZENGINE_PROFILE_VALUE("SceneLoad.Main.WindowOcclusionVisible", static_cast<double>(visible < 0 ? 2 : visible));
+        }
+#endif
     }
 
     float GameWindow::GetTime()
@@ -422,6 +468,15 @@ namespace ZEngine::Windows
         VkInstance    vkInstance = reinterpret_cast<VkInstance>(instance);
         VkSurfaceKHR* pSurface   = reinterpret_cast<VkSurfaceKHR*>(out_window_surface);
         VkResult      result     = glfwCreateWindowSurface(vkInstance, m_native_window, nullptr, pSurface);
+#if defined(__APPLE__)
+        if (result == VK_SUCCESS)
+        {
+            // GLFW creates a layer explicitly. MoltenVK recommends that its
+            // hosting view be the delegate for correct display timing.
+            const int delegate_state = ZEngineConfigureMetalLayerDelegate(glfwGetCocoaWindow(m_native_window));
+            ZENGINE_CORE_INFO("[MacOSSurface] metal_layer_delegate_state={}", delegate_state)
+        }
+#endif
         return (result == VK_SUCCESS);
     }
 

@@ -52,6 +52,32 @@ namespace ZEngine::Importers::ImageCodec
         uint32_t         BitsPerChannel = 0;
     };
 
+    /// Route-owned, bottom-up RGBA8 pixels. The borrowed allocation route must
+    /// outlive this owner; move across threads only when the route permits it.
+    class DecodedImage final
+    {
+    public:
+        DecodedImage() = default;
+        ~DecodedImage();
+        DecodedImage(const DecodedImage&)            = delete;
+        DecodedImage& operator=(const DecodedImage&) = delete;
+        DecodedImage(DecodedImage&&) noexcept;
+        DecodedImage&                                            operator=(DecodedImage&&) noexcept;
+        void                                                     Reset() noexcept;
+        [[nodiscard]] Core::Containers::ArrayView<const uint8_t> Pixels() const noexcept;
+        [[nodiscard]] const EncodedImageDescription&             Description() const noexcept
+        {
+            return m_description;
+        }
+
+    private:
+        friend Core::VFS::VFSResult<void> DecodeEncodedImage(const AssetCodec::AssetByteSource&, IAllocationRoute&, const EncodedImageLimits&, DecodedImage*);
+        IAllocationRoute*                 m_route       = nullptr;
+        uint8_t*                          m_pixels      = nullptr;
+        size_t                            m_size        = 0;
+        EncodedImageDescription           m_description = {};
+    };
+
     // Supported encoded LDR formats only; GIF validates its first frame, as the
     // runtime decoder does. Recognize format bytes without allocating decoder
     // state, then preflight dimensions/native RGBA
@@ -68,6 +94,9 @@ namespace ZEngine::Importers::ImageCodec
     // reads only after dimension/native-storage preflight. It is included in
     // principal fixed accounting; larger reads bypass this buffer.
     [[nodiscard]] Core::VFS::VFSResult<void> ValidateEncodedImage(const AssetCodec::AssetByteSource&, IAllocationRoute&, const EncodedImageLimits&, EncodedImageDescription*);
+    /// Decode the same immutable formats and bounds into route-owned bottom-up
+    /// RGBA8 pixels for runtime upload. Failure leaves the output unchanged.
+    [[nodiscard]] Core::VFS::VFSResult<void> DecodeEncodedImage(const AssetCodec::AssetByteSource&, IAllocationRoute&, const EncodedImageLimits&, DecodedImage*);
 
     // Outside an explicit scope, preserve the existing worker-slab/system-heap
     // route. These also serve short-lived encoded buffers alongside stb pixels.

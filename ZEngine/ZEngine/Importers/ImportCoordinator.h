@@ -22,6 +22,14 @@ namespace ZEngine::Importers
     class ImportCoordinator
     {
     public:
+        void EnableImportDenialAudit() noexcept
+        {
+            m_deny_import.store(true, std::memory_order_release);
+        }
+        [[nodiscard]] uint64_t DeniedImportCount() const noexcept
+        {
+            return m_denied_imports.load(std::memory_order_acquire);
+        }
         static constexpr uint32_t MAX_IMPORTERS      = 16;
         static constexpr uint32_t JOBS_PER_TICK      = 4;
         static constexpr uint32_t MAX_REQUEUE_COUNT  = 3;
@@ -54,6 +62,8 @@ namespace ZEngine::Importers
         }
 
     private:
+        std::atomic<bool>     m_deny_import    = false;
+        std::atomic<uint64_t> m_denied_imports = 0;
         struct ImportTask
         {
             ImportCoordinator* Owner    = nullptr;

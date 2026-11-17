@@ -60,22 +60,28 @@ namespace ZEngine::Applications
 
         virtual void                      OverrideWindowConfiguration() = 0;
 
-        virtual void                      OnInitializing()              = 0;
-        virtual void                      OnInitialized()               = 0;
+        /// Request denial of project-source services as soon as they are created.
+        [[nodiscard]] virtual bool        WantsSourceIndependenceAudit() const
+        {
+            return false;
+        }
 
-        virtual void                      OnEvent(Core::CoreEvent&)     = 0;
-        virtual void                      OnUpdate(float dt)            = 0;
+        virtual void OnInitializing()          = 0;
+        virtual void OnInitialized()           = 0;
 
-        virtual void                      OnPreRender()                 = 0;
-        virtual void                      OnPostRender()                = 0;
-        virtual void                      OnRenderUI()                  = 0;
+        virtual void OnEvent(Core::CoreEvent&) = 0;
+        virtual void OnUpdate(float dt)        = 0;
 
-        virtual void                      OnClosing()                   = 0;
-        virtual void                      OnClosed()                    = 0;
+        virtual void OnPreRender()             = 0;
+        virtual void OnPostRender()            = 0;
+        virtual void OnRenderUI()              = 0;
+
+        virtual void OnClosing()               = 0;
+        virtual void OnClosed()                = 0;
 
         /// Main-thread user close intent, not teardown. Return false to defer or
         /// cancel (for example, while awaiting unsaved-document consent).
-        virtual bool                      OnCloseRequested()
+        virtual bool OnCloseRequested()
         {
             return true;
         }

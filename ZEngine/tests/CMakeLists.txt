@@ -42,14 +42,14 @@ target_sources(ZEngineTests PRIVATE ${TEST_SOURCES})
 target_sources(ZEngineTests PRIVATE Cook/Process/SceneCookCustomSchema.cpp)
 
 # Use the reviewed contract bytes themselves, also in installed/headless tests.
-set(COOK_MANIFEST_GOLDEN_PATH "${CMAKE_SOURCE_DIR}/docs/design/future-plan/scene-cooker-contracts/manifest-v1.golden.json")
+set(COOK_MANIFEST_GOLDEN_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cook/Fixtures/manifest-v1.golden.json")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${COOK_MANIFEST_GOLDEN_PATH}")
 file(READ "${COOK_MANIFEST_GOLDEN_PATH}" COOK_MANIFEST_GOLDEN)
-set(COOK_MANIFEST_NEGATIVE_PATH "${CMAKE_SOURCE_DIR}/docs/design/future-plan/scene-cooker-contracts/manifest-v1.negative-cases.json")
+set(COOK_MANIFEST_NEGATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cook/Fixtures/manifest-v1.negative-cases.json")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${COOK_MANIFEST_NEGATIVE_PATH}")
 file(READ "${COOK_MANIFEST_NEGATIVE_PATH}" COOK_MANIFEST_NEGATIVE)
 configure_file(Cook/CookManifestGolden.h.in "generated/CookManifestGolden.h" @ONLY)
-set_property(SOURCE Cook/CookManifestWriter_test.cpp Cook/CookManifestReader_test.cpp APPEND PROPERTY
+set_property(SOURCE Cook/CookManifestWriter_test.cpp Cook/CookManifestReader_test.cpp Cook/CookedPackageSnapshot_test.cpp APPEND PROPERTY
     INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 # Embed the real production GLSL, not a second test shader. Installed test

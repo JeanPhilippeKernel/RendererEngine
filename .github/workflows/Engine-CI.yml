@@ -9,6 +9,7 @@ on:
       - 'Obelisk/**'
       - 'Resources/**'
       - 'Scripts/**'
+      - 'tests/**'
       - 'CMakeLists.txt'
       - 'CMakePresets.json'
       - 'dependencies.cmake'
@@ -21,6 +22,7 @@ on:
       - 'Obelisk/**'
       - 'Resources/**'
       - 'Scripts/**'
+      - 'tests/**'
       - 'CMakeLists.txt'
       - 'CMakePresets.json'
       - 'dependencies.cmake'
@@ -41,25 +43,11 @@ on:
         default: false
 
 jobs:
+  scene-sanitizers:
+    uses: ./.github/workflows/job-scene-sanitizers.yml
+
   scene-evidence-tests:
-    name: Scene evidence tests (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-2025, macos-latest]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Validate scene lifecycle and capture evidence tools
-        run: python -m unittest discover -s Scripts/tests -v
+    uses: ./.github/workflows/job-scene-evidence-tests.yml
 
   commitlint:
     # A develop-to-main promotion contains historical commits that predate

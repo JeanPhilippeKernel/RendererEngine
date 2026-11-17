@@ -524,6 +524,8 @@ namespace ZEngine::Hardwares
         ///        to reclaim and a later allocation can overwrite it before the GPU reads it.
         /// @param use_staging_ring Set false for independently submitted work whose
         ///        completion is not represented by RenderTimeline.
+        /// @param data_size Available bytes, or zero when the caller guarantees
+        ///        that the base mip is present. Only mip zero is copied.
         BufferView                                      WriteTextureData(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset = nullptr, bool use_staging_ring = true, VkDeviceSize data_size = 0);
 
         Rendering::Renderers::RenderPasses::RenderPass* CreateRenderPass(Rendering::Specifications::RenderPassSpecification spec);
@@ -533,8 +535,7 @@ namespace ZEngine::Hardwares
         friend struct ::RRMUploadBatchTestHelper;
         friend class Rendering::RenderResourceManager;
 
-        // Only the upload owner may bypass the public write admission after
-        // establishing its exclusive, submission-scoped texture hold.
+        // Internal recording helper after the public write admission.
         BufferView                                            WriteTextureDataAfterAdmission(CommandBufferPtr command_buf, const Rendering::Textures::TextureHandle& handle, const void* data, uint32_t* out_ring_offset, bool use_staging_ring, VkDeviceSize data_size);
 
         static constexpr uint32_t                             MaxSceneDescriptorTextures  = 8192;
