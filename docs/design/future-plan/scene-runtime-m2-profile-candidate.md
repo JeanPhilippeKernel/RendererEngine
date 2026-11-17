@@ -181,10 +181,13 @@ window is refused rather than treated as visible-window qualification. A valid
 visible-window run remains necessary. Use `--trace-steady-frames 120
 --require-visible-trace` with `Scripts/sampleproject_cooked_timing.py` to check
 the initial, pre-replacement, replacement and post-replacement windows. The
-strict check requires macOS occlusion observations for all four windows and
-preserves the diagnostic trace when visibility is not proven. For the traced
-process it waits up to 15 seconds for the test window to become visible before
-admitting the scene; it does not force the window in front of other applications.
+strict check requires macOS occlusion observations for all four trace windows
+and for every timed load through observed render completion. It preserves the
+diagnostic trace when trace-window visibility is not proven. Each test process
+waits up to 15 seconds for its window to become visible before admitting the
+scene; it does not force the window in front of other applications. Earlier
+timing reports only checked the separate trace process and cannot establish
+visibility for all of their individual timing samples.
 
 In the visibility trace's initial load, the roughly 1,009 ms frame interval began
 while the window was visible, and the window became fully occluded about 12 ms

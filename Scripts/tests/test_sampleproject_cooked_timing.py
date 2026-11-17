@@ -3,10 +3,21 @@ from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
-from sampleproject_cooked_timing import ALTERNATE, CAMERA, SCENE, device_identity, memory_summary, require_visible_trace, scene_pair, shader_identity
+from sampleproject_cooked_timing import ALTERNATE, CAMERA, SCENE, device_identity, memory_summary, require_visible_samples, require_visible_trace, scene_pair, shader_identity
 
 
 class SampleProjectTimingTest(unittest.TestCase):
+    def test_visible_samples_require_ordered_visible_state_through_completion(self):
+        samples = [{"admission_ns": 20, "render_completion_observed_ns": 40}]
+        require_visible_samples("[CookedWindowVisibility] timestamp_ns=10 visible=1\n", samples)
+        self.assertTrue(samples[0]["visible_window_verified"])
+        with self.assertRaisesRegex(ValueError, "throughout"):
+            require_visible_samples("[CookedWindowVisibility] timestamp_ns=10 visible=1\n[CookedWindowVisibility] timestamp_ns=30 visible=0\n", samples)
+        with self.assertRaisesRegex(ValueError, "malformed"):
+            require_visible_samples("[CookedWindowVisibility] timestamp_ns=10 visible=3\n", samples)
+        with self.assertRaisesRegex(ValueError, "ordered"):
+            require_visible_samples("[CookedWindowVisibility] timestamp_ns=10 visible=1\n[CookedWindowVisibility] timestamp_ns=10 visible=0\n", samples)
+
     def test_visible_trace_rejects_occluded_or_unknown_windows(self):
         visible = {"window_occlusion": {"visible_at_start": 1, "changes": []}}
         windows = {name: visible for name in ("initial_load", "steady", "replacement", "post_steady")}

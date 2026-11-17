@@ -113,9 +113,9 @@ int applicationEntryPoint(int argc, char* argv[])
         return 2;
     }
 
-    if (cooked_wait_visible && (!cooked_standalone || !cooked_exit_after_frame || !cooked_fixed_window || cooked_stage_trace.empty()))
+    if (cooked_wait_visible && (!cooked_standalone || !cooked_exit_after_frame || !cooked_fixed_window))
     {
-        std::fprintf(stderr, "Visible-window gating requires a fixed standalone stage-trace test.\n");
+        std::fprintf(stderr, "Visible-window gating requires a fixed standalone test.\n");
         return 2;
     }
 #if !defined(__APPLE__) || !ZENGINE_PROFILING

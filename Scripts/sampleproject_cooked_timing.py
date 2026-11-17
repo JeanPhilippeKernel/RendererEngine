@@ -84,6 +84,21 @@ def require_visible_trace(report):
             raise ValueError(f"window visibility is not proven throughout {name}; inspect the trace")
 
 
+def require_visible_samples(log, samples):
+    matches = re.findall(r"\[CookedWindowVisibility\] timestamp_ns=(\d+) visible=([012])", log)
+    if not matches or log.count("[CookedWindowVisibility]") != len(matches):
+        raise ValueError("missing or malformed per-process visibility observations")
+    events = [(int(timestamp), int(visible)) for timestamp, visible in matches]
+    if any(timestamp <= 0 for timestamp, _ in events) or any(events[index][0] <= events[index - 1][0] for index in range(1, len(events))):
+        raise ValueError("visibility observations are not ordered")
+    for sample in samples:
+        start, end = sample["admission_ns"], sample["render_completion_observed_ns"]
+        prior = [visible for timestamp, visible in events if timestamp <= start]
+        if not prior or prior[-1] != 1 or any(visible != 1 for timestamp, visible in events if start < timestamp <= end):
+            raise ValueError("window visibility is not proven throughout a load sample")
+        sample["visible_window_verified"] = True
+
+
 def scene_pair(original):
     marker = ('"uuid": "' + SCENE + '"').encode()
     if original.count(marker) != 1 or CAMERA.encode() in original or not original.endswith(b"\n"):
@@ -159,10 +174,10 @@ def main():
                        "--cookedAuditSource", "--cookedObserveGpuCompletion", "--cookedFixedWindow", "--logDirectory", str(logs)]
             if reloads:
                 command.extend(["--cookedReloads", str(reloads), "--cookedAlternateScene", ALTERNATE])
+            if args.require_visible_trace:
+                command.append("--cookedWaitVisible")
             if steady_frames:
                 command.extend(["--cookedSteadyFrames", str(steady_frames), "--cookedPostSteadyFrames", str(steady_frames), "--cookedStageTrace", str(trace)])
-                if args.require_visible_trace:
-                    command.append("--cookedWaitVisible")
             run_capture(command, logs, args.timeout)
             if shader_identity(shader_cache) != shaders:
                 raise ValueError("runtime shader cache changed during a timing process")
@@ -179,6 +194,8 @@ def main():
             if sha256_file(obelisk) != hashes["runtime_sha256"]:
                 raise ValueError("runtime binary changed during timing collection")
             samples = read_lifecycle_observations(log, [generation for generation, _ in expected], True, require_gpu_budget=True)
+            if args.require_visible_trace:
+                require_visible_samples(log, samples)
             if steady_frames:
                 windows = [tuple(map(int, row)) for row in re.findall(r"\[CookedSteady\] generation=(\d+) start_ns=(\d+) end_ns=(\d+) submitted_frames=(\d+)", log)]
                 if len(windows) != 1:

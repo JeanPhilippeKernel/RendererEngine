@@ -1,6 +1,7 @@
 #include <ZEngine/Engine.h>
 #include <ZEngine/Windows/Platform/DesktopFileDialog.h>
 #include <stb/stb_image.h>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -222,6 +223,13 @@ namespace ZEngine::Windows
             }
         }
         m_previous_occlusion = ZEngineWindowOcclusionVisible(glfwGetCocoaWindow(m_native_window));
+        m_log_test_occlusion = cfg.WaitForVisibleTestWindow;
+        if (m_log_test_occlusion)
+        {
+            const auto now          = std::chrono::steady_clock::now().time_since_epoch();
+            const auto timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+            ZENGINE_CORE_INFO("[CookedWindowVisibility] timestamp_ns={} visible={}", timestamp_ns, m_previous_occlusion < 0 ? 2 : m_previous_occlusion)
+        }
         ZENGINE_PROFILE_VALUE("SceneLoad.Main.WindowOcclusionVisible", static_cast<double>(m_previous_occlusion < 0 ? 2 : m_previous_occlusion));
 #endif
     }
@@ -234,6 +242,12 @@ namespace ZEngine::Windows
         if (visible != m_previous_occlusion)
         {
             m_previous_occlusion = visible;
+            if (m_log_test_occlusion)
+            {
+                const auto now          = std::chrono::steady_clock::now().time_since_epoch();
+                const auto timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
+                ZENGINE_CORE_INFO("[CookedWindowVisibility] timestamp_ns={} visible={}", timestamp_ns, visible < 0 ? 2 : visible)
+            }
             ZENGINE_PROFILE_VALUE("SceneLoad.Main.WindowOcclusionVisible", static_cast<double>(visible < 0 ? 2 : visible));
         }
 #endif
