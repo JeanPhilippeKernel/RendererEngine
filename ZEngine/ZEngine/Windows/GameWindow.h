@@ -63,6 +63,9 @@ namespace ZEngine::Windows
     private:
         ZEngine::Windows::FileDialogRequest FileDialogAsync(bool save, std::span<std::string_view> type_filters, std::string_view default_dir, std::string_view filename, std::string_view message);
         GLFWwindow*                         m_native_window = nullptr;
+#if defined(__APPLE__) && ZENGINE_PROFILING
+        int m_previous_occlusion = -2;
+#endif
     };
 
 } // namespace ZEngine::Windows

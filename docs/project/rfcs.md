@@ -16,6 +16,7 @@ not define shipped behavior. Implemented contracts belong in the
 - [Editor undo / redo](../design/future-plan/editor-undo-redo.md)
 - [Editor play mode](../design/future-plan/editor-play-mode.md)
 - [Render resource manager](../design/future-plan/render-resource-manager.md)
+- [Profiling: in-editor Performance, CPU/GPU/memory and Tracy](../design/future-plan/profiling.md)
 - [Build and distribution integration](../design/future-plan/build-integration.md)
 
 ## Recently completed designs

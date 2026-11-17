@@ -5,6 +5,12 @@ using namespace ZEngine::Rendering::Specifications;
 
 namespace ZEngine::Rendering::Renderers
 {
+    void ToneMappingPass::CancelPendingCapture()
+    {
+        if (m_capture.Context && m_capture.Cancelled)
+            m_capture.Cancelled(m_capture.Context);
+        m_capture = {};
+    }
     void ToneMappingPass::SetUseCompositedSceneColor(bool enabled)
     {
         m_use_composited_scene_color = enabled;
@@ -22,7 +28,19 @@ namespace ZEngine::Rendering::Renderers
 
         res_builder->ReadTexture(m_use_composited_scene_color ? RendererResourceName::FrameHdrCompositedRenderTargetName : RendererResourceName::FrameHdrColorRenderTargetName, "SceneColor");
         const auto target = DescribeSceneTarget(SceneRenderTarget::Color, width, height);
-        res_builder->WriteColorAttachment(target.Name, target.Spec);
+        const auto output = res_builder->WriteColorAttachment(target.Name, target.Spec);
+        if (m_capture.Context)
+        {
+            const RGImageReadbackRegion region = {
+                .Subresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1},
+                  .Offset = {0, 0, 0},
+                  .Extent = {width, height, 1}
+            };
+            const auto capture = res_builder->DeclareImageReadback("SceneColorCapture", output, region, m_capture.Complete, m_capture.Context, VkDeviceSize(width) * height * 4, m_capture.Cancelled, true);
+            if (!capture.Valid() && m_capture.Cancelled)
+                m_capture.Cancelled(m_capture.Context);
+            m_capture = {};
+        }
         return true;
     }
 

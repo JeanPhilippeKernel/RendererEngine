@@ -9,8 +9,10 @@
 #include <Tetragrama/Panels/ZUIPanelManagerComponent.h>
 #include <ZEngine/Core/CoreEvent.h>
 #include <ZEngine/Core/VFS/Registry/AssetRecord.h>
+#include <ZEngine/ECS/SceneRuntimeCamera.h>
 #include <ZEngine/Engine.h>
 #include <ZEngine/Helpers/MemoryOperations.h>
+#include <ZEngine/Importers/ImportCoordinator.h>
 #include <ZEngine/Managers/AssetManager.h>
 #include <ZEngine/UI/ZUIContext.h>
 #include <ZEngine/UI/ZUIFont.h>
@@ -362,6 +364,60 @@ namespace Tetragrama
         }
     }
 
+    void Editor::ConfigureCookedStartup(std::string directory, const uuids::uuid& scene, bool exit_after_first_frame, uint32_t expected_draws, std::string capture_path, uint32_t reloads, const uuids::uuid& alternate_scene, bool cancel_reload_after_mesh, bool fail_reload_staging, bool cancel_reload_cpu)
+    {
+        m_cooked_package_directory        = std::move(directory);
+        m_cooked_startup_scene            = scene;
+        m_cooked_current_scene            = scene;
+        m_cooked_alternate_scene          = alternate_scene;
+        m_cooked_reloads_remaining        = reloads;
+        m_cooked_cancel_after_mesh        = cancel_reload_after_mesh;
+        m_cooked_cancel_cpu               = cancel_reload_cpu;
+        m_cooked_fail_reload_staging      = fail_reload_staging;
+        m_cooked_startup_exit_after_frame = exit_after_first_frame;
+        m_cooked_expected_draws           = expected_draws;
+        m_cooked_capture_path             = std::move(capture_path);
+    }
+
+    void Editor::ConfigureSourceCapture(std::string capture_path, uint32_t expected_draws, std::string import_path)
+    {
+        m_source_capture                  = true;
+        m_cooked_startup_exit_after_frame = true;
+        m_cooked_expected_draws           = expected_draws;
+        m_cooked_capture_path             = std::move(capture_path);
+        m_source_capture_import_path      = std::move(import_path);
+    }
+
+    bool Editor::BeginCookedCapture(void* context, uint32_t width, uint32_t height, uint64_t generation)
+    {
+        auto& editor = *static_cast<Editor*>(context);
+        if (generation != editor.m_cooked_capture_generation || width != editor.m_cooked_capture_width || height != editor.m_cooked_capture_height)
+        {
+            uint32_t requested = 1;
+            editor.m_cooked_capture_state.compare_exchange_strong(requested, 4, std::memory_order_acq_rel);
+            return false;
+        }
+        uint32_t requested = 1;
+        return editor.m_cooked_capture_state.compare_exchange_strong(requested, 2, std::memory_order_acq_rel);
+    }
+
+    void Editor::CompleteCookedCapture(const void* data, size_t size, void* context)
+    {
+        auto& editor = *static_cast<Editor*>(context);
+        if (!data || size != editor.m_cooked_capture_bytes || !editor.m_cooked_capture_pixels)
+        {
+            editor.m_cooked_capture_state.store(4, std::memory_order_release);
+            return;
+        }
+        std::memcpy(editor.m_cooked_capture_pixels.get(), data, size);
+        editor.m_cooked_capture_state.store(3, std::memory_order_release);
+    }
+
+    void Editor::CancelCookedCapture(void* context)
+    {
+        static_cast<Editor*>(context)->m_cooked_capture_state.store(4, std::memory_order_release);
+    }
+
     void Editor::OverrideWindowConfiguration()
     {
         const char* project_name = Configuration->ProjectName.empty() ? "ZEngine Editor" : Configuration->ProjectName.c_str();
@@ -428,19 +484,46 @@ namespace Tetragrama
             // Keep an absent default file as an empty-editor startup, but load
             // a present one through the normal transactional scene path.
             std::string directory = {};
-            if (Configuration && !Configuration->ActiveSceneName.empty() && TrySceneDialogDirectory(Configuration->WorkingSpacePath.c_str(), Configuration->ScenePath.c_str(), {}, &directory))
+            if (m_cooked_package_directory.empty() && Configuration && !Configuration->ActiveSceneName.empty() && TrySceneDialogDirectory(Configuration->WorkingSpacePath.c_str(), Configuration->ScenePath.c_str(), {}, &directory))
             {
                 const std::filesystem::path source = std::filesystem::path(directory) / (std::string(Configuration->ActiveSceneName.c_str()) + ".zescene");
                 std::error_code             error  = {};
                 if (std::filesystem::is_regular_file(source, error) && !error)
                 {
                     const auto scene_path = SceneSourcePathFromNative(Configuration->WorkingSpacePath.c_str(), source.string());
-                    if (scene_path.Succeeded() && !RequestSceneOpen(scene_path.Value(), Session.SceneEpoch()))
+                    if (scene_path.Succeeded() && m_source_capture && !m_source_capture_import_path.empty())
+                    {
+                        m_source_capture_scene = scene_path.Value();
+                    }
+                    else if (scene_path.Succeeded() && !RequestSceneOpen(scene_path.Value(), Session.SceneEpoch()))
                     {
                         ZENGINE_CORE_WARN("[Editor] Could not queue configured default scene {}", source.string())
                     }
                 }
             }
+        }
+
+        if (m_source_capture && !m_source_capture_import_path.empty() && engine && engine->ImportCoordinator)
+        {
+            const auto source = ZEngine::Core::VFS::VFSPath::Parse(m_source_capture_import_path.c_str());
+            if (source.Succeeded())
+                m_source_capture_import = engine->ImportCoordinator->Enqueue(source.Value());
+            if (m_source_capture_import.is_nil() || !m_source_capture_scene.IsValid())
+            {
+                ZENGINE_CORE_ERROR("[Editor] Cannot schedule source capture fixture import")
+                ZEngine::Engine::RequestClose();
+            }
+        }
+
+        if (!m_cooked_package_directory.empty() && engine)
+        {
+            m_cooked_initial_world       = engine->Scene;
+            m_cooked_initial_render      = CurrentScene;
+            m_cooked_initial_generation  = engine->ScenePublication.Generation();
+            m_cooked_startup             = ZEngine::Helpers::Scope<EditorCookedStartup>(new (std::nothrow) EditorCookedStartup{});
+            m_cooked_startup_initialized = m_cooked_startup && m_cooked_startup->Initialize(*this, *engine, m_cooked_package_directory.c_str(), m_cooked_startup_scene);
+            if (!m_cooked_startup_initialized)
+                ZENGINE_CORE_ERROR("[Editor] Could not initialize cooked scene startup")
         }
 
         // Bake ZUI font atlases. Font sizes are chosen to be readable on high-resolution
@@ -602,6 +685,301 @@ namespace Tetragrama
 
     void Editor::OnUpdate(float dt)
     {
+        if (m_source_capture && !m_source_capture_import.is_nil() && !m_source_capture_scene_queued)
+        {
+            auto* assets = ZEngine::Managers::AssetManager::Instance();
+            bool  ready  = false;
+            bool  failed = false;
+            if (assets && assets->Registry)
+            {
+                std::lock_guard lock(assets->IngestMutex);
+                const auto*     record = assets->Registry->FindByUUID(m_source_capture_import);
+                ready                  = record && record->State == ZEngine::Core::VFS::AssetState::Loaded;
+                failed                 = record && record->State == ZEngine::Core::VFS::AssetState::Failed;
+            }
+            if (failed)
+            {
+                ZENGINE_CORE_ERROR("[Editor] Source capture fixture import failed")
+                ZEngine::Engine::RequestClose();
+            }
+            if (ready)
+            {
+                m_source_capture_scene_queued = RequestSceneOpen(m_source_capture_scene, Session.SceneEpoch());
+                if (!m_source_capture_scene_queued)
+                {
+                    ZENGINE_CORE_ERROR("[Editor] Cannot queue source capture fixture scene")
+                    ZEngine::Engine::RequestClose();
+                }
+            }
+        }
+        if ((m_cooked_supersede_cpu_armed && m_cooked_startup && m_cooked_startup->CpuProbeReached()) || m_cooked_supersede_gpu_reached)
+        {
+            const bool                    gpu        = m_cooked_supersede_gpu_reached;
+            auto*                         engine     = ZEngine::Engine::GetContext();
+            const auto                    old        = m_cooked_reload_request;
+            ZEngine::ECS::SceneRequestId  latest     = {};
+            ZEngine::ECS::SceneLoadResult superseded = {};
+            if (!engine || !SceneOpenPending() || (!gpu && SceneOpenWorkPending()) || RequestCookedScene(m_cooked_startup_scene, Session.SceneEpoch(), &latest) != EditorCookedStartup::RestartResult::Started || !engine->SceneLoads.Poll(old, &superseded) || superseded.Outcome != ZEngine::ECS::SceneLoadOutcome::Superseded || !superseded.CleanupPending || !engine->SceneLoads.Acknowledge(old))
+            {
+                m_cooked_startup_failed = true;
+                ZENGINE_CORE_ERROR("[Editor] Cooked CPU worker supersession failed")
+            }
+            else
+            {
+                m_cooked_reload_request        = latest;
+                m_cooked_current_scene         = m_cooked_startup_scene;
+                m_cooked_supersede_cpu_armed   = false;
+                m_cooked_supersede_gpu_reached = false;
+                m_cooked_supersede_gpu         = false;
+                if (gpu)
+                {
+                    ZENGINE_CORE_INFO("[Editor] Superseded cooked GPU upload with cleanup pending")
+                }
+                else
+                {
+                    ZENGINE_CORE_INFO("[Editor] Superseded cooked CPU worker with cleanup pending")
+                }
+            }
+        }
+        if (m_cooked_startup_initialized)
+            m_cooked_startup->Tick(*this);
+        if (m_cooked_staging_limit_active && (m_cooked_startup->Failed() || m_cooked_startup_failed))
+        {
+            auto*      engine                 = ZEngine::Engine::GetContext();
+            const auto stats                  = engine->Device->GpuMem.GetAllocationStatistics();
+            const auto domain                 = static_cast<uint32_t>(ZEngine::Core::Memory::GpuMemoryDomain::HostStaging);
+            m_cooked_staging_refusal_observed = m_cooked_staging_gpu_started && m_cooked_staging_request_failed && stats.DomainBudgetRefusals[domain] > m_cooked_staging_refusal_baseline;
+            const bool restored               = engine->Device->GpuMem.SetAllocationLimits(m_cooked_saved_gpu_limits);
+            ZENGINE_VALIDATE_ASSERT(restored, "Cooked test staging limit could not be restored")
+            m_cooked_staging_limit_active = false;
+            if (m_cooked_staging_refusal_observed)
+                ZENGINE_CORE_INFO("[Editor] Cooked replacement staging allocation was refused")
+        }
+        if (m_cooked_startup_exit_after_frame && !m_source_capture && (!m_cooked_startup_initialized || m_cooked_startup->Failed() || m_cooked_startup_failed))
+        {
+            auto*                                                         engine    = ZEngine::Engine::GetContext();
+            ZEngine::Rendering::Scenes::SceneSubmissionProgress::Snapshot submitted = {};
+            if (!engine || engine->Scene != m_cooked_initial_world || CurrentScene != m_cooked_initial_render || engine->ScenePublication.Generation() != m_cooked_initial_generation)
+            {
+                ZENGINE_CORE_ERROR("[Editor] Cooked startup failure changed the outgoing scene")
+                ZEngine::Engine::RequestClose();
+            }
+            else if (RenderPipeline && RenderPipeline->SceneSubmissions().TryRead(&submitted))
+            {
+                if (!m_cooked_failure_observed)
+                {
+                    m_cooked_failure_observed = true;
+                    m_cooked_failure_baseline = submitted.Generation == m_cooked_initial_generation ? submitted.Count : 0;
+                }
+                else if (submitted.Generation == m_cooked_initial_generation && submitted.Count > m_cooked_failure_baseline)
+                {
+                    if (m_cooked_reload_request)
+                    {
+                        ZEngine::ECS::SceneLoadResult result = {};
+                        if (!engine->SceneLoads.Poll(m_cooked_reload_request, &result) || result.Outcome == ZEngine::ECS::SceneLoadOutcome::Pending || result.CleanupPending)
+                            return;
+                        if (!engine->SceneLoads.Acknowledge(m_cooked_reload_request))
+                            return;
+                        m_cooked_reload_request = {};
+                    }
+                    m_cooked_failure_preserved = true;
+                    ZENGINE_CORE_INFO("[Editor] Outgoing scene submitted after cooked startup failure")
+                    if (m_cooked_retry_after_failure && m_cooked_startup_initialized && (m_cooked_startup->Failed() || m_cooked_startup_failed))
+                    {
+                        const auto retry = RequestCookedScene(m_cooked_startup_scene, Session.SceneEpoch(), &m_cooked_reload_request);
+                        if (retry == EditorCookedStartup::RestartResult::Busy)
+                            return;
+                        if (retry == EditorCookedStartup::RestartResult::Started)
+                        {
+                            m_cooked_retry_after_failure = false;
+                            m_cooked_startup_failed      = false;
+                            m_cooked_current_scene       = m_cooked_startup_scene;
+                            m_cooked_reload_generation   = engine->ScenePublication.Generation() + 1;
+                            ZENGINE_CORE_INFO("[Editor] Retrying cooked scene after preserved failure")
+                            return;
+                        }
+                    }
+                    ZEngine::Engine::RequestClose();
+                }
+            }
+        }
+        if (m_cooked_startup_exit_after_frame && !m_cooked_startup_frame_recorded && m_loaded_scene)
+        {
+            ZEngine::Rendering::RenderResourceManager::SceneResourcePreparationResult result          = {};
+            ZEngine::Rendering::Scenes::SceneSubmissionProgress::Snapshot             submitted       = {};
+            auto*                                                                     engine          = ZEngine::Engine::GetContext();
+            // Observe multiple accepted frames: the prepared first frame and
+            // subsequent retained-resource frames use different render paths.
+            const bool                                                                awaiting_reload = !m_source_capture && m_cooked_reload_generation && (!engine || engine->ScenePublication.Generation() != m_cooked_reload_generation || SceneOpenPending() || m_cooked_startup->Pending());
+            const bool                                                                prepared        = !awaiting_reload && (m_source_capture ? !SceneOpenPending() : m_loaded_scene->PollRenderResources(&result) && result.Cooked && result.FrameRecorded);
+            if (engine && RenderPipeline && prepared && RenderPipeline->SceneSubmissions().TryRead(&submitted) && submitted.Generation == engine->ScenePublication.Generation() && submitted.Count >= 8)
+            {
+                if (m_cooked_reload_request)
+                {
+                    ZEngine::ECS::SceneLoadResult outcome = {};
+                    if (!engine->SceneLoads.Poll(m_cooked_reload_request, &outcome) || outcome.Outcome != ZEngine::ECS::SceneLoadOutcome::Committed || outcome.CommittedGeneration != submitted.Generation || outcome.CleanupPending)
+                        return;
+                    if (!engine->SceneLoads.Acknowledge(m_cooked_reload_request))
+                        return;
+                    m_cooked_reload_request = {};
+                }
+                const auto* settings = m_loaded_scene->Document().Settings();
+                if (!m_source_capture && (!settings || settings->UUID != m_cooked_current_scene))
+                {
+                    ZENGINE_CORE_ERROR("[Editor] Cooked scene replacement published the wrong scene identity")
+                    ZEngine::Engine::RequestClose();
+                    return;
+                }
+                if (!m_source_capture && m_cooked_memory_sample_generation != submitted.Generation)
+                {
+                    EditorCookedStartup::MemorySnapshot memory = {};
+                    if (m_cooked_startup->SampleMemory(&memory))
+                    {
+                        const auto admitted = m_cooked_startup->AdmissionTimestampNs();
+                        if (!admitted || submitted.Generation != m_cooked_startup->ExpectedGeneration() || submitted.FirstTimestampNs < admitted)
+                        {
+                            ZENGINE_CORE_ERROR("[Editor] Invalid cooked admission-to-submission timing")
+                            ZEngine::Engine::RequestClose();
+                            return;
+                        }
+                        ZENGINE_CORE_INFO("[CookedTiming] generation={} admission_ns={} first_submission_ns={} elapsed_ns={}", submitted.Generation, admitted, submitted.FirstTimestampNs, submitted.FirstTimestampNs - admitted)
+                        const auto gpu        = engine->Device->GpuMem.GetAllocationStatistics();
+                        const auto retirement = engine->Device->PendingFree.GetStatistics();
+                        ZENGINE_CORE_INFO("[CookedLifecycle] generation={} cpu_live={} cpu_peak={} staging_live={} staging_peak={} metadata_live={} metadata_blocks={} gpu_live={} gpu_peak={} retirement_queued={} retirement_draining={}", submitted.Generation, memory.CpuLive, memory.CpuPeak, memory.StagingLive, memory.StagingPeak, memory.MetadataLive, memory.MetadataBlocks, gpu.AllocationBytes, gpu.PeakAllocationBytes, retirement.Queued, retirement.Draining)
+                        m_cooked_memory_sample_generation = submitted.Generation;
+                    }
+                }
+                const uint32_t prepared_draws = m_source_capture ? m_loaded_scene->DrawCount() : result.InitialDrawCount;
+                const bool     draws_match    = !m_cooked_expected_draws || (prepared_draws == m_cooked_expected_draws && submitted.DrawCount == m_cooked_expected_draws);
+                if (!draws_match)
+                {
+                    ZENGINE_CORE_ERROR("[Editor] Scene submitted {} draws (prepared {}, expected {})", submitted.DrawCount, prepared_draws, m_cooked_expected_draws)
+                    ZEngine::Engine::RequestClose();
+                }
+                else if (!m_source_capture && m_cooked_reloads_remaining)
+                {
+                    if (m_cooked_fail_reload_staging && !m_cooked_staging_limit_active)
+                    {
+                        auto&      allocator        = engine->Device->GpuMem;
+                        const auto stats            = allocator.GetAllocationStatistics();
+                        const auto domain           = static_cast<uint32_t>(ZEngine::Core::Memory::GpuMemoryDomain::HostStaging);
+                        auto       limited          = allocator.GetAllocationLimits();
+                        m_cooked_saved_gpu_limits   = limited;
+                        limited.DomainBytes[domain] = stats.DomainAdmittedBytes[domain];
+                        if (!allocator.SetAllocationLimits(limited))
+                            return;
+                        m_cooked_staging_refusal_baseline = stats.DomainBudgetRefusals[domain];
+                        m_cooked_staging_limit_active     = true;
+                    }
+                    const auto next      = m_cooked_current_scene == m_cooked_startup_scene ? m_cooked_alternate_scene : m_cooked_startup_scene;
+                    const auto restarted = RequestCookedScene(next, Session.SceneEpoch(), &m_cooked_reload_request);
+                    if (restarted == EditorCookedStartup::RestartResult::Started)
+                    {
+                        if (m_cooked_reject_reload_submit)
+                        {
+                            engine->RenderResourceManager->ArmCookedBatchRejectionProbe();
+                            m_cooked_reject_reload_submit = false;
+                        }
+                        auto target = next;
+                        if (m_cooked_supersede_reload)
+                        {
+                            const auto                    old        = m_cooked_reload_request;
+                            ZEngine::ECS::SceneRequestId  latest     = {};
+                            const auto                    newer      = RequestCookedScene(m_cooked_startup_scene, Session.SceneEpoch(), &latest);
+                            ZEngine::ECS::SceneLoadResult superseded = {};
+                            if (newer != EditorCookedStartup::RestartResult::Started || !SceneOpenPending() || SceneOpenWorkPending() || !engine->SceneLoads.Poll(old, &superseded) || superseded.Outcome != ZEngine::ECS::SceneLoadOutcome::Superseded || superseded.CleanupPending || !engine->SceneLoads.Acknowledge(old))
+                            {
+                                m_cooked_startup_failed = true;
+                                ZENGINE_CORE_ERROR("[Editor] Cooked waiting request supersession failed")
+                                return;
+                            }
+                            m_cooked_reload_request   = latest;
+                            target                    = m_cooked_startup_scene;
+                            m_cooked_supersede_reload = false;
+                            ZENGINE_CORE_INFO("[Editor] Superseded cooked waiting request with a newer scene")
+                        }
+                        if (m_cooked_cancel_cpu)
+                            m_cooked_startup->ArmCpuCancellationProbe();
+                        if (m_cooked_supersede_cpu)
+                        {
+                            m_cooked_startup->ArmCpuSupersessionProbe();
+                            m_cooked_supersede_cpu_armed = true;
+                            m_cooked_supersede_cpu       = false;
+                        }
+                        m_cooked_initial_world      = engine->Scene;
+                        m_cooked_initial_render     = CurrentScene;
+                        m_cooked_initial_generation = engine->ScenePublication.Generation();
+                        m_cooked_reload_generation  = m_cooked_initial_generation + 1;
+                        m_cooked_current_scene      = target;
+                        m_cooked_cancel_armed       = m_cooked_cancel_after_mesh || m_cooked_supersede_gpu;
+                        --m_cooked_reloads_remaining;
+                    }
+                    else if (restarted == EditorCookedStartup::RestartResult::Failed)
+                    {
+                        m_cooked_startup_failed = true;
+                        ZENGINE_CORE_ERROR("[Editor] Cooked scene reload admission failed")
+                    }
+                    else if (restarted == EditorCookedStartup::RestartResult::Busy && m_cooked_staging_limit_active)
+                    {
+                        const bool restored = engine->Device->GpuMem.SetAllocationLimits(m_cooked_saved_gpu_limits);
+                        ZENGINE_VALIDATE_ASSERT(restored, "Cooked test staging limit could not be restored")
+                        m_cooked_staging_limit_active = false;
+                    }
+                }
+                else if (m_cooked_capture_path.empty())
+                {
+                    m_cooked_startup_frame_recorded = true;
+                    ZENGINE_CORE_INFO("[Editor] Cooked scene submitted {} frames with {} draws", submitted.Count, submitted.DrawCount)
+                    ZEngine::Engine::RequestClose();
+                }
+                else
+                {
+                    const auto state = m_cooked_capture_state.load(std::memory_order_acquire);
+                    if (state == 0)
+                    {
+                        ZENGINE_CORE_INFO("[SceneCapture] generation={} prepared_draws={} submitted_draws={}", submitted.Generation, prepared_draws, submitted.DrawCount)
+                        ZEngine::Applications::RenderFrameState frame = {};
+                        if (!CaptureRenderView(frame) || !frame.RenderTargetW || !frame.RenderTargetH || uint64_t(frame.RenderTargetW) * frame.RenderTargetH > 32ULL * 1024 * 1024)
+                        {
+                            m_cooked_capture_state.store(4, std::memory_order_release);
+                        }
+                        else
+                        {
+                            m_cooked_capture_width      = frame.RenderTargetW;
+                            m_cooked_capture_height     = frame.RenderTargetH;
+                            m_cooked_capture_generation = submitted.Generation;
+                            m_cooked_capture_bytes      = size_t(frame.RenderTargetW) * frame.RenderTargetH * 4;
+                            m_cooked_capture_pixels.reset(new (std::nothrow) uint8_t[m_cooked_capture_bytes]);
+                            m_cooked_capture_state.store(m_cooked_capture_pixels ? 1 : 4, std::memory_order_release);
+                        }
+                    }
+                    else if (state == 3)
+                    {
+                        const size_t count  = size_t(m_cooked_capture_width) * m_cooked_capture_height;
+                        auto*        pixels = m_cooked_capture_pixels.get();
+                        for (size_t i = 0; i < count; ++i)
+                        {
+                            pixels[3 * i]     = pixels[4 * i];
+                            pixels[3 * i + 1] = pixels[4 * i + 1];
+                            pixels[3 * i + 2] = pixels[4 * i + 2];
+                        }
+                        std::ofstream image(m_cooked_capture_path, std::ios::binary | std::ios::trunc);
+                        image << "P6\n" << m_cooked_capture_width << ' ' << m_cooked_capture_height << "\n255\n";
+                        image.write(reinterpret_cast<const char*>(pixels), static_cast<std::streamsize>(count * 3));
+                        image.close();
+                        m_cooked_startup_frame_recorded = !image.fail();
+                        if (!m_cooked_startup_frame_recorded)
+                            ZENGINE_CORE_ERROR("[Editor] Could not write cooked scene capture")
+                        ZEngine::Engine::RequestClose();
+                    }
+                    else if (state == 4)
+                    {
+                        ZENGINE_CORE_ERROR("[Editor] Cooked scene capture failed")
+                        ZEngine::Engine::RequestClose();
+                    }
+                }
+            }
+        }
         auto*      ctx     = RenderPipeline ? RenderPipeline->ZUICtx : nullptr;
         auto*      eng     = ZEngine::Engine::GetContext();
         const bool focused = (!eng || !eng->InputManager || eng->InputManager->IsWindowFocused()) && !m_focus_lost_pending;
@@ -977,6 +1355,25 @@ namespace Tetragrama
 
     void Editor::OnRenderUI()
     {
+        if (m_cooked_runtime_view)
+        {
+            auto* ctx = RenderPipeline ? RenderPipeline->ZUICtx : nullptr;
+            if (!ctx || !RenderPipeline->SceneRenderer)
+                return;
+            if (State && ctx->ScreenW && ctx->ScreenH && (ctx->ScreenW != m_cooked_runtime_width || ctx->ScreenH != m_cooked_runtime_height) && State->RenderTargetResizeRequests.push({.Width = ctx->ScreenW, .Height = ctx->ScreenH}))
+            {
+                m_cooked_runtime_width  = ctx->ScreenW;
+                m_cooked_runtime_height = ctx->ScreenH;
+            }
+            const auto texture  = RenderPipeline->SceneRenderer->GetFrameOutput();
+            auto*      image    = ZEngine::UI::ZUIBeginColumn(ctx, "##cooked_runtime", ZEngine::UI::ZPx(static_cast<float>(ctx->ScreenW)), ZEngine::UI::ZPx(static_cast<float>(ctx->ScreenH)));
+            image->Flags        = image->Flags | ZEngine::UI::ZUI_DrawBackground;
+            image->TextureIndex = texture.Valid() ? static_cast<uint32_t>(texture.Index) : 0xFFFFFFFFu;
+            image->EdgeSoftness = 0.f;
+            ZUIBoxSetColor(image, 1.f, 1.f, 1.f, texture.Valid() ? 1.f : 0.f);
+            ZEngine::UI::ZUIEndColumn(ctx);
+            return;
+        }
         if (ZUIUILayer)
         {
             ZUIUILayer->Render(nullptr, nullptr);
@@ -991,6 +1388,15 @@ namespace Tetragrama
         if (m_publishing_scene || m_processing_scene_open)
         {
             return;
+        }
+        if (m_cooked_startup)
+            m_cooked_startup->Cancel();
+        if (m_cooked_staging_limit_active)
+        {
+            auto*      engine   = ZEngine::Engine::GetContext();
+            const bool restored = engine && engine->Device && engine->Device->GpuMem.SetAllocationLimits(m_cooked_saved_gpu_limits);
+            ZENGINE_VALIDATE_ASSERT(restored, "Cooked test staging limit could not be restored during shutdown")
+            m_cooked_staging_limit_active = false;
         }
         DiscardSceneSettings();
         if (ContentBrowser)
@@ -1023,14 +1429,53 @@ namespace Tetragrama
         }
     }
 
-    void Editor::OnClosed() {}
+    void Editor::OnClosed()
+    {
+        if (m_cooked_startup)
+        {
+            m_cooked_startup->AfterDeviceShutdown();
+            m_cooked_startup.reset();
+        }
+        m_cooked_capture_pixels.reset();
+    }
+
+    bool Editor::ApplyCookedRuntimeCamera(const ZEngine::ECS::Scene& scene, ZEngine::Applications::RenderFrameState& state) const
+    {
+        if (!m_cooked_runtime_view)
+            return true;
+        ZEngine::ECS::SceneDiagnostics diagnostics = {};
+        if (ZEngine::ECS::CaptureSceneRuntimeCamera(scene, m_cooked_runtime_camera, state.RenderTargetW, state.RenderTargetH, &state.Camera, &diagnostics))
+            return true;
+        for (uint32_t i = 0; i < diagnostics.Count; ++i)
+            ZENGINE_CORE_ERROR("[Editor] {}", diagnostics.Entries[i].Message)
+        return false;
+    }
 
     void Editor::PrepareScene(ZEngine::Applications::RenderFrameState& state)
     {
         GameApplication::PrepareScene(state);
+        if (m_cooked_runtime_view && m_loaded_scene && state.RenderTargetW && state.RenderTargetH && !ApplyCookedRuntimeCamera(m_loaded_scene->World(), state))
+        {
+            m_cooked_startup_failed = true;
+            ZEngine::Engine::RequestClose();
+            return;
+        }
+        state.SceneCapture = {};
+        if (m_cooked_capture_state.load(std::memory_order_acquire) == 1)
+        {
+            if (m_cooked_runtime_view)
+                ZENGINE_CORE_INFO("[CookedRuntimeCamera] capture_position={} {} {}", state.Camera.Position.x, state.Camera.Position.y, state.Camera.Position.z)
+            state.SceneCapture = {this, &Editor::BeginCookedCapture, &Editor::CompleteCookedCapture, &Editor::CancelCookedCapture};
+        }
         state.SceneResources = m_loaded_scene ? m_loaded_scene->InitialRenderResources() : ZEngine::Rendering::RenderResourceManager::SceneResourcePreparationId{};
         UpdateCameraRevision(state.Camera);
         m_render_target_revision = state.ResizeSequence;
+        if (m_cooked_runtime_view)
+        {
+            state.ShowGrid = false;
+            state.Gizmo.Reset();
+            return;
+        }
         PrepareSelectionOutline(state);
         PrepareObjectPick(state);
         PrepareHoverPick(state);

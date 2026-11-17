@@ -38,5 +38,7 @@ if(BUILD_TESTING)
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/Scripts/tests/test_scene_lifecycle.py")
         add_test(NAME SceneCaptureComparisonTests
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/Scripts/tests/test_scene_capture.py")
+        add_test(NAME CookedRuntimeTraceEvidenceTests
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/Scripts/tests/test_cooked_runtime_trace.py")
     endif()
 endif()

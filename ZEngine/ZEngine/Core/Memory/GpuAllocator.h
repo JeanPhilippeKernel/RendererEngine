@@ -163,15 +163,17 @@ namespace ZEngine::Core::Memory
     // Includes the staging ring and one-shot staging allocations.
     struct GpuAllocationStatistics
     {
-        uint32_t Capacity                                                          = 0;
-        uint32_t ReservedRecords                                                   = 0;
-        uint32_t AllocationCount                                                   = 0;
-        uint32_t PeakAllocationCount                                               = 0;
-        uint64_t AllocationBytes                                                   = 0;
-        uint64_t PeakAllocationBytes                                               = 0;
-        uint64_t AdmittedBytes                                                     = 0;
-        uint64_t PeakAdmittedBytes                                                 = 0;
-        uint64_t DomainAdmittedBytes[static_cast<uint8_t>(GpuMemoryDomain::Count)] = {};
+        uint32_t Capacity                                                              = 0;
+        uint32_t ReservedRecords                                                       = 0;
+        uint32_t AllocationCount                                                       = 0;
+        uint32_t PeakAllocationCount                                                   = 0;
+        uint64_t AllocationBytes                                                       = 0;
+        uint64_t PeakAllocationBytes                                                   = 0;
+        uint64_t AdmittedBytes                                                         = 0;
+        uint64_t PeakAdmittedBytes                                                     = 0;
+        uint64_t DomainAdmittedBytes[static_cast<uint8_t>(GpuMemoryDomain::Count)]     = {};
+        uint64_t DomainPeakAdmittedBytes[static_cast<uint8_t>(GpuMemoryDomain::Count)] = {};
+        uint64_t DomainBudgetRefusals[static_cast<uint8_t>(GpuMemoryDomain::Count)]    = {};
     };
 
     struct GpuAllocator
@@ -245,7 +247,7 @@ namespace ZEngine::Core::Memory
         uint32_t                ReserveAllocation();
         bool                    AdmitAllocationBytes(uint32_t record, VkDeviceSize bytes, GpuMemoryDomain domain);
         BufferView              TryAllocateBufferWithPolicy(VkDeviceSize size, VkBufferUsageFlags usage, GpuMemoryDomain domain, const char* debug_name, VkResult* status, bool prefer_device);
-        void                    CommitAllocation(uint32_t record, VmaAllocation allocation);
+        bool                    CommitAllocation(uint32_t record, VmaAllocation allocation);
         bool                    RetainAllocation(uint32_t record, VmaAllocation allocation);
         void                    ReleaseAllocation(uint32_t record, VmaAllocation allocation);
     };

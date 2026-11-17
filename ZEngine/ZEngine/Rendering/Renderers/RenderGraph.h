@@ -765,6 +765,7 @@ namespace ZEngine::Rendering::Renderers
     struct RenderGraph : IScenePipelinePreparation
     {
         friend struct RenderGraphTestAccess;
+        friend struct ::RRMUploadBatchTestHelper;
 
         static constexpr uint32_t MaxScenePipelineVariants                     = 32;
 
@@ -937,7 +938,7 @@ namespace ZEngine::Rendering::Renderers
         void                                                      CancelUnsubmittedReadbacks(bool preserve_recorded = false);
         void                                                      MarkQueryWritesRecorded(const RGPass& pass);
         void                                                      BuildStreamingAcquirePlans();
-        void                                                      AcknowledgeStreamingAcquires(uint32_t first_pass_order, uint32_t pass_count);
+        void                                                      AcknowledgeStreamingAcquires(uint32_t first_pass_order, uint32_t pass_count, Rendering::Primitives::Semaphore* timeline, uint64_t value);
         static void                                               OnRenderWorkSubmitted(void* context, Rendering::Primitives::Semaphore* timeline, uint64_t timeline_value);
         static void                                               OnRenderWorkCancelled(void* context);
         // Returns false when the enabled subgraph has a dependency cycle. A cycle

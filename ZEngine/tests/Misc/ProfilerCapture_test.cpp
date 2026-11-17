@@ -119,14 +119,17 @@ TEST(ProfilerCaptureTest, TimedCaptureStopsBeforeLaterSamplesWithoutDebuggerInte
     ProfilerBuffer::StopCapture();
     EXPECT_FALSE(ProfilerBuffer::StartTimedCapture(0));
     ASSERT_TRUE(ProfilerBuffer::StartTimedCapture(100, "Timed."));
+    EXPECT_FALSE(ProfilerBuffer::CaptureDeadlinePassed());
     ProfilerBuffer::RecordValue("Timed.Marker", 1);
     EXPECT_EQ(ProfilerBuffer::CaptureCount(), 1u);
     EXPECT_FALSE(ProfilerBuffer::StartTimedCapture(100, "Other."));
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    EXPECT_TRUE(ProfilerBuffer::CaptureDeadlinePassed());
     ProfilerBuffer::Record("Timed.TooLate", 10);
     EXPECT_EQ(ProfilerBuffer::CaptureCount(), 1u);
     EXPECT_EQ(ProfilerBuffer::CaptureDropped(), 0u);
     ASSERT_TRUE(ProfilerBuffer::StartCapture("Fresh."));
+    EXPECT_FALSE(ProfilerBuffer::CaptureDeadlinePassed());
     ProfilerBuffer::Record("Fresh.NoOldDeadline", 10);
     EXPECT_EQ(ProfilerBuffer::CaptureCount(), 1u);
     ProfilerBuffer::StopCapture();

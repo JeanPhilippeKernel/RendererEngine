@@ -7,6 +7,17 @@ namespace ZEngine::Rendering::Renderers
     /// @brief Converts the graph's linear HDR scene colour into the editor's display texture.
     struct ToneMappingPass final : public IRenderGraphCallbackPass
     {
+        struct CaptureRequest
+        {
+            RGReadbackFn       Complete  = nullptr;
+            RGReadbackCancelFn Cancelled = nullptr;
+            void*              Context   = nullptr;
+        };
+        void RequestCapture(const CaptureRequest& request)
+        {
+            m_capture = request;
+        }
+        void CancelPendingCapture();
         /// @brief Uses atmosphere-composited HDR color when that per-view path is active.
         void SetUseCompositedSceneColor(bool enabled);
         bool Register(Hardwares::VulkanDevicePtr const device, cstring name, const RenderGraphFrameContext& frame_context, RenderGraphResourceBuilderPtr const res_builder, RenderGraphResourceInspectorPtr res_inspector) override;
@@ -20,6 +31,7 @@ namespace ZEngine::Rendering::Renderers
         }
 
     private:
-        bool m_use_composited_scene_color = false;
+        bool           m_use_composited_scene_color = false;
+        CaptureRequest m_capture                    = {};
     };
 } // namespace ZEngine::Rendering::Renderers

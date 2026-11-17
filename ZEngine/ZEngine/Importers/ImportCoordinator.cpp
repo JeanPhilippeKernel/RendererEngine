@@ -33,6 +33,11 @@ namespace ZEngine::Importers
 
     uuids::uuid ImportCoordinator::Enqueue(Core::VFS::VFSPath path, ImportPriority priority, ImportCallback cb)
     {
+        if (m_deny_import.load(std::memory_order_acquire))
+        {
+            m_denied_imports.fetch_add(1, std::memory_order_relaxed);
+            return {};
+        }
         if (!m_vfs_ctx)
             return {};
 

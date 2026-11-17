@@ -1,5 +1,6 @@
 #pragma once
 #include <ZEngine/Hardwares/VulkanDevice.h>
+#include <ZEngine/Rendering/CookedSceneGpuMailbox.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/GizmoFrameData.h>
 #include <ZEngine/Rendering/Renderers/GraphicRenderer.h>
@@ -41,6 +42,14 @@ namespace ZEngine::Applications
         }
     };
 
+    struct RenderSceneCaptureRequest
+    {
+        void* Context                                      = nullptr;
+        bool (*Begin)(void*, uint32_t, uint32_t, uint64_t) = nullptr;
+        Rendering::Renderers::RGReadbackFn       Complete  = nullptr;
+        Rendering::Renderers::RGReadbackCancelFn Cancelled = nullptr;
+    };
+
     /// @brief Ownership state for a producer/consumer payload slot.
     enum class PayloadSlotState : uint32_t
     {
@@ -76,6 +85,7 @@ namespace ZEngine::Applications
         /// Hover has its own immutable token table and completion context. It
         /// must never consume or resolve a click-selection request.
         RenderObjectPickRequest                                      HoverPick        = {};
+        RenderSceneCaptureRequest                                    SceneCapture     = {};
         // Physical window size, captured on the main thread with platform events.
         uint32_t                                                     FramebufferW     = 0;
         uint32_t                                                     FramebufferH     = 0;
@@ -92,6 +102,8 @@ namespace ZEngine::Applications
 
     struct AppRenderPipeline
     {
+        /// Producer-to-render handoff for unpublished cooked scene uploads.
+        Rendering::CookedSceneGpuMailbox CookedSceneUploads = {};
         /// Main-producer-thread reservation. The pipeline must outlive this token.
         /// Destruction cancels an unpublished frame; Publish only releases an
         /// already captured slot and cannot allocate, copy a scene or fail.

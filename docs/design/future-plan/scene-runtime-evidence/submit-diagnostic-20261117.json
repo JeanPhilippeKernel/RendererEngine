@@ -1,0 +1,726 @@
+{
+  "scope": "diagnostic comparison; not matched-frame attribution or qualification",
+  "manifest_sha256": "3d03885391f97d37151e890ee7de525251474e58420413c8cf22d0376afe9b22",
+  "filesystem_cache_conditions": "uncontrolled operating-system cache; no cold-disk claim",
+  "initial_trace_starts_after_admission_ns": 0,
+  "initial_admission_marker_observed": true,
+  "steady_submitted_frames": 120,
+  "windows": {
+    "initial_load": {
+      "start_ns": 349421608604583,
+      "end_ns": 349428143618791,
+      "first_record_ns": 349421608708750,
+      "main_frame_diagnostics": {
+        "frames": 1922,
+        "partial_scopes": 0,
+        "unassigned_scopes": [],
+        "runtime_update_ms": {
+          "count": 1922,
+          "p50_ms": 0.001708,
+          "p95_ms": 0.004209,
+          "p99_ms": 0.007208,
+          "max_ms": 0.291708,
+          "worst_frame_end_ns": 349427510985000
+        },
+        "guarded_commit_ms": {
+          "count": 1,
+          "p50_ms": 0.0015,
+          "p95_ms": 0.0015,
+          "p99_ms": 0.0015,
+          "max_ms": 0.0015,
+          "worst_frame_end_ns": 349428128957291
+        }
+      },
+      "render_frame_diagnostics": {
+        "frames": 647,
+        "partial_scopes": 2,
+        "unassigned_scopes": [
+          {
+            "stage": "SceneLoad.Render.EnvironmentPreparation",
+            "end_ns": 349428136293625,
+            "duration_ms": 0.004333
+          },
+          {
+            "stage": "SceneLoad.Render.EnvironmentPreparation",
+            "end_ns": 349428136740416,
+            "duration_ms": 0.002458
+          }
+        ],
+        "cooked_upload_ms": {
+          "count": 335,
+          "p50_ms": 0.023959,
+          "p95_ms": 0.138875,
+          "p99_ms": 0.188459,
+          "max_ms": 0.234583,
+          "worst_frame_end_ns": 349423608223541
+        },
+        "environment_preparation_ms": {
+          "count": 647,
+          "p50_ms": 0.0037089999999999996,
+          "p95_ms": 0.240917,
+          "p99_ms": 1.817459,
+          "max_ms": 3.988625,
+          "worst_frame_end_ns": 349426543536291
+        }
+      },
+      "stages": {
+        "SceneLoad.Main.FrameWorkMs": {
+          "count": 1922,
+          "p50_ms": 0.081584,
+          "p95_ms": 0.1895,
+          "p99_ms": 0.302667,
+          "max_ms": 50.13025
+        },
+        "SceneLoad.Main.FrameIntervalMs": {
+          "count": 1922,
+          "p50_ms": 3.333916,
+          "p95_ms": 3.357208,
+          "p99_ms": 4.451041,
+          "max_ms": 50.13075
+        },
+        "SceneLoad.Main.RuntimeUpdate": {
+          "count": 1922,
+          "p50_ms": 0.001708,
+          "p95_ms": 0.004209,
+          "p99_ms": 0.007208,
+          "max_ms": 0.291708
+        },
+        "SceneLoad.Main.PlatformEvents": {
+          "count": 1922,
+          "p50_ms": 0.018,
+          "p95_ms": 0.041209,
+          "p99_ms": 0.155625,
+          "max_ms": 49.986917
+        },
+        "SceneLoad.Main.OverlayBuild": {
+          "count": 1922,
+          "p50_ms": 0.0005,
+          "p95_ms": 0.0555,
+          "p99_ms": 0.08525,
+          "max_ms": 0.199625
+        },
+        "SceneLoad.Main.SceneSynchronization": {
+          "count": 1616,
+          "p50_ms": 0.027333,
+          "p95_ms": 0.060084,
+          "p99_ms": 0.066333,
+          "max_ms": 0.180291
+        },
+        "SceneLoad.Main.PrepareScene": {
+          "count": 1922,
+          "p50_ms": 0.00025,
+          "p95_ms": 0.000542,
+          "p99_ms": 0.00075,
+          "max_ms": 0.014125
+        },
+        "SceneLoad.Main.PublishFrame": {
+          "count": 1922,
+          "p50_ms": 0.003166,
+          "p95_ms": 0.007,
+          "p99_ms": 0.010208,
+          "max_ms": 0.040583
+        },
+        "SceneLoad.Main.RuntimeGuardedCommit": {
+          "count": 1,
+          "p50_ms": 0.0015,
+          "p95_ms": 0.0015,
+          "p99_ms": 0.0015,
+          "max_ms": 0.0015
+        },
+        "SceneLoad.Render.FrameWorkMs": {
+          "count": 647,
+          "p50_ms": 8.324166,
+          "p95_ms": 9.057958,
+          "p99_ms": 16.205917,
+          "max_ms": 1008.485541
+        },
+        "SceneLoad.Render.FrameIntervalMs": {
+          "count": 647,
+          "p50_ms": 8.327708,
+          "p95_ms": 9.085875,
+          "p99_ms": 16.650625,
+          "max_ms": 1008.490541
+        },
+        "SceneLoad.Render.CookedUploadVisit": {
+          "count": 335,
+          "p50_ms": 0.023959,
+          "p95_ms": 0.138875,
+          "p99_ms": 0.188459,
+          "max_ms": 0.234583
+        },
+        "SceneLoad.Render.EnvironmentPreparation": {
+          "count": 1172,
+          "p50_ms": 0.002375,
+          "p95_ms": 0.115959,
+          "p99_ms": 1.030458,
+          "max_ms": 2.711083
+        },
+        "SceneLoad.Render.QueueSubmit": {
+          "count": 648,
+          "p50_ms": 4.738667,
+          "p95_ms": 7.244041,
+          "p99_ms": 7.961584,
+          "max_ms": 1006.154417
+        },
+        "SceneLoad.Render.AcquireImage": {
+          "count": 648,
+          "p50_ms": 0.090458,
+          "p95_ms": 0.167666,
+          "p99_ms": 0.41075,
+          "max_ms": 2.131541
+        },
+        "SceneLoad.Render.PresentWSI": {
+          "count": 647,
+          "p50_ms": 0.067583,
+          "p95_ms": 8.137792,
+          "p99_ms": 8.518333,
+          "max_ms": 15.869125
+        },
+        "SceneLoad.Render.RecordScene": {
+          "count": 524,
+          "p50_ms": 1.764125,
+          "p95_ms": 3.206584,
+          "p99_ms": 4.365875,
+          "max_ms": 9.986292
+        }
+      },
+      "render_interval_outliers": {
+        "threshold_ms": 33.613125,
+        "count": 2,
+        "largest_intervals": [
+          {
+            "interval_end_ns": 349426075807833,
+            "interval_ms": 1008.490541,
+            "longest_overlapping_scopes": [
+              {
+                "name": "SceneLoad.Render.EndFrame",
+                "end_ns": 349426075807083,
+                "duration_ms": 1006.535625
+              },
+              {
+                "name": "SceneLoad.Render.SubmitAndPresent",
+                "end_ns": 349426075805791,
+                "duration_ms": 1006.5305
+              },
+              {
+                "name": "SceneLoad.Render.QueueSubmit",
+                "end_ns": 349426075581333,
+                "duration_ms": 1006.154417
+              },
+              {
+                "name": "SceneLoad.Render.RecordScene",
+                "end_ns": 349425069271041,
+                "duration_ms": 1.491542
+              },
+              {
+                "name": "SceneLoad.Render.GraphExecute",
+                "end_ns": 349425069267916,
+                "duration_ms": 1.460667
+              }
+            ],
+            "overlapping_platform_events": [
+              {
+                "end_ns": 349425078731875,
+                "duration_ms": 5.854125,
+                "overlap_ms": 5.854125
+              },
+              {
+                "end_ns": 349425183396916,
+                "duration_ms": 4.54225,
+                "overlap_ms": 4.54225
+              },
+              {
+                "end_ns": 349425666618583,
+                "duration_ms": 0.667458,
+                "overlap_ms": 0.667458
+              },
+              {
+                "end_ns": 349425145552333,
+                "duration_ms": 0.058458,
+                "overlap_ms": 0.058458
+              },
+              {
+                "end_ns": 349425085537916,
+                "duration_ms": 0.056917,
+                "overlap_ms": 0.056917
+              }
+            ],
+            "recording_worker_samples": [
+              {
+                "name": "SceneLoad.RecordingWorker.DispatchDelayMs",
+                "timestamp_ns": 349425068897333,
+                "value_ms": 0.013875
+              },
+              {
+                "name": "SceneLoad.RecordingWorker.DispatchDelayMs",
+                "timestamp_ns": 349425068935041,
+                "value_ms": 0.012542
+              },
+              {
+                "name": "SceneLoad.RecordingWorker.DispatchDelayMs",
+                "timestamp_ns": 349425068745458,
+                "value_ms": 0.011
+              },
+              {
+                "name": "SceneLoad.RecordingWorker.DispatchDelayMs",
+                "timestamp_ns": 349425068435291,
+                "value_ms": 0.010125
+              },
+              {
+                "name": "SceneLoad.RecordingWorker.DispatchDelayMs",
+                "timestamp_ns": 349425068635625,
+                "value_ms": 0.008166
+              },
+              {
+                "name": "SceneLoad.RecordingWorker.DispatchDelayMs",
+                "timestamp_ns": 349425068987791,
+                "value_ms": 0.00775
+              },
+              {
+                "name": "SceneLoad.RecordingWorker.DispatchDelayMs",
+                "timestamp_ns": 349425068672250,
+                "value_ms": 0.006791
+              },
+              {
+                "name": "SceneLoad.RecordingWorker.DispatchDelayMs",
+                "timestamp_ns": 349425068461083,
+                "value_ms": 0.002584
+              }
+            ],
+            "queue_submit_samples": [
+              {
+                "name": "SceneLoad.QueueSubmit.LongWallMs",
+                "timestamp_ns": 349426075580875,
+                "value_ms": 1006.152791
+              },
+              {
+                "name": "SceneLoad.QueueSubmit.LongCpuMs",
+                "timestamp_ns": 349426075581000,
+                "value_ms": 1.202458
+              },
+              {
+                "name": "SceneLoad.QueueSubmit.LongNonCpuMs",
+                "timestamp_ns": 349426075581125,
+                "value_ms": 1004.950333
+              }
+            ]
+          },
+          {
+            "interval_end_ns": 349421660603208,
+            "interval_ms": 51.929083,
+            "longest_overlapping_scopes": [
+              {
+                "name": "SceneLoad.Render.EndFrame",
+                "end_ns": 349421660602666,
+                "duration_ms": 1.278625
+              },
+              {
+                "name": "SceneLoad.Render.SubmitAndPresent",
+                "end_ns": 349421660601916,
+                "duration_ms": 1.246125
+              },
+              {
+                "name": "SceneLoad.Render.PresentWSI",
+                "end_ns": 349421660600416,
+                "duration_ms": 1.194
+              },
+              {
+                "name": "SceneLoad.Render.BeginFrame",
+                "end_ns": 349421659323416,
+                "duration_ms": 0.274833
+              },
+              {
+                "name": "SceneLoad.Render.ResizePreparation",
+                "end_ns": 349421659048291,
+                "duration_ms": 0.113625
+              }
+            ],
+            "overlapping_platform_events": [
+              {
+                "end_ns": 349421658697333,
+                "duration_ms": 49.986917,
+                "overlap_ms": 49.986917
+              },
+              {
+                "end_ns": 349421658845541,
+                "duration_ms": 0.006042,
+                "overlap_ms": 0.006042
+              }
+            ],
+            "recording_worker_samples": [],
+            "queue_submit_samples": []
+          }
+        ],
+        "note": "Overlap is diagnostic only; nested scopes are not additive and do not establish causation."
+      }
+    },
+    "steady": {
+      "start_ns": 349428255352333,
+      "end_ns": 349429664199083,
+      "first_record_ns": 349428255352541,
+      "main_frame_diagnostics": {
+        "frames": 397,
+        "partial_scopes": 0,
+        "unassigned_scopes": [],
+        "runtime_update_ms": {
+          "count": 397,
+          "p50_ms": 0.002167,
+          "p95_ms": 0.0035,
+          "p99_ms": 0.005667,
+          "max_ms": 0.06,
+          "worst_frame_end_ns": 349428255460041
+        },
+        "guarded_commit_ms": null
+      },
+      "render_frame_diagnostics": {
+        "frames": 120,
+        "partial_scopes": 2,
+        "unassigned_scopes": [
+          {
+            "stage": "SceneLoad.Render.EnvironmentPreparation",
+            "end_ns": 349429661381458,
+            "duration_ms": 0.001833
+          },
+          {
+            "stage": "SceneLoad.Render.EnvironmentPreparation",
+            "end_ns": 349429661549125,
+            "duration_ms": 0.001292
+          }
+        ],
+        "cooked_upload_ms": null,
+        "environment_preparation_ms": {
+          "count": 119,
+          "p50_ms": 0.0072499999999999995,
+          "p95_ms": 0.011333,
+          "p99_ms": 0.022874,
+          "max_ms": 0.030334,
+          "worst_frame_end_ns": 349428795574750
+        }
+      },
+      "stages": {
+        "SceneLoad.Main.FrameWorkMs": {
+          "count": 397,
+          "p50_ms": 0.124917,
+          "p95_ms": 0.233459,
+          "p99_ms": 0.303666,
+          "max_ms": 0.458125
+        },
+        "SceneLoad.Main.FrameIntervalMs": {
+          "count": 397,
+          "p50_ms": 3.334208,
+          "p95_ms": 4.062666,
+          "p99_ms": 9.310417,
+          "max_ms": 13.250833
+        },
+        "SceneLoad.Main.RuntimeUpdate": {
+          "count": 397,
+          "p50_ms": 0.002167,
+          "p95_ms": 0.0035,
+          "p99_ms": 0.005667,
+          "max_ms": 0.06
+        },
+        "SceneLoad.Main.PlatformEvents": {
+          "count": 397,
+          "p50_ms": 0.02475,
+          "p95_ms": 0.04975,
+          "p99_ms": 0.065875,
+          "max_ms": 0.075167
+        },
+        "SceneLoad.Main.OverlayBuild": {
+          "count": 397,
+          "p50_ms": 0.000625,
+          "p95_ms": 0.064542,
+          "p99_ms": 0.091833,
+          "max_ms": 0.156042
+        },
+        "SceneLoad.Main.SceneSynchronization": {
+          "count": 397,
+          "p50_ms": 0.039417,
+          "p95_ms": 0.060292,
+          "p99_ms": 0.102416,
+          "max_ms": 0.284667
+        },
+        "SceneLoad.Main.PrepareScene": {
+          "count": 397,
+          "p50_ms": 0.011042,
+          "p95_ms": 0.018541,
+          "p99_ms": 0.028459,
+          "max_ms": 0.050709
+        },
+        "SceneLoad.Main.PublishFrame": {
+          "count": 397,
+          "p50_ms": 0.005542,
+          "p95_ms": 0.011,
+          "p99_ms": 0.018125,
+          "max_ms": 0.032875
+        },
+        "SceneLoad.Render.FrameWorkMs": {
+          "count": 120,
+          "p50_ms": 8.455791,
+          "p95_ms": 25.6105,
+          "p99_ms": 25.908625,
+          "max_ms": 26.299
+        },
+        "SceneLoad.Render.FrameIntervalMs": {
+          "count": 120,
+          "p50_ms": 8.46275,
+          "p95_ms": 25.613125,
+          "p99_ms": 25.911709,
+          "max_ms": 26.303584
+        },
+        "SceneLoad.Render.EnvironmentPreparation": {
+          "count": 240,
+          "p50_ms": 0.003167,
+          "p95_ms": 0.00575,
+          "p99_ms": 0.012416,
+          "max_ms": 0.02825
+        },
+        "SceneLoad.Render.QueueSubmit": {
+          "count": 120,
+          "p50_ms": 3.861417,
+          "p95_ms": 23.640791,
+          "p99_ms": 23.874833,
+          "max_ms": 24.001625
+        },
+        "SceneLoad.Render.AcquireImage": {
+          "count": 120,
+          "p50_ms": 0.140292,
+          "p95_ms": 0.667417,
+          "p99_ms": 4.849708,
+          "max_ms": 7.24625
+        },
+        "SceneLoad.Render.PresentWSI": {
+          "count": 120,
+          "p50_ms": 0.076541,
+          "p95_ms": 0.10075,
+          "p99_ms": 0.146291,
+          "max_ms": 0.2035
+        },
+        "SceneLoad.Render.RecordScene": {
+          "count": 120,
+          "p50_ms": 3.138167,
+          "p95_ms": 4.177125,
+          "p99_ms": 5.886833,
+          "max_ms": 6.222
+        }
+      }
+    },
+    "replacement": {
+      "start_ns": 349429664218583,
+      "end_ns": 349436627879583,
+      "first_record_ns": 349429664219458,
+      "main_frame_diagnostics": {
+        "frames": 2052,
+        "partial_scopes": 0,
+        "unassigned_scopes": [],
+        "runtime_update_ms": {
+          "count": 2052,
+          "p50_ms": 0.002375,
+          "p95_ms": 0.004333,
+          "p99_ms": 0.010209,
+          "max_ms": 0.20275,
+          "worst_frame_end_ns": 349436595155666
+        },
+        "guarded_commit_ms": {
+          "count": 1,
+          "p50_ms": 0.001291,
+          "p95_ms": 0.001291,
+          "p99_ms": 0.001291,
+          "max_ms": 0.001291,
+          "worst_frame_end_ns": 349436595155666
+        }
+      },
+      "render_frame_diagnostics": {
+        "frames": 579,
+        "partial_scopes": 2,
+        "unassigned_scopes": [
+          {
+            "stage": "SceneLoad.Render.EnvironmentPreparation",
+            "end_ns": 349436603115250,
+            "duration_ms": 0.0025
+          },
+          {
+            "stage": "SceneLoad.Render.EnvironmentPreparation",
+            "end_ns": 349436603285916,
+            "duration_ms": 0.001
+          }
+        ],
+        "cooked_upload_ms": {
+          "count": 335,
+          "p50_ms": 0.051458,
+          "p95_ms": 0.173834,
+          "p99_ms": 0.234209,
+          "max_ms": 0.272708,
+          "worst_frame_end_ns": 349432399915791
+        },
+        "environment_preparation_ms": {
+          "count": 578,
+          "p50_ms": 0.008166,
+          "p95_ms": 0.152333,
+          "p99_ms": 0.294458,
+          "max_ms": 0.432625,
+          "worst_frame_end_ns": 349434667404958
+        }
+      },
+      "stages": {
+        "SceneLoad.Main.FrameWorkMs": {
+          "count": 2052,
+          "p50_ms": 0.115167,
+          "p95_ms": 0.231459,
+          "p99_ms": 0.32025,
+          "max_ms": 0.536542
+        },
+        "SceneLoad.Main.FrameIntervalMs": {
+          "count": 2051,
+          "p50_ms": 3.334041,
+          "p95_ms": 3.37175,
+          "p99_ms": 4.093416,
+          "max_ms": 13.251083
+        },
+        "SceneLoad.Main.RuntimeUpdate": {
+          "count": 2052,
+          "p50_ms": 0.002375,
+          "p95_ms": 0.004333,
+          "p99_ms": 0.010209,
+          "max_ms": 0.20275
+        },
+        "SceneLoad.Main.PlatformEvents": {
+          "count": 2051,
+          "p50_ms": 0.02175,
+          "p95_ms": 0.046333,
+          "p99_ms": 0.072292,
+          "max_ms": 0.174625
+        },
+        "SceneLoad.Main.OverlayBuild": {
+          "count": 2052,
+          "p50_ms": 0.000583,
+          "p95_ms": 0.063875,
+          "p99_ms": 0.0985,
+          "max_ms": 0.398667
+        },
+        "SceneLoad.Main.SceneSynchronization": {
+          "count": 2052,
+          "p50_ms": 0.03775,
+          "p95_ms": 0.05725,
+          "p99_ms": 0.093792,
+          "max_ms": 0.191167
+        },
+        "SceneLoad.Main.PrepareScene": {
+          "count": 2052,
+          "p50_ms": 0.010208,
+          "p95_ms": 0.015667,
+          "p99_ms": 0.024583,
+          "max_ms": 0.211125
+        },
+        "SceneLoad.Main.PublishFrame": {
+          "count": 2052,
+          "p50_ms": 0.005125,
+          "p95_ms": 0.008625,
+          "p99_ms": 0.014375,
+          "max_ms": 0.029209
+        },
+        "SceneLoad.Main.RuntimeGuardedCommit": {
+          "count": 1,
+          "p50_ms": 0.001291,
+          "p95_ms": 0.001291,
+          "p99_ms": 0.001291,
+          "max_ms": 0.001291
+        },
+        "SceneLoad.Render.FrameWorkMs": {
+          "count": 579,
+          "p50_ms": 8.500042,
+          "p95_ms": 25.614416,
+          "p99_ms": 25.968209,
+          "max_ms": 26.3605
+        },
+        "SceneLoad.Render.FrameIntervalMs": {
+          "count": 579,
+          "p50_ms": 8.506959,
+          "p95_ms": 25.616416,
+          "p99_ms": 25.970875,
+          "max_ms": 26.364917
+        },
+        "SceneLoad.Render.CookedUploadVisit": {
+          "count": 335,
+          "p50_ms": 0.051458,
+          "p95_ms": 0.173834,
+          "p99_ms": 0.234209,
+          "max_ms": 0.272708
+        },
+        "SceneLoad.Render.EnvironmentPreparation": {
+          "count": 1158,
+          "p50_ms": 0.003917,
+          "p95_ms": 0.066542,
+          "p99_ms": 0.179042,
+          "max_ms": 0.427791
+        },
+        "SceneLoad.Render.QueueSubmit": {
+          "count": 580,
+          "p50_ms": 3.845417,
+          "p95_ms": 23.669333,
+          "p99_ms": 23.823417,
+          "max_ms": 24.467709
+        },
+        "SceneLoad.Render.AcquireImage": {
+          "count": 579,
+          "p50_ms": 0.137375,
+          "p95_ms": 0.316125,
+          "p99_ms": 0.863667,
+          "max_ms": 6.572875
+        },
+        "SceneLoad.Render.PresentWSI": {
+          "count": 579,
+          "p50_ms": 0.067666,
+          "p95_ms": 0.095583,
+          "p99_ms": 0.129542,
+          "max_ms": 0.19975
+        },
+        "SceneLoad.Render.RecordScene": {
+          "count": 579,
+          "p50_ms": 3.1635,
+          "p95_ms": 3.98775,
+          "p99_ms": 7.044916,
+          "max_ms": 19.097791
+        }
+      },
+      "render_interval_outliers": {
+        "threshold_ms": 33.613125,
+        "count": 0,
+        "largest_intervals": [],
+        "note": "Overlap is diagnostic only; nested scopes are not additive and do not establish causation."
+      }
+    }
+  },
+  "binary_sha256": {
+    "cooker_sha256": "cc4bc8c155a47c8a021030132134589bd4f7d68fc74f1568e69ff22c4294ba1f",
+    "runtime_sha256": "3e0bf49dbdaf11196587a2d9ba6d1f3b5af15a8a5d25ba82010aebe860ad658a"
+  },
+  "shader_cache": {
+    "sha256": "dfd8d94eb2a7e0afc9e34f4644052fb2d86de3e7396cb0ff5496d89717d21916",
+    "files": 44
+  },
+  "hardware": {
+    "cpu": "Apple M4 Pro",
+    "physical_memory_bytes": 51539607552
+  },
+  "device": {
+    "gpu": "Apple M4 Pro",
+    "driver_path": "/usr/local/lib/libMoltenVK.dylib",
+    "driver_sha256": "0b398933adeb1aba84aff76ef438f54f17e7deb6960beb5711fa6e23cd192cdb"
+  },
+  "viewport": {
+    "scene_viewport": [
+      1280,
+      720
+    ],
+    "window": [
+      1280,
+      720
+    ],
+    "framebuffer": [
+      2560,
+      1440
+    ],
+    "resize_after_baseline": false
+  }
+}

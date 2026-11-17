@@ -3,12 +3,14 @@
 #include <ZEngine/Hardwares/DeviceSwapchain.h>
 #include <ZEngine/Hardwares/VulkanDevice.h>
 #include <ZEngine/Profiling/Profiling.h>
+#include <ZEngine/Profiling/ThreadCpuTime.h>
 #include <ZEngine/Rendering/RenderResourceManager.h>
 #include <ZEngine/Rendering/Renderers/Base/Attachment.h>
 #include <ZEngine/Rendering/Specifications/AttachmentSpecification.h>
 #include <ZEngine/Rendering/Specifications/FormatSpecification.h>
 #include <ZEngine/Windows/CoreWindow.h>
 #include <algorithm>
+#include <chrono>
 
 using namespace ZEngine::Core::Containers;
 using namespace ZEngine::Rendering;
@@ -727,7 +729,30 @@ namespace ZEngine::Hardwares
 #endif
         const auto submit = [&]() {
             ZENGINE_PROFILE_SCOPE("SceneLoad.Render.QueueSubmit");
-            return vkQueueSubmit2(queue.Handle, 1, &submit_info_1, CurrentFrame->Fence->GetHandle());
+#if ZENGINE_PROFILING
+            const auto wall_begin = std::chrono::steady_clock::now();
+            const auto cpu_begin  = Profiling::ReadThreadCpuTime();
+#endif
+            const auto result = vkQueueSubmit2(queue.Handle, 1, &submit_info_1, CurrentFrame->Fence->GetHandle());
+#if ZENGINE_PROFILING
+            const auto cpu_end = Profiling::ReadThreadCpuTime();
+            const auto wall_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - wall_begin).count());
+            if (wall_ns >= 1'000'000)
+            {
+                const auto execution = Profiling::ThreadExecutionTimes::Between(cpu_begin, cpu_end, wall_ns);
+                ZENGINE_PROFILE_VALUE("SceneLoad.QueueSubmit.LongWallMs", wall_ns / 1'000'000.0);
+                if (execution.Valid)
+                {
+                    ZENGINE_PROFILE_VALUE("SceneLoad.QueueSubmit.LongCpuMs", execution.CpuNanoseconds / 1'000'000.0);
+                    ZENGINE_PROFILE_VALUE("SceneLoad.QueueSubmit.LongNonCpuMs", execution.NonCpuNanoseconds / 1'000'000.0);
+                }
+                else
+                {
+                    ZENGINE_PROFILE_SCOPE("SceneLoad.QueueSubmit.CpuClockUnavailable");
+                }
+            }
+#endif
+            return result;
         }();
 #ifndef NDEBUG
         if (TraceSubmission)

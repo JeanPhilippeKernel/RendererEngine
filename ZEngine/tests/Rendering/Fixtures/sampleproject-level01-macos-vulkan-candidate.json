@@ -1,0 +1,31 @@
+{
+  "status": "user-reviewed candidate; not full visual qualification",
+  "review": "User confirmed character and lighting looked correct enough for a reference candidate in this session, 2026-11-17.",
+  "backend": "macOS Vulkan on Apple M4 Pro (MoltenVK)",
+  "capture_space": "RGB8 UNORM; scene target readback",
+  "uncompressed_ppm_sha256": "9edd0f04f710bebbc001d7301bfee520eb3b4ae2c0e7486159f9979838332e73",
+  "compressed_sha256": "2bb1881ec70d70dc0afd9d373d45380c8f3d24cfcff1687507e1137d705236a8",
+  "scene_sha256": "da6d6c6050200a0d31b17e05ef8b53950ef0ddc705ae4fe7f4e4dfacece9cd31",
+  "augmented_scene_sha256": "0554a318872db8a0c86f03c65bb45cf9cac65e8b7539b0a68dddc7399411a66a",
+  "cooked_manifest_sha256": "3dc692d4affcb702f2255c48f68c34e6652bc9b5c5590efb85c5b735a53c43da",
+  "camera_uuid": "b1b1b1b1-7171-4141-8181-b1b1b1b1b1b1",
+  "camera_position": [
+    0.5,
+    2,
+    6
+  ],
+  "viewport": [
+    2560,
+    1378
+  ],
+  "character_region": [
+    1150,
+    450,
+    220,
+    450
+  ],
+  "limitations": [
+    "Camera is added to a copy of level01.",
+    "The user reviewed character and lighting only as a candidate; transparency, materials, hierarchy, replacement and backend-specific repeatability remain to be qualified."
+  ]
+}

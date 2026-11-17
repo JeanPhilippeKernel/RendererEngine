@@ -49,7 +49,7 @@ set(COOK_MANIFEST_NEGATIVE_PATH "${CMAKE_SOURCE_DIR}/docs/design/future-plan/sce
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${COOK_MANIFEST_NEGATIVE_PATH}")
 file(READ "${COOK_MANIFEST_NEGATIVE_PATH}" COOK_MANIFEST_NEGATIVE)
 configure_file(Cook/CookManifestGolden.h.in "generated/CookManifestGolden.h" @ONLY)
-set_property(SOURCE Cook/CookManifestWriter_test.cpp Cook/CookManifestReader_test.cpp APPEND PROPERTY
+set_property(SOURCE Cook/CookManifestWriter_test.cpp Cook/CookManifestReader_test.cpp Cook/CookedPackageSnapshot_test.cpp APPEND PROPERTY
     INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 # Embed the real production GLSL, not a second test shader. Installed test

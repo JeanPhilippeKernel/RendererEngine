@@ -1,5 +1,6 @@
 #include <ZEngine/Core/Memory/MemoryManager.h>
 #include <ZEngine/Core/VFS/Registry/AssetRegistry.h>
+#include <ZEngine/Importers/ImportCoordinator.h>
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <array>
@@ -66,6 +67,25 @@ TEST_F(AssetRegistryTest, UUIDLookupReturnsCorrectRecord)
     EXPECT_EQ(rec->UUID, uuid);
     EXPECT_EQ(rec->Type, Managers::AssetType::MESH);
     EXPECT_STREQ(rec->Path.CStr(), "/project/mesh.glb");
+}
+
+TEST_F(AssetRegistryTest, SourceIndependenceAuditDeniesRegistryReadsAndImports)
+{
+    const auto id = MakeUUID();
+    Reg(m_registry, id, Managers::AssetType::MESH, "/project/mesh.glb");
+    AssetRecordSnapshot snapshot = {};
+    ASSERT_TRUE(m_registry.TryReadRecord(id, &snapshot));
+    m_registry.EnableLookupDenialAudit();
+    EXPECT_EQ(m_registry.FindByUUID(id), nullptr);
+    EXPECT_EQ(m_registry.FindByPath(P("/project/mesh.glb")), nullptr);
+    EXPECT_FALSE(m_registry.TryReadRecord(id, &snapshot));
+    EXPECT_EQ(snapshot.Record.UUID, id); // denied reads preserve the caller's output
+    EXPECT_EQ(m_registry.DeniedLookupCount(), 3u);
+
+    ZEngine::Importers::ImportCoordinator imports = {};
+    imports.EnableImportDenialAudit();
+    EXPECT_TRUE(imports.Enqueue(P("/project/mesh.glb")).is_nil());
+    EXPECT_EQ(imports.DeniedImportCount(), 1u);
 }
 
 TEST_F(AssetRegistryTest, OneAssetTypeCanUseTheEntireDeclaredCapacityWithoutGrowingTheSharedArena)

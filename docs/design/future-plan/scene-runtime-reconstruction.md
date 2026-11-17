@@ -451,8 +451,9 @@ process RSS, and GPU allocations; report those measurements separately.
 
 GPU backing allocation admission uses a single fixed 16,384-record ledger for
 buffers and images, including the staging ring and one-shot staging. Each native
-object first reserves bookkeeping, then charges its queried Vulkan memory
-requirements before VMA allocates backing memory. Pending reservations count
+object first reserves bookkeeping, then conservatively charges its aligned Vulkan
+memory requirements before VMA allocates backing memory. An allocation whose
+reported size exceeds that reservation is discarded before publication. Pending reservations count
 against both aggregate and domain ceilings; native allocation/binding/view failure
 returns the reservation. An alias retains the same backing record rather than
 charging its memory twice. Retiring objects keep their charge until the final
@@ -668,6 +669,9 @@ Timing/visual thresholds can be revised during proposal review or documented
 calibration, never retroactively weakened to pass an unexplained regression.
 No build results or benchmark history accumulate in this contract; retain the
 profile and evidence as versioned test/PR artifacts.
+The initial macOS Vulkan calibration and its open gates are recorded in the
+[M2 profile candidate](scene-runtime-m2-profile-candidate.md); it is not frozen
+and does not establish qualification.
 
 ### 9.3. Acceptance matrix
 
@@ -1262,6 +1266,13 @@ Preparation clears that gate only after observing completion; submitting a
 consumer that waits on the upload cannot prematurely mark its inputs ready.
 Records do not grow with requests or frames and are cleared before producer
 semaphore destruction at idle/device-loss shutdown.
+After checking the exact ticket, accepted graph acquires retain their consumer
+timeline in the bounded texture record. Texture readiness requires observed producer and
+graphics-family acquire completion plus the current descriptor and a version
+pin. Ticket discard is not an acquire proof. Cancellation and timeline teardown
+wait for accepted acquire work to retire. Untyped bindless consumers and passes
+using ticketed images run on the graphics family because these uploads release
+ownership there; other queue roles require an explicit later handoff.
 Texture retirement uses the same completion proof even when its acquire ticket
 has already been acknowledged. Removing that ticket cannot admit destruction
 while the upload is still in flight; errors retain the gate until successful
@@ -1866,6 +1877,144 @@ from that failing layer can be stale data, not proof of deterministic rendering.
   lighting/environment, hierarchy transforms, and replacement against references.
 - Freeze the qualification profile and pass the applicable acceptance matrix;
   report RendererOnly scope rather than implying supported gameplay services.
+
+The opt-in `ZENGINE_ENABLE_COOKED_DESKTOP_TESTS` CMake option registers the
+`CookedDesktop.*` CTest group. It requires a working desktop Vulkan session and
+the built `Obelisk` and `SceneCookProcess` targets. Run it with
+`ctest --test-dir <build-dir> -C <configuration> -R '^CookedDesktop\.' --output-on-failure`.
+This group exercises source-free startup, package faults, replacements,
+supersession while waiting or during CPU/GPU work, and CPU/GPU cancellation,
+staging refusal, or injected rejection immediately before a cooked upload
+queue submission followed by retry. The latter exercises the rejection cleanup
+path but does not simulate device loss or a driver-returned error. Its generated fixture
+and local results do not replace the profile, visual references, or supported
+platform CI gates above.
+
+The editor-hosted cooked launch can opt into a full-window authored-camera view with
+`--cookedRuntimeView`; `--cookedCamera <uuid>` selects a camera explicitly,
+otherwise exactly one main camera is required. It prepares and renders using
+that camera and presents the scene without editor panels, grid, or gizmos.
+`--cookedStandalone --cookedPackage <directory> --cookedScene <uuid>` launches
+the renderer-only application without an editor session; it uses the unique
+main camera unless `--cookedCamera <uuid>` is supplied. The runtime application
+can write a bounded scene-target RGB8 capture with `--cookedCapture <path>` and
+`--cookedExitAfterFrame`; this readback does not prove swapchain presentation.
+`Scripts/sampleproject_cooked_runtime.py` cooks a copied `level01` with a
+fixed added camera, captures the source scene with that camera, removes its
+authoring copy, and compares a standalone cooked capture at the same viewport.
+Its `--force-opaque` negative control changes copied blend materials to opaque;
+`--different-from` and `--minimum-different-pixels` can require a visible
+difference from a declared baseline in both source and cooked captures.
+`--baseline-evidence` additionally checks that the baseline pixels, executable,
+shader cache and device identities match the control capture; without it the
+report marks baseline identity unverified. A
+[local control](scene-runtime-evidence/sampleproject-transparency-control-20261117.tar.gz)
+changed 3,988 pixels while source and cooked still matched. That difference was
+below the whole-frame tolerance, showing why visual parity alone cannot certify
+transparency. This control does not establish the correctness of every blend
+material or replace a reviewed reference.
+The `--no-directional-light` control disables the copied scene's light. A
+[local capture](scene-runtime-evidence/sampleproject-light-control-20261117.tar.gz)
+changed 2,737 pixels from the provenance-recorded normal source capture while
+source and cooked control images matched exactly. It verifies that the light
+affects that capture, not that every lighting component is correct.
+Its `--hierarchy` variant parents the SampleProject mesh under an existing actor,
+moving the mesh translation to the parent so the expected world transform stays
+the same. A [local diagnostic capture](scene-runtime-evidence/sampleproject-hierarchy-20261117.tar.gz)
+matched source and cooked images and an earlier flat source capture pixel for
+pixel. This is not a reviewed backend reference or final-build qualification.
+With `--hierarchy --replacement`, the runtime first renders the original flat
+scene, replaces it with the parented version under a distinct scene UUID, and
+captures the replacement. A [local diagnostic capture](scene-runtime-evidence/sampleproject-hierarchy-replacement-20261117.tar.gz)
+matched the parented source image pixel for pixel with source auditing and Vulkan
+validation enabled; it does not replace reviewed visual qualification.
+It can also compare the cooked capture with an externally reviewed reference and
+predeclared regions using `--reviewed-reference`, `--reference-review`, and
+`--region`. Supplying an identifier records a review claim; the script does not
+itself establish that the reference was reviewed or that regions cover every
+required visual semantic.
+The macOS Vulkan SampleProject candidate and review notes are in
+`ZEngine/tests/Rendering/Fixtures/sampleproject-level01-macos-vulkan-candidate.*`.
+The user accepted the character and lighting as a candidate; the review is not
+acceptance of every material, transparency, hierarchy, or replacement case.
+The separate fixed-viewport candidate is
+`ZEngine/tests/Rendering/Fixtures/sampleproject-level01-macos-vulkan-fixed-candidate.*`.
+It has not been reviewed, and its capture did not record executable or shader
+identities. A [later capture](scene-runtime-evidence/sampleproject-provenance-20261117.tar.gz)
+on a recorded binary and shader cache matched its pixels exactly; this still
+does not establish review or qualification for a later build.
+A [second capture on that same binary and device](scene-runtime-evidence/sampleproject-provenance-repeat-20261117.tar.gz)
+also matched the first pixel for pixel; two captures provide limited noise
+evidence, not a general guarantee of deterministic rendering.
+A [capture after the cooked GPU-domain accounting correction](scene-runtime-evidence/sampleproject-domain-visual-20261117.tar.gz)
+matched the candidate and its source capture pixel for pixel, with the later
+binary and device identities recorded. The candidate remains unreviewed.
+An optional `--presence name:minimum-count` requires both source and cooked
+captures to contain that many dark pixels within a declared region. This is a
+coarse missing-object smoke check; it cannot prove identity, material, or lighting.
+Its output is smoke evidence, not a reviewed reference or complete semantic
+qualification; the camera modification is recorded explicitly.
+`Scripts/cooked_scene_parity.py --standalone --require-validation` also exercises
+generated opaque, transparent (`--blend`), and parent/child (`--hierarchy`)
+fixtures with an authored camera and a fixed 1280x720 logical window. It removes
+the source tree before standalone launch, requires a zero source-access audit,
+and checks engine and console validation output. For hierarchy, `--flat-reference`
+can additionally compare an equivalent flat source capture. These are semantic
+smoke checks; they do not replace reviewed references or SampleProject coverage.
+The blend variant can also use `--opaque-reference` to require an intermediate
+colored region over the matching opaque fixture; this is a coarse visual check,
+not a proof of the exact compositing equation.
+`Scripts/sampleproject_cooked_timing.py` collects fresh-process and same-process
+timings from a copied level01 with an added camera and a second scene UUID. The
+two scenes share assets; the report records the fixture and executable hashes,
+viewport, cache conditions, validation status, source audit and observed render
+completion. It is diagnostic evidence, not a calibrated profile or presentation
+measurement.
+The standalone `--cookedAuditSource` probe denies and counts engine-context
+project VFS read/root-acquisition attempts, registry lookup entry points, and
+import enqueues from runtime initialization through joined-worker shutdown.
+The separate cooked-package context and engine-asset namespace remain available.
+This is not an operating-system-wide file-access monitor and does not cover
+engine bootstrap before the audit is enabled.
+It also admits a replacement while retaining the active scene; a newer request
+supersedes an older preparing or waiting request and starts after cleanup. Its
+optional request ID exposes the terminal result until the caller acknowledges
+it, including when acknowledgement precedes worker or GPU cleanup. Its
+desktop smoke tests exercise repeated
+replacements, missing and corrupt scene failures, staging-budget refusal, an
+injected upload submission rejection, and cancellation at CPU-worker and recorded-upload boundaries, each
+followed by an outgoing scene submission and a successful retry. These tests
+observe accepted scene submissions; qualified
+window presentation and visual evidence remain outstanding. Runtime waiting,
+CPU and recorded-upload supersession are exercised; the broader failure matrix
+still needs coverage. A separate probe injects device-lost state after upload
+recording and verifies fatal shutdown without replacement publication; it does
+not reproduce a driver-originated loss or cover every retirement race.
+
+The standalone smoke harness can also export per-generation admission-to-first-
+accepted-submission and bounded-memory samples, plus an optional stage trace.
+`--observe-gpu-completion` additionally polls the timeline for the generation's
+first accepted render submission and records when completion was observed. That
+timestamp is an upper bound on completion, includes polling delay, and is not
+proof of swapchain presentation. Device loss or a missing timeline fails the
+observation instead of being reported as a completed render.
+`--steady-frames` records an intervening settled window before replacement;
+`Scripts/analyze_cooked_runtime_trace.py` checks and summarizes those windows.
+For fresh-versus-replacement diagnostics, `--include-alternate` gives fresh
+processes the same two-scene package as the replacement run, and
+`Scripts/analyze_cooked_timing_samples.py` requires matching manifest, binaries,
+host, and validation status before summarizing their separate distributions.
+These observations are diagnostic until the fixture, limits, cache conditions,
+and matched steady-rendering baseline are qualified.
+
+`Scripts/cooked_capacity_probe.py` generates an offline-cooked scene with one
+shared mesh/material, an authored camera, and a requested number of instances.
+It can check the declared 8,192 draw capacity or require clean startup refusal
+at 8,193, with validation and source-access auditing enabled. Its
+`--replacement-refusal` mode checks that the outgoing scene renders after an
+8,193-instance candidate is rejected and that a valid retry succeeds. This
+synthetic fixture does not represent complex-asset capacity or a calibrated
+memory profile.
 
 ### 9.6. Milestone 3 — Play and simulation integration
 

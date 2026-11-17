@@ -58,16 +58,22 @@ namespace ZEngine::Core::VFS
 
     VFSResult<void> VFSContext::AcquirePublicationRoot(const VFSPath& root, VFSPublicationRootLease* output, IVFSWorkingMemoryBudget* budget)
     {
+        if (DenySourceAccess(root))
+            return VFSResult<void>::Fail(VFSError::PermissionDenied);
         return m_mount_table.AcquirePublicationRoot(root, output, budget);
     }
 
     VFSResult<void> VFSContext::AcquireScratchRoot(const VFSPath& root, VFSScratchRootLease* output, IVFSWorkingMemoryBudget* budget)
     {
+        if (DenySourceAccess(root))
+            return VFSResult<void>::Fail(VFSError::PermissionDenied);
         return m_mount_table.AcquireScratchRoot(root, output, budget);
     }
 
     VFSResult<void> VFSContext::AcquireReadRoot(const VFSPath& root, VFSReadRootLease* output, IVFSWorkingMemoryBudget* budget)
     {
+        if (DenySourceAccess(root))
+            return VFSResult<void>::Fail(VFSError::PermissionDenied);
         return m_mount_table.AcquireReadRoot(root, output, budget);
     }
 
@@ -577,6 +583,8 @@ namespace ZEngine::Core::VFS
 
     VFSResult<IVFSFile*> VFSContext::Open(const VFSPath& absolute_path, VFSOpenFlags flags)
     {
+        if (DenySourceAccess(absolute_path))
+            return VFSResult<IVFSFile*>::Fail(VFSError::PermissionDenied);
         VFSResult<ResolveResult> resolved = m_mount_table.Resolve(absolute_path);
         if (resolved.Failed())
         {
@@ -602,6 +610,8 @@ namespace ZEngine::Core::VFS
 
     VFSResult<VFSFileStat> VFSContext::Stat(const VFSPath& absolute_path)
     {
+        if (DenySourceAccess(absolute_path))
+            return VFSResult<VFSFileStat>::Fail(VFSError::PermissionDenied);
         VFSResult<ResolveResult> resolved = m_mount_table.Resolve(absolute_path);
         if (resolved.Failed())
         {
@@ -614,6 +624,8 @@ namespace ZEngine::Core::VFS
 
     VFSResult<bool> VFSContext::Exists(const VFSPath& absolute_path)
     {
+        if (DenySourceAccess(absolute_path))
+            return VFSResult<bool>::Fail(VFSError::PermissionDenied);
         VFSResult<ResolveResult> resolved = m_mount_table.Resolve(absolute_path);
         if (resolved.Failed())
         {
@@ -627,6 +639,8 @@ namespace ZEngine::Core::VFS
     VFSResult<Containers::Array<VFSDirEntry>> VFSContext::List(const VFSPath& absolute_dir, Memory::ArenaAllocator* out_arena)
     {
         using ResultT = VFSResult<Containers::Array<VFSDirEntry>>;
+        if (DenySourceAccess(absolute_dir))
+            return ResultT::Fail(VFSError::PermissionDenied);
 
         std::lock_guard<std::mutex>      arena_lock(m_arena_mutex);
         auto                             scratch = ZGetScratch(m_arena);

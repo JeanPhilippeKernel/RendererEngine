@@ -156,6 +156,8 @@ namespace ZEngine
         auto vfs_ctx = ZPushStructCtor<Core::VFS::VFSContext>(&g_engine_ctx->VFSArena);
         vfs_ctx->Initialize(&g_engine_ctx->VFSArena);
         g_engine_ctx->VFS = vfs_ctx;
+        if (app->WantsSourceIndependenceAudit())
+            vfs_ctx->EnableEngineOnlyAudit();
 
         {
             g_engine_ctx->EngineAssetsBackend.Initialize(g_engine_ctx->EngineAssetsNativeRoot, Core::VFS::VFSBackendCaps::Read | Core::VFS::VFSBackendCaps::Write | Core::VFS::VFSBackendCaps::List, &g_engine_ctx->VFSArena);
@@ -189,6 +191,8 @@ namespace ZEngine
 
         memory->CreateBudgetedArena(memory->Budget.AssetManager, &g_engine_ctx->AssetArena);
         Managers::AssetManager::Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->Device, app->WorkingSpacePath);
+        if (app->WantsSourceIndependenceAudit())
+            Managers::AssetManager::Instance()->Registry->EnableLookupDenialAudit();
 
         memory->CreateBudgetedArena(memory->Budget.Input, &g_engine_ctx->InputArena);
         g_engine_ctx->InputManager = ZPushStructCtor<Input::InputManager>(&arena);
@@ -227,6 +231,8 @@ namespace ZEngine
             memory->CreateBudgetedArena(memory->Budget.EditorSceneLoadB, &g_engine_ctx->EditorSceneLoadArenaB);
         g_engine_ctx->ImportCoordinator = ZPushStructCtor<Importers::ImportCoordinator>(&g_engine_ctx->AssetArena);
         g_engine_ctx->ImportCoordinator->Initialize(&g_engine_ctx->AssetArena, g_engine_ctx->VFS, Managers::AssetManager::Instance()->Registry);
+        if (app->WantsSourceIndependenceAudit())
+            g_engine_ctx->ImportCoordinator->EnableImportDenialAudit();
 
         g_engine_ctx->GltfImporter.Initialize(&g_engine_ctx->ImportPipelineArena);
         g_engine_ctx->FbxImporter.Initialize(&g_engine_ctx->ImportPipelineArena);
@@ -281,6 +287,7 @@ namespace ZEngine
     {
         // Step 1 — signal all loops to exit
         g_engine_ctx->SceneLoads.Shutdown();
+        g_engine_ctx->App->RenderPipeline->CookedSceneUploads.Seal();
         g_engine_ctx->RequestTerminate.value.store(true, std::memory_order_release);
 
         // Step 2 — join render thread before any GPU resource is destroyed
@@ -293,6 +300,22 @@ namespace ZEngine
         // every engine-owned service are still valid, so an in-flight import cannot
         // publish a completion into torn-down state.
         Helpers::ThreadPoolHelper::Shutdown();
+
+        auto& cooked_uploads = g_engine_ctx->App->RenderPipeline->CookedSceneUploads;
+        if (!cooked_uploads.Drained())
+        {
+            // The render owner has joined and producers can no longer publish.
+            // No recorded upload may be submitted after this idle/loss barrier.
+            const VkResult idle = vkDeviceWaitIdle(g_engine_ctx->Device->LogicalDevice);
+            if (idle == VK_ERROR_DEVICE_LOST)
+            {
+                g_engine_ctx->Device->CheckDeviceLost(idle, "Cooked scene shutdown");
+            }
+            ZENGINE_VALIDATE_ASSERT(idle == VK_SUCCESS || idle == VK_ERROR_DEVICE_LOST, "Cannot retire cooked scene uploads without a quiescent device")
+            const bool drained = (idle == VK_SUCCESS || idle == VK_ERROR_DEVICE_LOST) && cooked_uploads.DrainAfterDeviceIdle();
+            ZENGINE_VALIDATE_ASSERT(drained, "Cooked scene uploads survived joined-owner shutdown")
+            (void) drained;
+        }
 
         Core::MainThreadScheduler::Shutdown();
 
@@ -453,7 +476,10 @@ namespace ZEngine
             previous_main_start = main_work_start;
 
             //  Platform events
-            window->PollEvent();
+            {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Main.PlatformEvents");
+                window->PollEvent();
+            }
 
             if (ProcessApplicationCloseRequest(*g_engine_ctx))
                 break;
@@ -508,6 +534,7 @@ namespace ZEngine
             // input, simulation, or the state read by the render thread.
             if (g_engine_ctx->App->EnableRenderOverlay)
             {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Main.OverlayBuild");
                 uint32_t                      overlay_slot = 0;
                 Applications::OverlayPayload* overlay      = nullptr;
                 if (pipeline->BeginOverlayWrite(overlay, overlay_slot))
@@ -522,19 +549,26 @@ namespace ZEngine
 
             if (g_engine_ctx->Scene && g_engine_ctx->App->CurrentScene)
             {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Main.SceneSynchronization");
                 ECS::Systems::SyncHierarchy(*g_engine_ctx->Scene);
                 ECS::Systems::SyncECSToRenderScene(*g_engine_ctx->Scene, alpha, *g_engine_ctx->App->CurrentScene);
                 ECS::Systems::SyncECSToLights(*g_engine_ctx->Scene, *g_engine_ctx->App->CurrentScene);
             }
 
             state.Gizmo.Reset();
-            g_engine_ctx->App->PrepareScene(state);
+            {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Main.PrepareScene");
+                g_engine_ctx->App->PrepareScene(state);
+            }
             state.SceneGeneration = g_engine_ctx->ScenePublication.Generation();
             state.FramebufferW    = window->GetWidth();
             state.FramebufferH    = window->GetHeight();
             state.RenderOverlay   = g_engine_ctx->App->EnableRenderOverlay;
             // Transient mailbox pressure is expected; the consumer retains its valid frame.
-            pipeline->PublishFrameState(state, g_engine_ctx->App->CurrentScene);
+            {
+                ZENGINE_PROFILE_SCOPE("SceneLoad.Main.PublishFrame");
+                pipeline->PublishFrameState(state, g_engine_ctx->App->CurrentScene);
+            }
             ZENGINE_PROFILE_VALUE("SceneLoad.Main.FrameWorkMs", (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - main_work_start).count()));
 
             //  Frame rate cap — applied unconditionally.
@@ -617,6 +651,10 @@ namespace ZEngine
 
             pipeline->Device->SwapchainPtr->UpdateFramebufferExtent(state.FramebufferW, state.FramebufferH);
             const bool frame_valid = pipeline->BeginFrame();
+            if (frame_valid)
+            {
+                (void) pipeline->CookedSceneUploads.PumpOne(pipeline->Device->SwapchainPtr->CurrentFrame->Index, pipeline->RenderMainThreadIndex);
+            }
             if (frame_valid && target_ready && state.Scene.HasScene)
             {
                 const auto* overlay = state.RenderOverlay ? (has_next_overlay ? &next_overlay->ZUIOverlay : (retained_overlay ? &retained_overlay->ZUIOverlay : nullptr)) : nullptr;

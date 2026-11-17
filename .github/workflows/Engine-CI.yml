@@ -41,6 +41,51 @@ on:
         default: false
 
 jobs:
+  scene-sanitizers:
+    name: Scene CPU sanitizer (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: address-undefined
+            sanitizer: address,undefined
+          - name: thread
+            sanitizer: thread
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake gcc g++ libasound2-dev libgl1-mesa-dev libpulse-dev libdbus-1-dev libglib2.0-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev libxrandr-dev libxss-dev libxt-dev libxxf86vm-dev glslang-tools libwayland-dev libxkbcommon-dev pkg-config
+      - name: Configure instrumented build
+        env:
+          CC: gcc
+          CXX: g++
+          SANITIZER: ${{ matrix.sanitizer }}
+        run: |
+          cmake --preset Linux_x64_Debug \
+            "-DCMAKE_C_FLAGS=-fsanitize=${SANITIZER} -fno-omit-frame-pointer" \
+            "-DCMAKE_CXX_FLAGS=-fsanitize=${SANITIZER} -fno-sanitize=vptr -fno-omit-frame-pointer" \
+            "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=${SANITIZER}" \
+            "-DCMAKE_SHARED_LINKER_FLAGS=-fsanitize=${SANITIZER}"
+      - name: Build scene tests
+        run: cmake --build Result.Linux.x64.Debug --target ZEngineTests -j 2
+      - name: Run lifecycle and resource tests
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          TSAN_OPTIONS: halt_on_error=1
+        run: |
+          Result.Linux.x64.Debug/ZEngine/tests/ZEngineTests \
+            --gtest_filter='CookedObjectSnapshotTest.*:CookedPackageSnapshotTest.*:SceneLoadCoordinatorTest.*:SceneRuntimeCameraTest.*:SceneSubmissionProgressTest.*:SceneInstanceTest.*:SceneResourceBundleTest.*:SceneEnvironmentHandoffTest.*' \
+            --gtest_output=xml:scene-sanitizer-results.xml
+          python3 Scripts/verify_scene_sanitizer_results.py scene-sanitizer-results.xml
+
   scene-evidence-tests:
     name: Scene evidence tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
