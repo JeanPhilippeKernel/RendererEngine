@@ -132,7 +132,7 @@ namespace Tetragrama
         m_waiting_retain_result      = false;
         m_waiting_pause_cpu          = false;
         m_waiting_supersession_probe = false;
-        m_diagnostics                = {};
+        m_diagnostics.Clear();
         m_cancelled.store(false, std::memory_order_release);
         m_failure_stage = ZEngine::ECS::SceneLoadStage::Read;
         m_ready.store(false, std::memory_order_relaxed);
