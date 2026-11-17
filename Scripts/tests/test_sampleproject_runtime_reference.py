@@ -6,6 +6,25 @@ import unittest
 sys.path.insert(0, str(Path(__file__).parents[1]))
 from sampleproject_cooked_runtime import add_sampleproject_hierarchy, compare_reviewed_reference, count_dark_pixels, force_opaque_materials, parse_presence, remove_sampleproject_directional_light, review_result, validate_control_baseline, validation_layer_status
 
+SCENE_FIXTURE = b'''"scene":
+  "entities":
+  - "uuid": "beb33379-561e-4413-af36-b7d9f5a6be26"
+    "components":
+      "TransformComponent":
+        "fields":
+          "position": [0, 0, 0]
+  - "uuid": "c879cf96-693a-46f5-a772-ab927a72215b"
+    "components":
+      "LightComponent":
+        "fields":
+          "intensity": 3
+  - "uuid": "e97f8f91-1fe7-415a-89ec-9e67e04ad960"
+    "components":
+      "TransformComponent":
+        "fields":
+          "position": [0.40000004, 1.2, 0]
+'''
+
 
 class ReviewedReferenceTest(unittest.TestCase):
     def test_control_baseline_requires_matching_device_build_and_pixels(self):
@@ -23,7 +42,7 @@ class ReviewedReferenceTest(unittest.TestCase):
             validate_control_baseline({**evidence, "device": None}, baseline, binaries, shaders, None)
 
     def test_directional_light_control_requires_one_known_intensity(self):
-        scene = (Path(__file__).parents[2] / "SampleProject/Scenes/level01.zescene").read_bytes()
+        scene = SCENE_FIXTURE
         result = remove_sampleproject_directional_light(scene)
         self.assertIn(b'"intensity": 0\n', result)
         self.assertNotIn(b'"intensity": 3\n', result)
@@ -47,7 +66,7 @@ class ReviewedReferenceTest(unittest.TestCase):
                 force_opaque_materials(root)
 
     def test_hierarchy_fixture_moves_translation_and_rejects_reapplication(self):
-        scene = (Path(__file__).parents[2] / "SampleProject/Scenes/level01.zescene").read_bytes()
+        scene = SCENE_FIXTURE
         result = add_sampleproject_hierarchy(scene)
         self.assertEqual(result.count(b'"parent_uuid": "beb33379-561e-4413-af36-b7d9f5a6be26"'), 1)
         self.assertEqual(result.count(b'"position": [0.40000004, 1.2, 0]'), 1)
