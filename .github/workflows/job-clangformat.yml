@@ -6,18 +6,23 @@ on:
 jobs:
     format:
         name: clang-format
-        runs-on: windows-2022
+        runs-on: ubuntu-24.04
         steps:
             - name: Checkout repository
               uses: actions/checkout@v6
 
-            - name: Install LLVM 22
-              run: choco install llvm --version=22.1.0 --allow-downgrade --no-progress -y
+            - name: Install clang-format 22
+              shell: bash
+              run: |
+                curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor | sudo tee /usr/share/keyrings/llvm-archive-keyring.gpg > /dev/null
+                echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
+                sudo apt-get update
+                sudo apt-get install -y clang-format-22
 
             - name: Checking formatting
               run: |
-                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/ZEngine -RunAsCheck
-                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/Tetragrama -RunAsCheck
-                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/Obelisk -RunAsCheck
-                .\Scripts\ClangFormat.ps1 -SourceDirectory ${{ github.workspace }}/Resources/Shaders -RunAsCheck
+                ./Scripts/ClangFormat.ps1 -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE 'ZEngine') -RunAsCheck
+                ./Scripts/ClangFormat.ps1 -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE 'Tetragrama') -RunAsCheck
+                ./Scripts/ClangFormat.ps1 -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE 'Obelisk') -RunAsCheck
+                ./Scripts/ClangFormat.ps1 -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE 'Resources/Shaders') -RunAsCheck
               shell: pwsh

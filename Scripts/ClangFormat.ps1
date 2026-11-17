@@ -35,7 +35,7 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot Shared.ps1)
 
 # Scene/material fixtures are YAML/JSON byte contracts, not C++ source.
-$srcFiles = Get-ChildItem -Path $SourceDirectory -Recurse -File | Where-Object { $_.Name -notlike "CMakeLists*" -and $_.Name -notlike "*.cmake" -and $_.Name -notlike "*.json" -and $_.Name -notlike "*.scene" -and $_.Name -notlike "*.zematerial" -and $_.Name -notlike "*.spv" -and $_.Name -notlike "*.md" -and $_.Name -notlike "*.mm" -and $_.Name -notlike "*.pdf" -and $_.Name -notlike "*.pptx"}
+$srcFiles = Get-ChildItem -Path $SourceDirectory -Recurse -File | Where-Object { $_.Name -notlike "CMakeLists*" -and $_.Name -ne ".DS_Store" -and $_.Name -notlike "*.cmake" -and $_.Name -notlike "*.json" -and $_.Name -notlike "*.scene" -and $_.Name -notlike "*.zematerial" -and $_.Name -notlike "*.spv" -and $_.Name -notlike "*.gz" -and $_.Name -notlike "*.png" -and $_.Name -notlike "*.md" -and $_.Name -notlike "*.mm" -and $_.Name -notlike "*.pdf" -and $_.Name -notlike "*.pptx"}
 
 if ($srcFiles.Count -eq 0) {
     Write-Host "No source files found in the specified directory."
