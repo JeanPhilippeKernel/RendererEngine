@@ -19,6 +19,12 @@ jobs:
         with:
           name: Build-Windows-x64-${{ inputs.configuration }}
 
+      - name: Verify runtime command-line arguments
+        shell: pwsh
+        run: |
+          $env:PATH = "${{github.workspace}}\lib;$env:PATH"
+          cmake "-DRUNTIME_EXECUTABLE=${{github.workspace}}/bin/ZEngineRuntime.exe" -P "${{github.workspace}}/tests/RuntimeCli.cmake"
+
       - name: Run Independent-Process Scene Tests
         shell: pwsh
         run: |

@@ -11,7 +11,7 @@ if ! command -v pwsh > /dev/null 2>&1; then
 fi
 
 FAILED=0
-for DIR in ZEngine Tetragrama Obelisk Resources/Shaders; do
+for DIR in ZEngine Tetragrama Obelisk Runtime Resources/Shaders; do
     echo "[pre-push] Checking clang-format: $DIR ..."
     pwsh -NonInteractive -NoProfile -File \
         "$REPO_ROOT/Scripts/ClangFormat.ps1" \
@@ -28,6 +28,7 @@ if [ $FAILED -ne 0 ]; then
     echo "  pwsh Scripts/ClangFormat.ps1 -SourceDirectory ZEngine"
     echo "  pwsh Scripts/ClangFormat.ps1 -SourceDirectory Tetragrama"
     echo "  pwsh Scripts/ClangFormat.ps1 -SourceDirectory Obelisk"
+    echo "  pwsh Scripts/ClangFormat.ps1 -SourceDirectory Runtime"
     echo "  pwsh Scripts/ClangFormat.ps1 -SourceDirectory Resources/Shaders"
     echo ""
     exit 1

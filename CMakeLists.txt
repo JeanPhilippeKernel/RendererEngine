@@ -34,6 +34,7 @@ include(Scripts/CMake/LoggingDefaults.cmake)
 include(Scripts/CMake/MacOSCodeSign.cmake)
 
 option (ZENGINE_TRACY "Enable Tracy profiler" OFF)
+option (ZENGINE_BUILD_EDITOR "Build the editor and editor application" ON)
 
 set (MACOSX_ARCHITECTURE_ARM64 OFF)
 if (APPLE)
@@ -70,10 +71,10 @@ add_subdirectory (Resources)
 #
 add_subdirectory (ZEngine)
 
-# Editor is here
-#
-add_subdirectory (Tetragrama)
+# Runtime has no editor dependency.
+add_subdirectory (Runtime)
 
-# Entry point is here
-#
-add_subdirectory (Obelisk)
+if(ZENGINE_BUILD_EDITOR)
+    add_subdirectory (Tetragrama)
+    add_subdirectory (Obelisk)
+endif()

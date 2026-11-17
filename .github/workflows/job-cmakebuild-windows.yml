@@ -43,6 +43,7 @@ jobs:
             Result.Windows.x64.MultiConfig/tests/TetragramaTests.exe
             Result.Windows.x64.MultiConfig/tests/SceneDocumentProcess.exe
             Result.Windows.x64.MultiConfig/tests/SceneDocumentProcess.cmake
+            Result.Windows.x64.MultiConfig/tests/RuntimeCli.cmake
             Result.Windows.x64.MultiConfig/tests/SceneCookProcess.exe
             Result.Windows.x64.MultiConfig/tests/SceneCookProcess.cmake
             Result.Windows.x64.MultiConfig/tests/SceneCookStressProcess.cmake

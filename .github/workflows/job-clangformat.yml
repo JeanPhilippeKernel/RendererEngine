@@ -24,5 +24,6 @@ jobs:
                 ./Scripts/ClangFormat.ps1 -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE 'ZEngine') -RunAsCheck
                 ./Scripts/ClangFormat.ps1 -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE 'Tetragrama') -RunAsCheck
                 ./Scripts/ClangFormat.ps1 -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE 'Obelisk') -RunAsCheck
+                ./Scripts/ClangFormat.ps1 -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE 'Runtime') -RunAsCheck
                 ./Scripts/ClangFormat.ps1 -SourceDirectory (Join-Path $env:GITHUB_WORKSPACE 'Resources/Shaders') -RunAsCheck
               shell: pwsh

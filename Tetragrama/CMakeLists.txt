@@ -38,4 +38,6 @@ target_compile_definitions(Tetragrama
 
 target_link_libraries(Tetragrama PUBLIC zEngineLib)
 
-add_subdirectory(tests)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
