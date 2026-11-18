@@ -1045,6 +1045,11 @@ namespace ZEngine::Applications
         return m_staging_refusal_observed;
     }
 
+    bool StandaloneRuntimeApplication::Failed() const noexcept
+    {
+        return m_failed;
+    }
+
     bool StandaloneRuntimeApplication::FrameRecorded() const noexcept
     {
         return m_frame_recorded;

@@ -23,7 +23,12 @@ jobs:
           name: Build-linux-${{ inputs.configuration }}
 
       - name: Update test executable permissions
-        run: chmod +x ${{github.workspace}}/tests/ZEngineTests ${{github.workspace}}/tests/TetragramaTests ${{github.workspace}}/tests/SceneDocumentProcess ${{github.workspace}}/tests/SceneCookProcess ${{github.workspace}}/tests/SceneCookResourceProcess
+        run: chmod +x ${{github.workspace}}/bin/ZEngineRuntime ${{github.workspace}}/tests/ZEngineTests ${{github.workspace}}/tests/TetragramaTests ${{github.workspace}}/tests/SceneDocumentProcess ${{github.workspace}}/tests/SceneCookProcess ${{github.workspace}}/tests/SceneCookResourceProcess
+
+      - name: Verify runtime command-line arguments
+        env:
+          LD_LIBRARY_PATH: ${{github.workspace}}/lib
+        run: cmake "-DRUNTIME_EXECUTABLE=${{github.workspace}}/bin/ZEngineRuntime" -P "${{github.workspace}}/tests/RuntimeCli.cmake"
 
       - name: Run Independent-Process Scene Tests
         env:

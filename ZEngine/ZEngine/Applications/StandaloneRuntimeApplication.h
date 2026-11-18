@@ -71,6 +71,8 @@ namespace ZEngine::Applications
         [[nodiscard]] bool                   ShutdownProbePassed() const noexcept;
         /// @brief Report whether the staging refusal probe observed its failure.
         [[nodiscard]] bool                   StagingRefusalObserved() const noexcept;
+        /// @brief Report whether runtime scene startup or replacement failed.
+        [[nodiscard]] bool                   Failed() const noexcept;
         /// @brief Report whether the requested scene frame was recorded.
         [[nodiscard]] bool                   FrameRecorded() const noexcept;
         /// @brief Set the output path for the optional scene-target capture.
