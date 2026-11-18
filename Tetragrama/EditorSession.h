@@ -128,6 +128,15 @@ namespace Tetragrama
         void                   Shutdown();
         [[nodiscard]] bool     BeginMutationPhase(bool editable = true);
         void                   EndMutationPhase();
+        /// @brief Cancel transient edits and suspend authoring without replacing the scene or clearing history.
+        /// @details Owner-thread only, during an editable mutation phase. Pending
+        /// requests are discarded and new requests are rejected until resume.
+        [[nodiscard]] bool     SuspendAuthoring();
+        /// @brief Resume the retained scene if its identity and tracked revisions still match.
+        /// @details Failure leaves authoring suspended for recovery; it never reloads a scene.
+        [[nodiscard]] bool     ResumeAuthoring();
+        /// @brief Report on the owner thread whether authoring is suspended for a world transition.
+        [[nodiscard]] bool     AuthoringSuspended() const noexcept;
         [[nodiscard]] bool     BindScene(ZEngine::ECS::Scene* scene, bool saved = true);
         [[nodiscard]] bool     SetSceneMutationHooks(const EditorSceneMutationHooks& hooks);
         [[nodiscard]] bool     SetSceneSettingsHooks(const EditorSceneSettingsHooks& hooks);
@@ -352,7 +361,7 @@ namespace Tetragrama
         }
         [[nodiscard]] bool Editable() const
         {
-            return m_initialized && !m_replacing && m_editable && m_scene;
+            return m_initialized && !m_replacing && !m_authoring_suspended && m_editable && m_scene;
         }
         [[nodiscard]] bool CanUndo() const
         {
@@ -571,6 +580,12 @@ namespace Tetragrama
         bool                                                                                    m_initialized               = false;
         bool                                                                                    m_in_phase                  = false;
         bool                                                                                    m_editable                  = true;
+        bool                                                                                    m_authoring_suspended       = false;
+        ZEngine::ECS::Scene*                                                                    m_suspended_scene           = nullptr;
+        uint64_t                                                                                m_suspended_epoch           = 0;
+        uint64_t                                                                                m_suspended_revision        = 0;
+        uint64_t                                                                                m_suspended_structural      = 0;
+        uint64_t                                                                                m_suspended_hierarchy       = 0;
         bool                                                                                    m_preview_changed           = false;
         bool                                                                                    m_hierarchy_pending         = false;
         bool                                                                                    m_replacing                 = false;
