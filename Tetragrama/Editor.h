@@ -193,8 +193,8 @@ namespace Tetragrama
         virtual void                                        OnClosed() override;
         void                                                OnWorldShutdown(ZEngine::EngineContext& engine) override;
         bool                                                OnCloseRequested() override;
-        /// The authoring world never simulates. Play requires a separate, complete
-        /// snapshot/restore lifecycle before this policy can be changed.
+        /// The authoring world never simulates. Play requires a separate runtime
+        /// world and a complete retained-authoring lifecycle before this policy changes.
         [[nodiscard]] bool                                  ShouldSimulate() const final
         {
             return false;

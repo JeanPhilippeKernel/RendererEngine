@@ -302,7 +302,7 @@ namespace Tetragrama
     {
         // Owner identity is stable for the initialized lifetime. Reject other
         // threads before reading the main-thread-only mutable phase flag.
-        return m_owner == std::this_thread::get_id() && m_initialized && m_in_phase && !m_replacing;
+        return m_owner == std::this_thread::get_id() && m_initialized && m_in_phase && !m_replacing && !m_authoring_suspended;
     }
 
     EntityTarget EditorSession::TargetFor(EntityID entity)
@@ -328,7 +328,7 @@ namespace Tetragrama
 
     bool EditorSession::Enqueue(const PendingRequest& request)
     {
-        if (!m_initialized || m_owner != std::this_thread::get_id() || m_replacing)
+        if (!m_initialized || m_owner != std::this_thread::get_id() || m_replacing || m_authoring_suspended)
         {
             return false;
         }
@@ -1046,11 +1046,13 @@ namespace Tetragrama
         m_request_first = m_request_count = 0;
         m_in_phase                        = false;
         m_initialized                     = false;
+        m_authoring_suspended             = false;
+        m_suspended_scene                 = nullptr;
     }
 
     bool EditorSession::BeginMutationPhase(bool editable)
     {
-        if (!m_initialized || m_in_phase || m_owner != std::this_thread::get_id() || m_replacing)
+        if (!m_initialized || m_in_phase || m_owner != std::this_thread::get_id() || m_replacing || m_authoring_suspended)
         {
             return false;
         }
@@ -1082,6 +1084,42 @@ namespace Tetragrama
             }
             m_in_phase = false;
         }
+    }
+
+    bool EditorSession::SuspendAuthoring()
+    {
+        if (!Allowed() || !m_editable || !m_scene)
+            return false;
+
+        // Cancel before suspending: rollback must still have an editable owner.
+        Cancel();
+        if (m_hierarchy_pending)
+            SynchronizeHierarchy();
+        DiscardRequests();
+        m_suspended_scene      = m_scene;
+        m_suspended_epoch      = m_epoch;
+        m_suspended_revision   = m_document_revision;
+        m_suspended_structural = m_scene->StructuralRevision();
+        m_suspended_hierarchy  = m_scene->Hierarchy().Revision();
+        m_editable             = false;
+        m_in_phase             = false;
+        m_authoring_suspended  = true;
+        return true;
+    }
+
+    bool EditorSession::ResumeAuthoring()
+    {
+        if (!m_initialized || m_owner != std::this_thread::get_id() || !m_authoring_suspended || m_in_phase || m_replacing || !m_scene || m_scene != m_suspended_scene || m_epoch != m_suspended_epoch || m_document_revision != m_suspended_revision || m_scene->StructuralRevision() != m_suspended_structural || m_scene->Hierarchy().Revision() != m_suspended_hierarchy)
+            return false;
+        m_suspended_scene     = nullptr;
+        m_authoring_suspended = false;
+        m_editable            = true;
+        return true;
+    }
+
+    bool EditorSession::AuthoringSuspended() const noexcept
+    {
+        return m_authoring_suspended;
     }
 
     void EditorSession::SynchronizeHierarchy()
@@ -1312,12 +1350,12 @@ namespace Tetragrama
 
     bool EditorSession::SetHovered(EntityID entity)
     {
-        return OnOwnerThread() && m_selection.SetHovered(m_targets, entity);
+        return OnOwnerThread() && !m_authoring_suspended && m_selection.SetHovered(m_targets, entity);
     }
 
     void EditorSession::ClearHovered()
     {
-        if (OnOwnerThread())
+        if (OnOwnerThread() && !m_authoring_suspended)
         {
             m_selection.ClearHovered();
         }

@@ -2411,3 +2411,65 @@ TEST_F(EditorSessionTest, SelectionRangeRejectsWrongThreadAndAllowsReadOnlySelec
     EXPECT_FALSE(session.Editable());
     EXPECT_FALSE(session.Dirty());
 }
+
+TEST_F(EditorSessionTest, SuspendedAuthoringCancelsPreviewDiscardsQueuedCommandsAndRetainsHistory)
+{
+    const auto entity = Entity(1);
+    ASSERT_TRUE(Begin(entity));
+    ASSERT_TRUE(Preview(entity, 2.f));
+    ASSERT_TRUE(session.Commit());
+    ASSERT_TRUE(Begin(entity));
+    ASSERT_TRUE(Preview(entity, 5.f));
+    ASSERT_TRUE(session.Request(EditorCommand::Undo));
+    const auto  epoch          = session.SceneEpoch();
+    const auto  history        = session.History().UndoCount();
+    bool        worker_suspend = true;
+    std::thread worker_before([&] { worker_suspend = session.SuspendAuthoring(); });
+    worker_before.join();
+    EXPECT_FALSE(worker_suspend);
+    EXPECT_TRUE(session.Active());
+
+    ASSERT_TRUE(session.SuspendAuthoring());
+    EXPECT_TRUE(session.AuthoringSuspended());
+    EXPECT_FALSE(session.Active());
+    EXPECT_FALSE(session.Editable());
+    EXPECT_FALSE(session.CanUndo());
+    EXPECT_FALSE(session.BeginMutationPhase());
+    EXPECT_FALSE(session.Request(EditorCommand::Undo));
+    EXPECT_FALSE(session.RequestSelection(entity));
+    EXPECT_FALSE(session.SetHovered(entity));
+    EXPECT_EQ(session.PendingRequestCount(), 0u);
+    EXPECT_EQ(session.Scene(), &scene);
+    EXPECT_EQ(session.SceneEpoch(), epoch);
+    EXPECT_EQ(session.History().UndoCount(), history);
+    EXPECT_TRUE(session.Dirty());
+    EXPECT_FLOAT_EQ(Value(entity).Position.x, 2.f);
+
+    bool        worker_resume = true;
+    std::thread worker([&] { worker_resume = session.ResumeAuthoring(); });
+    worker.join();
+    EXPECT_FALSE(worker_resume);
+    ASSERT_TRUE(session.ResumeAuthoring());
+    EXPECT_FALSE(session.AuthoringSuspended());
+    EXPECT_FALSE(session.ResumeAuthoring());
+    ASSERT_TRUE(session.BeginMutationPhase());
+    ASSERT_TRUE(session.Undo());
+    EXPECT_FLOAT_EQ(Value(entity).Position.x, 0.f);
+    ASSERT_TRUE(session.Redo());
+    EXPECT_FLOAT_EQ(Value(entity).Position.x, 2.f);
+    EXPECT_EQ(session.SceneEpoch(), epoch);
+}
+
+TEST_F(EditorSessionTest, ResumeRejectsUnexpectedStructuralChangesAndLeavesAuthoringSuspended)
+{
+    Entity(1);
+    ASSERT_TRUE(session.SuspendAuthoring());
+    const auto epoch   = session.SceneEpoch();
+    const auto created = scene.CreateEntity();
+    ASSERT_TRUE(created.IsValid());
+    EXPECT_FALSE(session.ResumeAuthoring());
+    EXPECT_TRUE(session.AuthoringSuspended());
+    EXPECT_FALSE(session.BeginMutationPhase());
+    EXPECT_EQ(session.Scene(), &scene);
+    EXPECT_EQ(session.SceneEpoch(), epoch);
+}

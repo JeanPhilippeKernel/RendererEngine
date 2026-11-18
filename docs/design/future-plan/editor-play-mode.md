@@ -3,6 +3,8 @@
 **Priority:** P1 — required for safe gameplay iteration
 **Status:** Design; isolated retained-authoring Play approved on 2026-11-07;
 implementation and qualification remain outstanding
+
+Current simulation/service audit: [M3 service inventory](m3-service-inventory.md).
 **Depends on:** scene-serialization.md, editor-undo-redo.md,
 actor-ecs-architecture.md, game-runtime-boundary.md, rendering-flow.md
 **Blocks:** trustworthy Play, Pause, Stop workflow
