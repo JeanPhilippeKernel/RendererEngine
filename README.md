@@ -63,6 +63,10 @@ Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), then
 read the [contributor guide](https://jeanphilippekernel.github.io/zodiac-engine-docs/contributing/)
 before opening a pull request.
 
+Project documentation: [Architecture](architecture.md) ·
+[Requirements](requirements.md) · [CI workflow](workflow.md) ·
+[Development progress](progress.md)
+
 ## License
 
 ZEngine is licensed under the [MIT License](LICENSE).

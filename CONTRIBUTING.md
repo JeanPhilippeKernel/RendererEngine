@@ -1,18 +1,34 @@
 
 # Contributing to ZEngine
 
-When contributing to this repository, please first discuss the change you wish to make via issue.
+When contributing to this repository, please discuss significant changes in an
+issue before starting implementation. For smaller fixes, open a pull request
+with a clear description and enough context for reviewers to understand the
+change.
 
 ## Rules
 
 **ZEngine** is built upon 2 rules:
 
-1. You cannot add code that will slow down the rendering process
-2. You cannot add code that will make things complex to use
+1. Avoid work that unnecessarily slows down the rendering process.
+2. Keep the engine and its workflows straightforward to use.
 
 ### Performance
 
-ZEngine is a 3D rendering engine. So every piece of code has to be scrutinized to look for potential bottlenecks or slow downs. Ultimately the goal is to render more with less resources.
+ZEngine is a 3D rendering engine. Consider the performance impact of code on
+frame-time, memory use, and resource lifetime. Prefer measured, maintainable
+solutions over speculative optimization.
+
+## Project guides
+
+- [Architecture](architecture.md) describes the main components and their
+  relationships.
+- [Requirements](requirements.md) lists the tools and platform dependencies
+  needed to build from source.
+- [CI workflow](workflow.md) explains the GitHub Actions checks and build
+  pipeline.
+- [Development progress](progress.md) summarizes current priorities and
+  separates active work from longer-term proposals.
 
 ## Commit Message Convention
 
@@ -87,9 +103,28 @@ A CI check (`commitlint`) runs on every pull request and will block the build if
 
 ## Local Setup
 
-Git hooks are installed automatically the first time you run CMake. No manual steps required.
+See [Requirements](requirements.md) for platform prerequisites and
+[Build from source](https://jeanphilippekernel.github.io/zodiac-engine-docs/development/build-from-source/)
+for the complete setup and build instructions. Configure and build with the
+repository script from PowerShell Core:
 
-The `pre-push` hook runs clang-format on `ZEngine` and `Tetragrama` before every push, mirroring the CI check. It requires [PowerShell Core (`pwsh`)](https://github.com/PowerShell/PowerShell/releases) and LLVM `clang-format` (version 20–22). If `pwsh` is not found the hook prints a warning and lets the push through; CI will catch formatting issues instead.
+```powershell
+./Scripts/BuildEngine.ps1 -Configurations Debug -RunBuilds $True
+```
+
+Git hooks are copied into `.git/hooks` during CMake configuration when the
+repository's `.git` path is a directory. The `pre-push` hook runs clang-format
+on `ZEngine` and `Tetragrama` before pushing.
+
+Formatting can also be checked locally with:
+
+```powershell
+./Scripts/BuildEngine.ps1 -Configurations Debug -RunBuilds $False -RunClangFormat $True -VerifyFormatting $True
+```
+
+The formatting scripts require PowerShell Core (`pwsh`) and LLVM
+`clang-format`. If the hook cannot run locally, CI performs the formatting
+check before merging.
 
 ## Release Process
 
@@ -124,11 +159,14 @@ The `ZENGINE_VERSION_PRERELEASE` macro in the generated `Core/version.h` will be
 
 ## Pull Request Process
 
-1. Make sure your modification is covered by the rules above and discussed in an issue first.
+1. Explain the problem being solved, the approach, and any relevant trade-offs.
 
-2. Update the README.md with details of changes to the interface, including new environment
-   variables, exposed ports, useful file locations and container parameters.
+2. Include focused tests for behavior that changes, and update directly related
+   documentation when public behavior or developer workflows change.
 
-3. You may merge the Pull Request once you have the sign-off of two other developers, or if you
-   do not have permission to do that, you may request the second reviewer to merge it for you.
+3. Keep the pull request focused. Describe the checks you ran and note any
+   platform-specific limitations.
+
+4. Ensure the required CI checks pass and respond to review feedback before
+   merging. Follow the repository's branch protection and review requirements.
 
